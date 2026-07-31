@@ -13,49 +13,43 @@ export default {
 
     try {
       if (path === '/api/ai/generate' && method === 'POST') {
-        const { text, level = 'B1', topic = 'General English' } = await request.json();
+        const { text = '', level = 'B1', topic = '' } = await request.json();
 
-        if (!text || text.trim().length < 10) {
-          return json({ error: "Предоставьте текст или материалы для генерации урока." }, 400);
-        }
+        const activeTopic = topic.trim() || 'General English Practice';
+        const hasSourceText = text.trim().length > 5;
 
-        const systemPrompt = `Ты — строгий методист английского языка высшей квалификации.
-Твоя задача — извлечь максимум из предоставленного текста и создать ПОЛНОЦЕННЫЙ, НЕЛЕНИВЫЙ, ОБШИРНЫЙ интерактивный урок уровня ${level} на тему "${topic}".
+        const systemPrompt = `Ты — ведущий методист английского языка высшей квалификации.
+Твоя задача — создать ПОЛНОЦЕННЫЙ, НЕЛЕНИВЫЙ, ОБШИРНЫЙ интерактивный урок уровня ${level} на тему "${activeTopic}".
 
-СТРОГИЕ ТРЕБОВАНИЯ К КОЛИЧЕСТВУ ЭЛЕМЕНТОВ В КАЖДОМ УПРАЖНЕНИИ (НЕ СОЗДАВАЙ ПО 1 ВОПРОСУ!):
+${hasSourceText 
+  ? 'ИСПОЛЬЗУЙ ПРЕДОСТАВЛЕННЫЙ НИЖЕ ТЕКСТ КАК ИСТОЧНИК ДЛЯ ВСЕХ УПРАЖНЕНИЙ.' 
+  : 'НАПИШИ ИНТЕРЕСНЫЙ, НАСЫЩЕННЫЙ УЧЕБНЫЙ ТЕКСТ ОБЪЕМОМ МИНИМУМ 300 СЛОВ С НУЛЯ НА УКАЗАННУЮ ТЕМУ.'}
 
-1. ТЕКСТЫ ДЛЯ ЧТЕНИЯ (text): Смысловой, насыщенный текст объемом МИНИМУМ 250-350 слов, без обрезков.
-2. ФЛЕШКАРТЫ (flashcards): МИНИМУМ 8-10 карточек с понятным переводом и контекстным примером.
-3. ТЕСТОВЫЕ ВОПРОСЫ (multiple_choice):
-   - НЕ создавай по 1 вопросу! Каждая страница с тестами должна содержать МИНИМУМ 4-6 РАЗНЫХ ВОПРОСОВ (каждый со своими options, correct и explanation).
-4. ЗАПОЛНЕНИЕ ПРОПУСКОВ (gap_fill): МИНИМУМ 6-8 отдельных предложений с пропусками в формате 'Sentence [answer] here.'.
+СТРОГИЕ ТРЕБОВАНИЯ К КОЛИЧЕСТВУ ЭЛЕМЕНТОВ В УРОКЕ (НЕ СОЗДАВАЙ ПО 1 ВОПРОСУ!):
+
+1. ТЕКСТЫ ДЛЯ ЧТЕНИЯ (text): Смысловой текст объемом МИНИМУМ 250-350 слов.
+2. ФЛЕШКАРТЫ (flashcards): МИНИМУМ 8-10 карточек с переводом на русский и примером.
+3. ТЕСТОВЫЕ ВОПРОСЫ (multiple_choice): МИНИМУМ 4-6 отдельных вопросов с options, correct и explanation.
+4. ЗАПОЛНЕНИЕ ПРОПУСКОВ (gap_fill): МИНИМУМ 6-8 предложений с пропусками (формат 'Sentence [answer] here.').
 5. СОПОСТАВЛЕНИЕ (matching): МИНИМУМ 6-8 пар синонимов, антонимов или определений.
-6. ПОРЯДОК СЛОВ (sentence_reorder): МИНИМУМ 4-5 развернутых предложений для сборки.
-7. СОРТИРОВКА (categorization): МИНИМУМ 8-10 элементов, распределенных по 2-3 категориям.
-8. РАЗГОВОРНАЯ ПРАКТИКА (open_input): МИНИМУМ 3-4 глубоких вопроса для обсуждения или ролевых заданий.
-
-СТРУКТУРА СТРАНИЦ УРОКА:
-- Страница 1: Lead-in & Vocabulary Bank (Open input discussion + 8-10 Flashcards).
-- Страница 2: Reading & Detailed Text Analysis (Text 300+ words + 5 Comprehension Questions).
-- Страница 3: Grammar Focus & Rule (Grammar Card + 6 Controlled Gap-Fill exercises).
-- Страница 4: Vocabulary Matching & Categorization (6-8 Matching Pairs + 8-10 Categorization Items).
-- Страница 5: Sentence Word Order & Syntax (4-5 Sentence Reorder exercises).
-- Страница 6: Speaking, Role-Play & Homework (3 Open Discussion Questions + 6 Homework Gap-Fills).
+6. ПОРЯДОК СЛОВ (sentence_reorder): МИНИМУМ 4-5 предложений для сборки из слов.
+7. СОРТИРОВКА (categorization): МИНИМУМ 8-10 элементов по 2-3 категориям.
+8. РАЗГОВОРНАЯ ПРАКТИКА (open_input): МИНИМУМ 3-4 глубоких вопроса для обсуждения.
 
 ВЕРНИ СТРОГО ЧИСТЫЙ JSON БЕЗ МАРКДАУН ОБЕРТОК (без \`\`\`json):
 {
-  "title": "Full Lesson Title",
+  "title": "${activeTopic} (${level})",
   "level": "${level}",
-  "topic": "${topic}",
-  "description": "Comprehensive lesson description",
+  "topic": "${activeTopic}",
+  "description": "Интерактивный урок уровня ${level}",
   "pages": [
     {
       "id": "p1",
-      "title": "Part 1: Lead-in & Vocabulary Bank",
+      "title": "Part 1: Lead-in & Vocabulary",
       "blocks": [
-        { "id": "p1-b1", "type": "heading", "level": 1, "text": "Warm-Up & Vocabulary" },
-        { "id": "p1-b2", "type": "open_input", "prompt": "Warm-up discussion question...", "placeholder": "Share your thoughts..." },
-        { "id": "p1-b3", "type": "flashcards", "title": "Key Vocabulary", "lang": "en-US", "cards": [
+        { "id": "p1-b1", "type": "heading", "level": 1, "text": "${activeTopic}" },
+        { "id": "p1-b2", "type": "open_input", "prompt": "Warm-up discussion question on ${activeTopic}...", "placeholder": "Your answer..." },
+        { "id": "p1-b3", "type": "flashcards", "title": "Target Vocabulary", "lang": "en-US", "cards": [
           { "front": "Word 1", "back": "Перевод 1", "example": "Example 1" },
           { "front": "Word 2", "back": "Перевод 2", "example": "Example 2" },
           { "front": "Word 3", "back": "Перевод 3", "example": "Example 3" },
@@ -71,40 +65,39 @@ export default {
       "id": "p2",
       "title": "Part 2: Reading & Comprehension",
       "blocks": [
-        { "id": "p2-b1", "type": "text", "text": "Full detailed article text (300+ words)..." },
-        { "id": "p2-b2", "type": "multiple_choice", "question": "Question 1?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Explanation 1" },
-        { "id": "p2-b3", "type": "multiple_choice", "question": "Question 2?", "options": ["A", "B", "C"], "correct": 1, "explanation": "Explanation 2" },
-        { "id": "p2-b4", "type": "multiple_choice", "question": "Question 3?", "options": ["A", "B", "C"], "correct": 2, "explanation": "Explanation 3" },
-        { "id": "p2-b5", "type": "multiple_choice", "question": "Question 4?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Explanation 4" },
-        { "id": "p2-b6", "type": "multiple_choice", "question": "Question 5?", "options": ["A", "B", "C"], "correct": 1, "explanation": "Explanation 5" }
+        { "id": "p2-b1", "type": "text", "text": "Full detailed story/article (300+ words)..." },
+        { "id": "p2-b2", "type": "multiple_choice", "question": "Comprehension Question 1?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Expl 1" },
+        { "id": "p2-b3", "type": "multiple_choice", "question": "Comprehension Question 2?", "options": ["A", "B", "C"], "correct": 1, "explanation": "Expl 2" },
+        { "id": "p2-b4", "type": "multiple_choice", "question": "Comprehension Question 3?", "options": ["A", "B", "C"], "correct": 2, "explanation": "Expl 3" },
+        { "id": "p2-b5", "type": "multiple_choice", "question": "Comprehension Question 4?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Expl 4" }
       ]
     },
     {
       "id": "p3",
-      "title": "Part 3: Grammar & Gap Fills",
+      "title": "Part 3: Grammar Rule & Practice",
       "blocks": [
-        { "id": "p3-b1", "type": "grammar_card", "title": "Grammar Rule", "formula": "Subject + Verb", "explanation": "Detailed explanation", "examples": ["Example A", "Example B"] },
-        { "id": "p3-b2", "type": "gap_fill", "instruction": "Fill in the gaps in sentences 1-6:", "text": "1. She [always] arrives on time.", "answers": ["always"] },
-        { "id": "p3-b3", "type": "gap_fill", "instruction": "", "text": "2. They [have] finished the project.", "answers": ["have"] },
-        { "id": "p3-b4", "type": "gap_fill", "instruction": "", "text": "3. He [is] working right now.", "answers": ["is"] },
-        { "id": "p3-b5", "type": "gap_fill", "instruction": "", "text": "4. We [will] call you tomorrow.", "answers": ["will"] },
-        { "id": "p3-b6", "type": "gap_fill", "instruction": "", "text": "5. I [enjoy] learning English.", "answers": ["enjoy"] },
-        { "id": "p3-b7", "type": "gap_fill", "instruction": "", "text": "6. You [should] take a break.", "answers": ["should"] }
+        { "id": "p3-b1", "type": "grammar_card", "title": "Grammar Focus", "formula": "Formula", "explanation": "Explanation", "examples": ["Example A", "Example B"] },
+        { "id": "p3-b2", "type": "gap_fill", "instruction": "Fill gaps in sentences 1-6:", "text": "1. She [always] arrives on time.", "answers": ["always"] },
+        { "id": "p3-b3", "type": "gap_fill", "instruction": "", "text": "2. They [have] finished.", "answers": ["have"] },
+        { "id": "p3-b4", "type": "gap_fill", "instruction": "", "text": "3. He [is] working.", "answers": ["is"] },
+        { "id": "p3-b5", "type": "gap_fill", "instruction": "", "text": "4. We [will] call you.", "answers": ["will"] },
+        { "id": "p3-b6", "type": "gap_fill", "instruction": "", "text": "5. I [enjoy] English.", "answers": ["enjoy"] },
+        { "id": "p3-b7", "type": "gap_fill", "instruction": "", "text": "6. You [should] rest.", "answers": ["should"] }
       ]
     },
     {
       "id": "p4",
       "title": "Part 4: Matching & Categorization",
       "blocks": [
-        { "id": "p4-b1", "type": "matching", "instruction": "Match the words with their definitions:", "pairs": [
-          { "left": "Word 1", "right": "Definition 1" },
-          { "left": "Word 2", "right": "Definition 2" },
-          { "left": "Word 3", "right": "Definition 3" },
-          { "left": "Word 4", "right": "Definition 4" },
-          { "left": "Word 5", "right": "Definition 5" },
-          { "left": "Word 6", "right": "Definition 6" }
+        { "id": "p4-b1", "type": "matching", "instruction": "Match synonyms/definitions:", "pairs": [
+          { "left": "Word 1", "right": "Match 1" },
+          { "left": "Word 2", "right": "Match 2" },
+          { "left": "Word 3", "right": "Match 3" },
+          { "left": "Word 4", "right": "Match 4" },
+          { "left": "Word 5", "right": "Match 5" },
+          { "left": "Word 6", "right": "Match 6" }
         ]},
-        { "id": "p4-b2", "type": "categorization", "instruction": "Sort words into Category A or Category B:", "categories": ["Category A", "Category B"], "items": [
+        { "id": "p4-b2", "type": "categorization", "instruction": "Sort words by category:", "categories": ["Category A", "Category B"], "items": [
           { "id": "c1", "text": "Item 1", "categoryIndex": 0 },
           { "id": "c2", "text": "Item 2", "categoryIndex": 1 },
           { "id": "c3", "text": "Item 3", "categoryIndex": 0 },
@@ -118,33 +111,26 @@ export default {
     },
     {
       "id": "p5",
-      "title": "Part 5: Word Order & Reordering",
+      "title": "Part 5: Sentence Order & Speaking",
       "blocks": [
         { "id": "p5-b1", "type": "sentence_reorder", "instruction": "Reorder sentence 1:", "sentence": "She has been working here for three years", "words": ["working", "for", "three", "years", "She", "has", "here", "been"] },
         { "id": "p5-b2", "type": "sentence_reorder", "instruction": "Reorder sentence 2:", "sentence": "They will announce the results tomorrow morning", "words": ["tomorrow", "results", "announce", "They", "will", "morning", "the"] },
         { "id": "p5-b3", "type": "sentence_reorder", "instruction": "Reorder sentence 3:", "sentence": "I would have called you if I had time", "words": ["called", "have", "time", "would", "I", "you", "if", "had"] },
-        { "id": "p5-b4", "type": "sentence_reorder", "instruction": "Reorder sentence 4:", "sentence": "Never have I seen such an amazing performance", "words": ["seen", "such", "an", "have", "I", "performance", "Never", "amazing"] }
-      ]
-    },
-    {
-      "id": "p6",
-      "title": "Part 6: Speaking & Homework",
-      "blocks": [
-        { "id": "p6-b1", "type": "open_input", "prompt": "Discussion 1: What is your opinion on the main topic?", "placeholder": "Write at least 3-4 sentences..." },
-        { "id": "p6-b2", "type": "open_input", "prompt": "Discussion 2: Describe a personal experience related to this lesson.", "placeholder": "Write your response..." },
-        { "id": "p6-b3", "type": "heading", "level": 2, "text": "Homework Assignment" },
-        { "id": "p6-b4", "type": "gap_fill", "instruction": "Homework: Complete with target vocabulary:", "text": "1. The company plans to [expand] its business.", "answers": ["expand"] },
-        { "id": "p6-b5", "type": "gap_fill", "instruction": "", "text": "2. She made a significant [contribution] to the project.", "answers": ["contribution"] },
-        { "id": "p6-b6", "type": "gap_fill", "instruction": "", "text": "3. We need to find a sustainable [solution].", "answers": ["solution"] }
+        { "id": "p5-b4", "type": "open_input", "prompt": "Discussion: What are your thoughts on this topic?", "placeholder": "Write your response..." },
+        { "id": "p5-b5", "type": "gap_fill", "instruction": "Homework: Complete sentence:", "text": "1. We need a sustainable [solution].", "answers": ["solution"] }
       ]
     }
   ]
 }`;
 
+        const promptInput = hasSourceText 
+          ? `Учебный материал для создания урока:\n\n${text}`
+          : `Создай полноценный многостраничный урок с нуля на тему "${activeTopic}" уровня ${level}.`;
+
         const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Материалы для сплошной генерации насыщенного урока:\n\n${text}` }
+            { role: 'user', content: promptInput }
           ],
           max_tokens: 4500,
           temperature: 0.3
