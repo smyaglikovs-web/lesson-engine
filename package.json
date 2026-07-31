@@ -1,0 +1,7 @@
+{
+  "name": "lessons",
+  "private": true,
+  "devDependencies": {
+    "wrangler": "^3.109.0"
+  }
+}
