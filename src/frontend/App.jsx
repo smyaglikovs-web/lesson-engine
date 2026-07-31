@@ -68,7 +68,7 @@ export default function App() {
     }
   };
 
-  // Realtime Room Sync
+  // Realtime Room Sync Polling
   useEffect(() => {
     if (view !== 'room' || !roomId) return;
 
@@ -79,22 +79,19 @@ export default function App() {
         
         setIsStudentOnline(data.isOnline || false);
 
-        if (!isTeacher && typeof data.page_idx === 'number') {
-          setCurrentPageIdx(data.page_idx);
-        }
-
-        if (data.student_answers) {
+        // Sync answers cleanly without coercing types
+        if (data.student_answers && Object.keys(data.student_answers).length > 0) {
           setUserAnswers(prev => {
             const serverStr = JSON.stringify(data.student_answers);
             const prevStr = JSON.stringify(prev);
-            return serverStr !== prevStr ? data.student_answers : prev;
+            return serverStr !== prevStr ? { ...prev, ...data.student_answers } : prev;
           });
         }
       } catch (e) {}
-    }, 1500);
+    }, 2000);
 
     return () => clearInterval(interval);
-  }, [view, roomId, isTeacher]);
+  }, [view, roomId]);
 
   const syncRoomState = async (pageIdx, answers) => {
     if (!roomId) return;
@@ -107,9 +104,10 @@ export default function App() {
     } catch (e) {}
   };
 
+  // Page Navigation - Student navigates independently
   const handlePageChange = (newIdx) => {
     setCurrentPageIdx(newIdx);
-    if (isTeacher) syncRoomState(newIdx, userAnswers);
+    syncRoomState(newIdx, userAnswers);
   };
 
   const handleAnswerChange = (blockId, newVal) => {
@@ -168,7 +166,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* Top Navbar - Hidden for Students */}
+      {/* Top Navbar - Only visible for Teachers */}
       {isTeacher && (
         <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
           <div className="max-w-6xl mx-auto px-4 h-16 flex justify-between items-center">
@@ -187,7 +185,7 @@ export default function App() {
       )}
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        {/* LIBRARY VIEW */}
+        {/* LIBRARY */}
         {view === 'library' && isTeacher && (
           <div>
             <div className="flex justify-between items-center mb-8">
@@ -211,7 +209,6 @@ export default function App() {
                         <span className="px-3 py-1 bg-indigo-50 text-indigo-700 font-semibold text-xs rounded-full uppercase">{l.level || 'A2-B1'}</span>
                         <div className="flex items-center gap-2">
                           <button onClick={() => setViewSubmissionsLesson(l)} className="px-2.5 py-1 text-xs bg-indigo-50 text-indigo-700 font-semibold rounded-lg hover:bg-indigo-100">📊 Ответы ДЗ</button>
-                          {/* Restored Delete Button */}
                           <button
                             onClick={(e) => handleDeleteLesson(l.id, e)}
                             className="p-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-bold transition"
@@ -226,7 +223,7 @@ export default function App() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100">
-                      <button onClick={() => openLesson(l.id)} className="py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition">Провести урок</button>
+                      <button onClick={() => openLesson(l.id)} className="py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition font-bold">Провести урок</button>
                       <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/?homework=${l.id}`); alert('🔗 Ссылка скопирована!'); }} className="py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition">Ссылка на ДЗ 🏠</button>
                     </div>
                   </div>
@@ -236,18 +233,18 @@ export default function App() {
           </div>
         )}
 
-        {/* CREATE VIEW */}
+        {/* CREATE */}
         {view === 'create' && isTeacher && <CreateLessonView onSaveLesson={handleSaveLesson} onCancel={() => setView('library')} />}
 
-        {/* PROMPTS VIEW */}
+        {/* PROMPTS */}
         {view === 'prompts' && isTeacher && <AIPromptsView />}
 
-        {/* REALTIME ROOM / STUDENT VIEW */}
+        {/* REALTIME ROOM */}
         {view === 'room' && activeLesson && (
           <div className="max-w-3xl mx-auto space-y-6">
             {/* CHEERFUL COMPLETION BANNER FOR STUDENT */}
             {isLessonCompleted ? (
-              <div className="bg-white p-10 rounded-3xl border border-slate-200 text-center shadow-xl space-y-4 my-12 animate-fade-in">
+              <div className="bg-white p-10 rounded-3xl border border-slate-200 text-center shadow-xl space-y-4 my-12">
                 <div className="text-6xl animate-bounce">🎉</div>
                 <h2 className="text-3xl font-extrabold text-slate-900">Поздравляем! Урок пройдён!</h2>
                 <p className="text-slate-600 max-w-md mx-auto text-base">
@@ -285,7 +282,7 @@ export default function App() {
                 </div>
 
                 {/* Active Page Blocks */}
-                <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                   {(activePage.blocks || []).map((b, idx) => {
                     const uniqueBlockId = b.id || `p${currentPageIdx}-b${idx}`;
                     return (
@@ -301,12 +298,12 @@ export default function App() {
                 </div>
 
                 {/* Page Controls */}
-                <div className="flex justify-between items-center">
-                  <button disabled={currentPageIdx === 0} onClick={() => handlePageChange(currentPageIdx - 1)} className="px-6 py-2.5 border rounded-xl disabled:opacity-30 hover:bg-slate-100">← Назад</button>
+                <div className="flex justify-between items-center pt-2">
+                  <button disabled={currentPageIdx === 0} onClick={() => handlePageChange(currentPageIdx - 1)} className="px-6 py-3 border rounded-xl font-bold disabled:opacity-30 hover:bg-slate-100 text-sm">← Назад</button>
                   {currentPageIdx < totalPages - 1 ? (
-                    <button onClick={() => handlePageChange(currentPageIdx + 1)} className="px-8 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700">Далее →</button>
+                    <button onClick={() => handlePageChange(currentPageIdx + 1)} className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 text-sm shadow-sm">Далее →</button>
                   ) : (
-                    <button onClick={handleFinishLesson} className="px-8 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700">
+                    <button onClick={handleFinishLesson} className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 text-sm shadow-md">
                       Завершить урок 🎉
                     </button>
                   )}
