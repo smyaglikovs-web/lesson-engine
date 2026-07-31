@@ -16,6 +16,7 @@ export default function App() {
   const [currentPageIdx, setCurrentPageIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState({});
   const [isStudentOnline, setIsStudentOnline] = useState(false);
+  const [isLessonCompleted, setIsLessonCompleted] = useState(false);
   const [viewSubmissionsLesson, setViewSubmissionsLesson] = useState(null);
 
   const fetchLessons = async () => {
@@ -40,13 +41,13 @@ export default function App() {
       const teacher = roleParam === 'teacher';
       setIsTeacher(teacher);
       setRoomId(roomParam);
-      openLesson(roomParam, false);
+      openLesson(roomParam, false, teacher);
     } else {
       fetchLessons();
     }
   }, []);
 
-  const openLesson = async (lessonId, navigate = true) => {
+  const openLesson = async (lessonId, navigate = true, teacherRole = true) => {
     try {
       const res = await fetch(`/api/lessons/${lessonId}`);
       const data = await res.json();
@@ -54,17 +55,20 @@ export default function App() {
       setRoomId(lessonId);
       setCurrentPageIdx(0);
       setUserAnswers({});
+      setIsLessonCompleted(false);
       setView('room');
       if (navigate) {
         window.history.pushState({}, '', `/?room=${lessonId}&role=teacher`);
         setIsTeacher(true);
+      } else {
+        setIsTeacher(teacherRole);
       }
     } catch (e) {
       alert('Ошибка загрузки урока');
     }
   };
 
-  // REALTIME ROOM SYNC POLLING (every 1.5 seconds)
+  // Realtime Room Sync
   useEffect(() => {
     if (view !== 'room' || !roomId) return;
 
@@ -75,12 +79,10 @@ export default function App() {
         
         setIsStudentOnline(data.isOnline || false);
 
-        // Student automatically follows Teacher's page turn
         if (!isTeacher && typeof data.page_idx === 'number') {
           setCurrentPageIdx(data.page_idx);
         }
 
-        // Live Sync Answers
         if (data.student_answers) {
           setUserAnswers(prev => {
             const serverStr = JSON.stringify(data.student_answers);
@@ -94,7 +96,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [view, roomId, isTeacher]);
 
-  // Send State Changes to Server
   const syncRoomState = async (pageIdx, answers) => {
     if (!roomId) return;
     try {
@@ -134,6 +135,28 @@ export default function App() {
     }
   };
 
+  const handleDeleteLesson = async (id, e) => {
+    e.stopPropagation();
+    if (!confirm('Вы уверены, что хотите удалить этот урок из базы данных?')) return;
+    try {
+      const res = await fetch('/api/lessons/' + id, { method: 'DELETE' });
+      if ((await res.json()).success) {
+        fetchLessons();
+      }
+    } catch (err) {
+      alert('Ошибка удаления');
+    }
+  };
+
+  const handleFinishLesson = () => {
+    if (isTeacher) {
+      window.history.pushState({}, '', '/');
+      setView('library');
+    } else {
+      setIsLessonCompleted(true);
+    }
+  };
+
   const activePage = activeLesson?.pages?.[currentPageIdx] || { blocks: activeLesson?.blocks || [] };
   const totalPages = activeLesson?.pages?.length || 1;
 
@@ -145,24 +168,27 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex justify-between items-center">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => { window.history.pushState({}, '', '/'); setView('library'); }}>
-            <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold shadow-sm">L</div>
-            <span className="font-bold text-lg text-slate-800">Lesson Engine</span>
-          </div>
+      {/* Top Navbar - Hidden for Students */}
+      {isTeacher && (
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+          <div className="max-w-6xl mx-auto px-4 h-16 flex justify-between items-center">
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => { window.history.pushState({}, '', '/'); setView('library'); }}>
+              <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold shadow-sm">L</div>
+              <span className="font-bold text-lg text-slate-800">Lesson Engine</span>
+            </div>
 
-          <nav className="flex items-center gap-1">
-            <button onClick={() => setView('library')} className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'library' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}>Библиотека</button>
-            <button onClick={() => setView('create')} className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'create' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}>+ Создать урок</button>
-            <button onClick={() => setView('prompts')} className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'prompts' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}>💡 AI Промпты</button>
-          </nav>
-        </div>
-      </header>
+            <nav className="flex items-center gap-1">
+              <button onClick={() => { window.history.pushState({}, '', '/'); setView('library'); }} className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'library' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}>Библиотека</button>
+              <button onClick={() => setView('create')} className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'create' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}>+ Создать урок</button>
+              <button onClick={() => setView('prompts')} className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'prompts' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}>💡 AI Промпты</button>
+            </nav>
+          </div>
+        </header>
+      )}
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        {/* LIBRARY */}
-        {view === 'library' && (
+        {/* LIBRARY VIEW */}
+        {view === 'library' && isTeacher && (
           <div>
             <div className="flex justify-between items-center mb-8">
               <div>
@@ -183,7 +209,17 @@ export default function App() {
                     <div>
                       <div className="flex justify-between items-center mb-3">
                         <span className="px-3 py-1 bg-indigo-50 text-indigo-700 font-semibold text-xs rounded-full uppercase">{l.level || 'A2-B1'}</span>
-                        <button onClick={() => setViewSubmissionsLesson(l)} className="px-2.5 py-1 text-xs bg-indigo-50 text-indigo-700 font-semibold rounded-lg hover:bg-indigo-100">📊 Ответы ДЗ</button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setViewSubmissionsLesson(l)} className="px-2.5 py-1 text-xs bg-indigo-50 text-indigo-700 font-semibold rounded-lg hover:bg-indigo-100">📊 Ответы ДЗ</button>
+                          {/* Restored Delete Button */}
+                          <button
+                            onClick={(e) => handleDeleteLesson(l.id, e)}
+                            className="p-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-bold transition"
+                            title="Удалить урок"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </div>
                       <h3 className="text-xl font-bold text-slate-800 mb-2">{l.title}</h3>
                       <p className="text-slate-600 text-sm mb-6 line-clamp-2">{l.description}</p>
@@ -200,65 +236,83 @@ export default function App() {
           </div>
         )}
 
-        {/* CREATE */}
-        {view === 'create' && <CreateLessonView onSaveLesson={handleSaveLesson} onCancel={() => setView('library')} />}
+        {/* CREATE VIEW */}
+        {view === 'create' && isTeacher && <CreateLessonView onSaveLesson={handleSaveLesson} onCancel={() => setView('library')} />}
 
-        {/* PROMPTS */}
-        {view === 'prompts' && <AIPromptsView />}
+        {/* PROMPTS VIEW */}
+        {view === 'prompts' && isTeacher && <AIPromptsView />}
 
-        {/* REALTIME ROOM */}
+        {/* REALTIME ROOM / STUDENT VIEW */}
         {view === 'room' && activeLesson && (
           <div className="max-w-3xl mx-auto space-y-6">
-            {/* Realtime Live Room Bar */}
-            <div className="bg-slate-900 text-white p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 shadow-lg">
-              <div className="flex items-center gap-3">
-                <span className={isStudentOnline ? 'w-3 h-3 rounded-full bg-emerald-500 animate-pulse' : 'w-3 h-3 rounded-full bg-slate-500'}></span>
-                <div>
-                  <h4 className="font-semibold text-sm">{isTeacher ? '👨‍🏫 Режим Учителя' : '🧑‍🎓 Режим Ученика'}: {activeLesson.title}</h4>
-                  <p className="text-xs text-slate-400">{isStudentOnline ? '🟢 Ученик в комнате (Реалтайм синхронизация)' : '⚪ Ожидание подключения ученика...'}</p>
+            {/* CHEERFUL COMPLETION BANNER FOR STUDENT */}
+            {isLessonCompleted ? (
+              <div className="bg-white p-10 rounded-3xl border border-slate-200 text-center shadow-xl space-y-4 my-12 animate-fade-in">
+                <div className="text-6xl animate-bounce">🎉</div>
+                <h2 className="text-3xl font-extrabold text-slate-900">Поздравляем! Урок пройдён!</h2>
+                <p className="text-slate-600 max-w-md mx-auto text-base">
+                  Вы отлично поработали и успешно прошли все задания уроков. Отличная работа!
+                </p>
+                <div className="pt-4">
+                  <div className="inline-block px-6 py-3 bg-emerald-100 text-emerald-800 font-bold rounded-2xl text-sm">
+                    ✓ Все материалы пройдены
+                  </div>
                 </div>
               </div>
+            ) : (
+              <>
+                {/* Live Room Bar */}
+                <div className="bg-slate-900 text-white p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 shadow-lg">
+                  <div className="flex items-center gap-3">
+                    <span className={isStudentOnline ? 'w-3 h-3 rounded-full bg-emerald-500 animate-pulse' : 'w-3 h-3 rounded-full bg-slate-500'}></span>
+                    <div>
+                      <h4 className="font-semibold text-sm">{isTeacher ? '👨‍🏫 Режим Учителя' : '🧑‍🎓 Интерактивный урок'}: {activeLesson.title}</h4>
+                      <p className="text-xs text-slate-400">{isTeacher ? (isStudentOnline ? '🟢 Ученик в комнате' : '⚪ Ожидание подключения ученика...') : 'Режим прохождения'}</p>
+                    </div>
+                  </div>
 
-              {isTeacher && (
-                <button onClick={copyStudentLink} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-medium rounded-xl shadow-sm">
-                  Скопировать ссылку для ученика 🔗
-                </button>
-              )}
-            </div>
+                  {isTeacher && (
+                    <button onClick={copyStudentLink} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-medium rounded-xl shadow-sm">
+                      Скопировать ссылку для ученика 🔗
+                    </button>
+                  )}
+                </div>
 
-            {/* Page Progress Indicator */}
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-sm font-bold text-slate-700">Страница {currentPageIdx + 1} из {totalPages}: {activePage.title || 'Раздел'}</span>
-              <button onClick={() => setView('library')} className="text-xs text-indigo-600 font-bold hover:underline">← Завершить</button>
-            </div>
+                {/* Page Progress Indicator */}
+                <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <span className="text-sm font-bold text-slate-700">Страница {currentPageIdx + 1} из {totalPages}: {activePage.title || 'Раздел'}</span>
+                  {isTeacher && <button onClick={() => { window.history.pushState({}, '', '/'); setView('library'); }} className="text-xs text-indigo-600 font-bold hover:underline">← Выйти</button>}
+                </div>
 
-            {/* Active Page Blocks */}
-           {/* Active Page Blocks with Guaranteed Unique Block IDs */}
-<div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-  {(activePage.blocks || []).map((b, idx) => {
-    const uniqueBlockId = b.id || `p${currentPageIdx}-b${idx}`;
-    const blockWithUniqueId = { ...b, id: uniqueBlockId };
-    return (
-      <BlockRenderer
-        key={uniqueBlockId}
-        block={blockWithUniqueId}
-        value={userAnswers[uniqueBlockId]}
-        onChange={(val) => handleAnswerChange(uniqueBlockId, val)}
-        isTeacher={isTeacher}
-      />
-    );
-  })}
-</div>
+                {/* Active Page Blocks */}
+                <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                  {(activePage.blocks || []).map((b, idx) => {
+                    const uniqueBlockId = b.id || `p${currentPageIdx}-b${idx}`;
+                    return (
+                      <BlockRenderer
+                        key={uniqueBlockId}
+                        block={{ ...b, id: uniqueBlockId }}
+                        value={userAnswers[uniqueBlockId]}
+                        onChange={(val) => handleAnswerChange(uniqueBlockId, val)}
+                        isTeacher={isTeacher}
+                      />
+                    );
+                  })}
+                </div>
 
-            {/* Page Controls */}
-            <div className="flex justify-between items-center">
-              <button disabled={currentPageIdx === 0} onClick={() => handlePageChange(currentPageIdx - 1)} className="px-6 py-2.5 border rounded-xl disabled:opacity-30 hover:bg-slate-100">← Назад</button>
-              {currentPageIdx < totalPages - 1 ? (
-                <button onClick={() => handlePageChange(currentPageIdx + 1)} className="px-8 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700">Далее →</button>
-              ) : (
-                <button onClick={() => { alert('🎉 Урок завершен!'); setView('library'); }} className="px-8 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700">Завершить 🎉</button>
-              )}
-            </div>
+                {/* Page Controls */}
+                <div className="flex justify-between items-center">
+                  <button disabled={currentPageIdx === 0} onClick={() => handlePageChange(currentPageIdx - 1)} className="px-6 py-2.5 border rounded-xl disabled:opacity-30 hover:bg-slate-100">← Назад</button>
+                  {currentPageIdx < totalPages - 1 ? (
+                    <button onClick={() => handlePageChange(currentPageIdx + 1)} className="px-8 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700">Далее →</button>
+                  ) : (
+                    <button onClick={handleFinishLesson} className="px-8 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700">
+                      Завершить урок 🎉
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
