@@ -2,4 +2,7 @@ name = "lessons"
 main = "src/worker.js"
 compatibility_date = "2024-09-23"
 
-assets = "./public"
+[assets]
+directory = "./public"
+html_handling = "none"
+not_found_handling = "single-page-app"
