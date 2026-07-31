@@ -77,16 +77,22 @@ export const CreateLessonView = ({ onSaveLesson, onCancel }) => {
     setSaving(false);
   };
 
-  // Execute Free Cloudflare Workers AI Generation
+// Execute Free Cloudflare Workers AI Generation (Text is optional!)
   const handleGenerateAiLesson = async () => {
-    if (!aiText.trim()) return alert('Вставьте текст или материалы учебника');
+    if (!aiText.trim() && !aiTopic.trim()) {
+      return alert('Укажите тему урока или вставьте текст/материалы из PDF.');
+    }
     setGenerating(true);
 
     try {
       const res = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: aiText, level: aiLevel, topic: aiTopic || 'General' })
+        body: JSON.stringify({ 
+          text: aiText, 
+          level: aiLevel, 
+          topic: aiTopic || 'General English Practice' 
+        })
       });
       const data = await res.json();
 
