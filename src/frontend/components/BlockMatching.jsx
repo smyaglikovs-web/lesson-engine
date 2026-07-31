@@ -1,4 +1,4 @@
-import React, { useState, useMemo } = 'react';
+import React, { useState, useMemo } from 'react';
 
 const shuffleArray = (arr) => {
   const res = [...arr];
