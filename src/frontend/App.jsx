@@ -1,24 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { BlockRenderer } from './components/BlockRenderer.jsx';
+import { AIPromptsView } from './components/AIPromptsView.jsx';
+import { CreateLessonView } from './components/CreateLessonView.jsx';
+import { SubmissionsModal } from './components/SubmissionsModal.jsx';
 
 export default function App() {
-  const [view, setView] = useState('library'); // 'library' | 'lesson' | 'editor'
+  const [view, setView] = useState('library'); // 'library' | 'create' | 'prompts' | 'room'
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeLesson, setActiveLesson] = useState(null);
+  const [currentPageIdx, setCurrentPageIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState({});
-  const [roomId, setRoomId] = useState('');
-  const [studentName, setStudentName] = useState('');
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [viewSubmissionsLesson, setViewSubmissionsLesson] = useState(null);
 
-  // Editor State
-  const [newLessonTitle, setNewLessonTitle] = useState('');
-  const [newLessonLevel, setNewLessonLevel] = useState('A2');
-  const [newLessonTopic, setNewLessonTopic] = useState('');
-  const [newLessonDesc, setNewLessonDesc] = useState('');
-  const [editorBlocks, setEditorBlocks] = useState([]);
-
-  // Load Lessons from D1
   const fetchLessons = async () => {
     setLoading(true);
     try {
@@ -36,110 +30,28 @@ export default function App() {
     fetchLessons();
   }, []);
 
-  // Open a specific lesson
   const openLesson = async (lessonId) => {
     try {
       const res = await fetch(`/api/lessons/${lessonId}`);
       const data = await res.json();
       setActiveLesson(data);
+      setCurrentPageIdx(0);
       setUserAnswers({});
-      setView('lesson');
-      setRoomId('room-' + lessonId);
+      setView('room');
     } catch (e) {
-      alert('Error loading lesson details');
+      alert('Ошибка при загрузке урока');
     }
   };
 
-  // Realtime Room Syncing (Polling room state every 3 seconds)
-  useEffect(() => {
-    if (view !== 'lesson' || !roomId) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/rooms/${roomId}/state`);
-        const data = await res.json();
-        if (data && data.student_answers && Object.keys(data.student_answers).length > 0) {
-          setUserAnswers(prev => ({ ...prev, ...data.student_answers }));
-        }
-      } catch (e) {}
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [view, roomId]);
-
-  // Handle Block Answer Change & Sync to Server
-  const handleAnswerChange = async (blockId, answerVal) => {
-    const updated = { ...userAnswers, [blockId]: answerVal };
-    setUserAnswers(updated);
-
-    if (roomId) {
-      setIsSyncing(true);
-      try {
-        await fetch(`/api/rooms/${roomId}/state`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pageIdx: 0, answers: updated })
-        });
-      } catch (e) {}
-      finally { setIsSyncing(false); }
-    }
-  };
-
-  // Submit Homework
-  const submitHomework = async () => {
-    if (!activeLesson) return;
-    let score = 0;
-    let totalInteractive = 0;
-
-    (activeLesson.blocks || []).forEach(b => {
-      if (b.type === 'multiple_choice' || b.type === 'gap_fill' || b.type === 'matching') {
-        totalInteractive++;
-        const ans = userAnswers[b.id];
-        if (b.type === 'multiple_choice' && ans?.selected === b.correct) score++;
-        if (b.type === 'gap_fill' && ans?.submitted) score++;
-        if (b.type === 'matching' && ans?.matched?.length === b.pairs?.length) score++;
-      }
-    });
-
-    try {
-      const res = await fetch('/api/homework/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lessonId: activeLesson.id,
-          studentName: studentName || 'Ученик',
-          score,
-          totalQuestions: totalInteractive,
-          answers: userAnswers
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(`🎉 Ответы отправлены! Ваш результат: ${score} из ${totalInteractive}`);
-      }
-    } catch (e) {
-      alert('Ошибка при отправке ответов');
-    }
-  };
-
-  // Save New Custom Lesson in Editor
-  const saveCustomLesson = async () => {
-    if (!newLessonTitle.trim()) return alert('Введите название урока');
-    const lessonData = {
-      id: 'lesson-' + Date.now(),
-      title: newLessonTitle,
-      level: newLessonLevel,
-      topic: newLessonTopic,
-      description: newLessonDesc,
-      blocks: editorBlocks
-    };
-
+  const handleSaveLesson = async (newLesson) => {
     try {
       const res = await fetch('/api/lessons', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(lessonData)
+        body: JSON.stringify(newLesson)
       });
       if ((await res.json()).success) {
-        alert('Урок сохранен!');
+        alert('🎉 Урок сохранен в D1!');
         fetchLessons();
         setView('library');
       }
@@ -148,163 +60,121 @@ export default function App() {
     }
   };
 
+  const handleDeleteLesson = async (id) => {
+    if (!confirm('Удалить этот урок?')) return;
+    await fetch('/api/lessons/' + id, { method: 'DELETE' });
+    fetchLessons();
+  };
+
+  const handleCopyHomeworkLink = (id) => {
+    const link = window.location.origin + '/?homework=' + id;
+    navigator.clipboard.writeText(link);
+    alert('🔗 Ссылка на ДЗ скопирована в буфер обмена!');
+  };
+
+  const activePage = activeLesson?.pages?.[currentPageIdx] || { blocks: activeLesson?.blocks || [] };
+  const totalPages = activeLesson?.pages?.length || 1;
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* Top Navbar */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex justify-between items-center">
+        <div className="max-w-6xl mx-auto px-4 h-16 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('library')}>
             <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold shadow-sm">L</div>
             <span className="font-bold text-lg text-slate-800">Lesson Engine</span>
           </div>
 
-          <div className="flex items-center gap-3">
-            {view === 'library' && (
-              <button onClick={() => { setEditorBlocks([]); setView('editor'); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-sm shadow transition">
-                ✏️ Создать урок
-              </button>
-            )}
-            {view !== 'library' && (
-              <button onClick={() => setView('library')} className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg text-sm transition">
-                ← В библиотеку
-              </button>
-            )}
-          </div>
+          <nav className="flex items-center gap-1">
+            <button onClick={() => setView('library')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${view === 'library' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}>Библиотека</button>
+            <button onClick={() => setView('create')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${view === 'create' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}>+ Создать урок</button>
+            <button onClick={() => setView('prompts')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${view === 'prompts' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}>💡 AI Промпты</button>
+          </nav>
         </div>
       </header>
 
-      {/* VIEW 1: LIBRARY */}
-      {view === 'library' && (
-        <main className="max-w-5xl mx-auto px-4 py-8">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-slate-800">Интерактивные уроки</h2>
-            <span className="text-xs font-semibold px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full">
-              {lessons.length} {lessons.length === 1 ? 'урок' : 'уроков'} в D1
-            </span>
-          </div>
-
-          {loading ? (
-            <p className="text-slate-400 text-center py-12">Загрузка из Cloudflare D1...</p>
-          ) : lessons.length === 0 ? (
-            <div className="bg-white p-10 rounded-2xl border text-center shadow-sm">
-              <p className="text-slate-500 mb-4">Уроков пока нет.</p>
-              <button onClick={() => setView('editor')} className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-xl shadow">Создать первый урок</button>
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        {/* LIBRARY VIEW */}
+        {view === 'library' && (
+          <div>
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">Облачная библиотека уроков</h2>
+                <p className="text-slate-500 text-sm">Уроки с поддержкой мультистраничности, видео и заданий</p>
+              </div>
+              <button onClick={() => setView('create')} className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-sm">+ Создать урок (JSON)</button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {lessons.map(l => (
-                <div key={l.id} onClick={() => openLesson(l.id)} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition cursor-pointer flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-full uppercase">{l.level || 'A2'}</span>
-                      <span className="text-xs font-medium text-slate-400">{l.topic || 'Общая тема'}</span>
+
+            {loading ? (
+              <p className="text-center py-12 text-slate-400">Загрузка из Cloudflare D1...</p>
+            ) : lessons.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 bg-white rounded-2xl border">Пока нет уроков. Нажмите "+ Создать урок"!</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {lessons.map(l => (
+                  <div key={l.id} className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="px-3 py-1 bg-indigo-50 text-indigo-700 font-semibold text-xs rounded-full uppercase">{l.level || 'A2-B1'}</span>
+                        <div className="flex gap-2">
+                          <button onClick={() => setViewSubmissionsLesson(l)} className="px-2.5 py-1 text-xs bg-indigo-50 text-indigo-700 font-semibold rounded-lg hover:bg-indigo-100">📊 Ответы ДЗ</button>
+                          <button onClick={() => handleDeleteLesson(l.id)} className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100">🗑️</button>
+                        </div>
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-800 mb-2">{l.title}</h3>
+                      <p className="text-slate-600 text-sm mb-6 line-clamp-2">{l.description}</p>
                     </div>
-                    <h3 className="font-bold text-xl text-slate-800 mb-2">{l.title}</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed mb-4">{l.description || 'Нажмите, чтобы пройти интерактивный урок.'}</p>
+
+                    <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100">
+                      <button onClick={() => openLesson(l.id)} className="py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition">Провести урок</button>
+                      <button onClick={() => handleCopyHomeworkLink(l.id)} className="py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition">Ссылка на ДЗ 🏠</button>
+                    </div>
                   </div>
-                  <div className="pt-4 border-t border-slate-100 flex justify-between items-center text-xs text-indigo-600 font-semibold">
-                    <span>Открыть урок →</span>
-                    {l.created_at && <span className="text-slate-400 font-normal">{new Date(l.created_at).toLocaleDateString()}</span>}
-                  </div>
-                </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* CREATE VIEW */}
+        {view === 'create' && <CreateLessonView onSaveLesson={handleSaveLesson} onCancel={() => setView('library')} />}
+
+        {/* PROMPTS VIEW */}
+        {view === 'prompts' && <AIPromptsView />}
+
+        {/* ROOM / LESSON VIEW */}
+        {view === 'room' && activeLesson && (
+          <div className="max-w-3xl mx-auto space-y-6">
+            <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <span className="text-sm font-bold text-slate-700">Страница {currentPageIdx + 1} из {totalPages}</span>
+              <button onClick={() => setView('library')} className="text-xs text-indigo-600 font-bold hover:underline">← В библиотеку</button>
+            </div>
+
+            <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+              <h3 className="font-bold text-xs uppercase text-slate-400 border-b pb-2">{activePage.title || 'Раздел урока'}</h3>
+              {(activePage.blocks || []).map(b => (
+                <BlockRenderer
+                  key={b.id}
+                  block={b}
+                  value={userAnswers[b.id]}
+                  onChange={(val) => setUserAnswers({ ...userAnswers, [b.id]: val })}
+                />
               ))}
             </div>
-          )}
-        </main>
-      )}
 
-      {/* VIEW 2: LESSON VIEWER */}
-      {view === 'lesson' && activeLesson && (
-        <main className="max-w-3xl mx-auto px-4 py-8">
-          {/* Sync status & student bar */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 mb-6 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <span>Имя ученика:</span>
-              <input
-                type="text"
-                value={studentName}
-                onChange={(e) => setStudentName(e.target.value)}
-                placeholder="Ваше имя"
-                className="px-2 py-1 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-            <div className="flex items-center gap-3 text-xs">
-              <span className={isSyncing ? 'text-amber-600 animate-pulse font-medium' : 'text-emerald-600 font-medium'}>
-                {isSyncing ? '🔄 Синхронизация...' : '✓ Синхронизировано'}
-              </span>
+            <div className="flex justify-between items-center">
+              <button disabled={currentPageIdx === 0} onClick={() => setCurrentPageIdx(currentPageIdx - 1)} className="px-6 py-2.5 border rounded-xl disabled:opacity-30">← Назад</button>
+              {currentPageIdx < totalPages - 1 ? (
+                <button onClick={() => setCurrentPageIdx(currentPageIdx + 1)} className="px-8 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700">Далее →</button>
+              ) : (
+                <button onClick={() => { alert('🎉 Урок успешно завершен!'); setView('library'); }} className="px-8 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700">Завершить 🎉</button>
+              )}
             </div>
           </div>
+        )}
 
-          {/* Render Lesson Blocks */}
-          <div className="space-y-4">
-            {(activeLesson.blocks || []).map((block) => (
-              <BlockRenderer
-                key={block.id}
-                block={block}
-                value={userAnswers[block.id]}
-                onChange={(val) => handleAnswerChange(block.id, val)}
-              />
-            ))}
-          </div>
-
-          {/* Bottom Action Bar */}
-          <div className="mt-8 pt-6 border-t border-slate-200 flex justify-between items-center">
-            <button onClick={() => setView('library')} className="px-5 py-2.5 bg-slate-200 text-slate-700 font-medium rounded-xl">
-              Завершить
-            </button>
-            <button onClick={submitHomework} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow">
-              Отправить результат 🎉
-            </button>
-          </div>
-        </main>
-      )}
-
-      {/* VIEW 3: LESSON EDITOR */}
-      {view === 'editor' && (
-        <main className="max-w-3xl mx-auto px-4 py-8">
-          <h2 className="text-2xl font-bold text-slate-800 mb-6">Конструктор уроков</h2>
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 mb-6">
-            <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Название урока</label>
-              <input type="text" value={newLessonTitle} onChange={e => setNewLessonTitle(e.target.value)} placeholder="например: Present Perfect Practice" className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Уровень</label>
-                <select value={newLessonLevel} onChange={e => setNewLessonLevel(e.target.value)} className="w-full p-2.5 border rounded-lg">
-                  <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Тема</label>
-                <input type="text" value={newLessonTopic} onChange={e => setNewLessonTopic(e.target.value)} placeholder="Travel, Grammar, etc." className="w-full p-2.5 border rounded-lg" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Описание</label>
-              <textarea value={newLessonDesc} onChange={e => setNewLessonDesc(e.target.value)} rows="2" placeholder="Краткое описание..." className="w-full p-2.5 border rounded-lg"></textarea>
-            </div>
-          </div>
-
-          <div className="flex gap-2 mb-6 flex-wrap">
-            <button onClick={() => setEditorBlocks([...editorBlocks, { id: 'b-' + Date.now(), type: 'heading', level: 1, text: 'Новый заголовок' }])} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-semibold">+ Заголовок</button>
-            <button onClick={() => setEditorBlocks([...editorBlocks, { id: 'b-' + Date.now(), type: 'text', text: 'Введите параграф текста...' }])} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-semibold">+ Текст</button>
-            <button onClick={() => setEditorBlocks([...editorBlocks, { id: 'b-' + Date.now(), type: 'multiple_choice', question: 'Вопрос?', options: ['Вариант A', 'Вариант B'], correct: 0 }])} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-semibold">+ Тест (Quiz)</button>
-            <button onClick={() => setEditorBlocks([...editorBlocks, { id: 'b-' + Date.now(), type: 'gap_fill', instruction: 'Заполните пропуск:', text: 'Пример [ответ]', answers: ['ответ'] }])} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-semibold">+ Вставить пропуск</button>
-          </div>
-
-          <div className="space-y-3 mb-6">
-            {editorBlocks.map((b, idx) => (
-              <div key={b.id} className="p-4 bg-white border rounded-xl flex justify-between items-center text-sm">
-                <div><span className="font-bold uppercase text-xs text-indigo-600">[{b.type}]</span> {b.text || b.question || b.title || 'Блок'}</div>
-                <button onClick={() => setEditorBlocks(editorBlocks.filter((_, i) => i !== idx))} className="text-red-500 text-xs font-bold">Удалить</button>
-              </div>
-            ))}
-          </div>
-
-          <button onClick={saveCustomLesson} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow">Сохранить урок в D1</button>
-        </main>
-      )}
+        {/* SUBMISSIONS MODAL */}
+        {viewSubmissionsLesson && <SubmissionsModal lesson={viewSubmissionsLesson} onClose={() => setViewSubmissionsLesson(null)} />}
+      </main>
     </div>
   );
 }
