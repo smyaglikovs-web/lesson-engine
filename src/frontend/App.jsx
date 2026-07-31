@@ -22,7 +22,7 @@ export default function App() {
   const [roomId, setRoomId] = useState('');
   const [currentPageIdx, setCurrentPageIdx] = useState(0);
   const currentPageIdxRef = useRef(currentPageIdx);
-  currentPageIdxRef.current = currentPageIdx; // Always hold latest pageIdx for polling interval
+  currentPageIdxRef.current = currentPageIdx; // Keeps ref updated for polling loop
 
   const [userAnswers, setUserAnswers] = useState({});
   const [isStudentOnline, setIsStudentOnline] = useState(false);
@@ -114,7 +114,7 @@ export default function App() {
     }
   };
 
-  // REALTIME ROOM & PAGE SYNC
+  // REALTIME POLLING: Page changes & answer sync
   useEffect(() => {
     if (view !== 'room' || !roomId) return;
 
@@ -125,12 +125,12 @@ export default function App() {
         
         setIsStudentOnline(data.isOnline || false);
 
-        // 1. Sync Page Index in Real-time (Teacher or Student change)
+        // 1. Sync Page Index in Real-time (If Teacher/Student changes page, other person changes page too)
         if (typeof data.page_idx === 'number' && data.page_idx !== currentPageIdxRef.current) {
           setCurrentPageIdx(data.page_idx);
         }
 
-        // 2. Sync Answers in Real-time (including resets to empty `{}`)
+        // 2. Sync Answers in Real-time (including complete resets to `{}`)
         const serverAnswers = data.student_answers || {};
         setUserAnswers(prev => {
           const serverStr = JSON.stringify(serverAnswers);
@@ -171,21 +171,16 @@ export default function App() {
     syncRoomState(currentPageIdx, updated);
   };
 
-  // RESET HANDLER: Clear Current Page or Entire Room
-  const handleResetAnswers = (currentPageOnly = true) => {
-    if (!confirm(currentPageOnly ? 'Сбросить ответы на текущей странице?' : 'Сбросить ВСЕ ответы в уроке?')) return;
+  // RESET WHOLE LESSON: Clears all answers & returns to Page 1
+  const handleResetWholeLesson = async () => {
+    if (!confirm('Вы уверены, что хотите сбросить ВСЕ ответы и начать урок сначала с 1-й страницы?')) return;
     
-    let updated = {};
-    if (currentPageOnly && activeLesson?.pages?.[currentPageIdx]) {
-      updated = { ...userAnswers };
-      const currentBlocks = activeLesson.pages[currentPageIdx].blocks || [];
-      currentBlocks.forEach(b => {
-        delete updated[b.id];
-      });
-    }
+    setUserAnswers({});
+    setCurrentPageIdx(0);
+    setIsLessonCompleted(false);
 
-    setUserAnswers(updated);
-    syncRoomState(currentPageIdx, updated);
+    // Sync state reset (0 answers, Page 0) to D1 backend
+    await syncRoomState(0, {});
   };
 
   const submitHomework = async () => {
@@ -273,6 +268,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+      {/* Teacher Header */}
       {isTeacher && isAuthenticated && (
         <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
           <div className="max-w-6xl mx-auto px-4 h-16 flex justify-between items-center">
@@ -292,6 +288,7 @@ export default function App() {
       )}
 
       <main className="max-w-6xl mx-auto px-4 py-8">
+        {/* Teacher Login Screen */}
         {isTeacher && !isAuthenticated && view !== 'room' && (
           <div className="max-w-md mx-auto my-16 bg-white p-8 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6">
             <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto font-bold text-2xl">🔑</div>
@@ -316,6 +313,7 @@ export default function App() {
           </div>
         )}
 
+        {/* Library View */}
         {view === 'library' && isTeacher && isAuthenticated && (
           <div>
             <div className="flex justify-between items-center mb-8">
@@ -367,6 +365,7 @@ export default function App() {
 
         {view === 'prompts' && isTeacher && isAuthenticated && <AIPromptsView />}
 
+        {/* Room View */}
         {view === 'room' && activeLesson && (
           <div className="max-w-3xl mx-auto space-y-6">
             {!isTeacher && !hasStartedHomework && (
@@ -403,14 +402,14 @@ export default function App() {
                       Вы отлично поработали и успешно прошли все задания. Ваши результаты сохранены!
                     </p>
                     <div className="pt-4 flex justify-center gap-3">
-                      <button onClick={() => handleResetAnswers(false)} className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl text-sm hover:bg-indigo-700">
-                        🔄 Пройти урок заново
+                      <button onClick={handleResetWholeLesson} className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl text-sm hover:bg-indigo-700 shadow-md transition">
+                        🔄 Сбросить весь урок заново
                       </button>
                     </div>
                   </div>
                 ) : (
                   <>
-                    {/* Live Room Bar with RESET Options */}
+                    {/* Live Room Bar with RESET WHOLE LESSON Button */}
                     <div className="bg-slate-900 text-white p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 shadow-lg">
                       <div className="flex items-center gap-3">
                         <span className={isStudentOnline ? 'w-3 h-3 rounded-full bg-emerald-500 animate-pulse' : 'w-3 h-3 rounded-full bg-slate-500'}></span>
@@ -421,13 +420,15 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        {/* RESET WHOLE LESSON BUTTON */}
                         <button
-                          onClick={() => handleResetAnswers(true)}
-                          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition"
-                          title="Сбросить ответы на текущей странице"
+                          onClick={handleResetWholeLesson}
+                          className="px-3.5 py-2 bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-bold rounded-xl transition shadow-sm"
+                          title="Очистить все ответы и вернуться на 1-ю страницу"
                         >
-                          🔄 Сбросить страницу
+                          🔄 Сбросить весь урок
                         </button>
+
                         {isTeacher && (
                           <button onClick={copyStudentLink} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-medium rounded-xl shadow-sm">
                             Скопировать ссылку 🔗
