@@ -233,17 +233,22 @@ export default function App() {
             </div>
 
             {/* Active Page Blocks */}
-            <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-              {(activePage.blocks || []).map(b => (
-                <BlockRenderer
-                  key={b.id}
-                  block={b}
-                  value={userAnswers[b.id]}
-                  onChange={(val) => handleAnswerChange(b.id, val)}
-                  isTeacher={isTeacher}
-                />
-              ))}
-            </div>
+           {/* Active Page Blocks with Guaranteed Unique Block IDs */}
+<div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+  {(activePage.blocks || []).map((b, idx) => {
+    const uniqueBlockId = b.id || `p${currentPageIdx}-b${idx}`;
+    const blockWithUniqueId = { ...b, id: uniqueBlockId };
+    return (
+      <BlockRenderer
+        key={uniqueBlockId}
+        block={blockWithUniqueId}
+        value={userAnswers[uniqueBlockId]}
+        onChange={(val) => handleAnswerChange(uniqueBlockId, val)}
+        isTeacher={isTeacher}
+      />
+    );
+  })}
+</div>
 
             {/* Page Controls */}
             <div className="flex justify-between items-center">
