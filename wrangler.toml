@@ -2,10 +2,8 @@ name = "lessons"
 main = "src/worker.js"
 compatibility_date = "2024-09-23"
 
-# Tells Cloudflare to serve the HTML file from the 'public' folder
-assets = { directory = "./public", binding = "ASSETS", html_handling = "single-page-app" }
+assets = { directory = "./public", binding = "ASSETS", not_found_handling = "single-page-app" }
 
-# Replace 'your-database-id' with your actual Cloudflare D1 Database ID if you have one
 [[d1_databases]]
 binding = "DB"
 database_name = "DB"
