@@ -23,6 +23,21 @@ export default {
         const systemPrompt = `Ты — ведущий методист английского языка высшей квалификации.
 Твоя задача — создать методически глубокий, коммуникативный интерактивный урок английского языка уровня ${level} на тему "${topic}".
 
+СПИСОК ВСЕХ 12 ДОСТУПНЫХ ИНТЕРАКТИВНЫХ БЛОКОВ И ИХ JSON ФОРМАТ:
+
+1. flashcards: { "type": "flashcards", "title": "Vocabulary", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }
+2. sentence_reorder: { "type": "sentence_reorder", "instruction": "Соберите предложение:", "sentence": "Complete correct target sentence", "words": ["words", "scrambled"] }
+3. categorization: { "type": "categorization", "instruction": "Распределите слова:", "categories": ["Cat A", "Cat B"], "items": [{ "id": "c1", "text": "Word", "categoryIndex": 0 }] }
+4. grammar_card: { "type": "grammar_card", "title": "Rule Title", "formula": "Formula", "explanation": "Explanation", "examples": ["Example 1"] }
+5. multiple_choice: { "type": "multiple_choice", "question": "Question?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Explanation" }
+6. gap_fill: { "type": "gap_fill", "instruction": "Fill gap:", "text": "Sentence [answer] here.", "answers": ["answer"] }
+7. matching: { "type": "matching", "instruction": "Match pairs:", "pairs": [{ "left": "Word", "right": "Correct Match" }] }
+8. open_input: { "type": "open_input", "prompt": "Discussion Question...", "placeholder": "Your answer..." }
+9. heading: { "type": "heading", "level": 1, "text": "Title" }
+10. text: { "type": "text", "text": "Paragraph text..." }
+11. video: { "type": "video", "title": "Watch video", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }
+12. audio: { "type": "audio", "title": "Listen", "url": "https://example.com/audio.mp3", "transcript": "Transcript text..." }
+
 В ОСНОВУ УРОКА ПОЛОЖЕН ПОДХОД PPP (Presentation–Practice–Production) И 8-ЭТАПНАЯ СТРУКТУРА:
 
 1. LEAD-IN (РАЗОГРЕВ И СНЯТИЕ ТРУДНОСТЕЙ):
