@@ -12,7 +12,7 @@ export default {
       new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 
     try {
-      // 1. ADVANCED ESL METHODOLOGICAL AI GENERATOR
+      // 1. ADVANCED ESL METHODOLOGICAL AI GENERATOR (FULL SPECIFICATION)
       if (path === '/api/ai/generate' && method === 'POST') {
         const { text, level = 'B1', topic = 'General English' } = await request.json();
 
@@ -20,58 +20,62 @@ export default {
           return json({ error: "Предоставьте текст или материалы для генерации урока." }, 400);
         }
 
-        const systemPrompt = `Ты — методист английского языка высшей квалификации.
-Твоя задача — создать НЕЛЕНИВЫЙ, полноценный, многостраничный интерактивный урок уровня ${level} на тему "${topic}", строго следуя 8-этапной ESL методике.
+        const systemPrompt = `Ты — ведущий методист английского языка высшей квалификации.
+Твоя задача — создать методически глубокий, коммуникативный интерактивный урок английского языка уровня ${level} на тему "${topic}".
 
-МЕТОДОЛОГИЧЕСКАЯ СТРУКТУРА УРОКА (ПО СТРАНИЦАМ):
+В ОСНОВУ УРОКА ПОЛОЖЕН ПОДХОД PPP (Presentation–Practice–Production) И 8-ЭТАПНАЯ СТРУКТУРА:
 
-СТРАНИЦА 1: Lead-in & Target Vocabulary (Разогрев и ввод)
-- Блок open_input: Разминочный вопрос на тему.
-- Блок flashcards: 6-8 ключевых слов/коллокаций с переводом, примером и звуком (lang: 'en-US').
+1. LEAD-IN (РАЗОГРЕВ И СНЯТИЕ ТРУДНОСТЕЙ):
+   - Разминочный вопрос / мозговой штурм / цитата (open_input).
+   - Банк новых слов с произношением (flashcards: title, lang: 'en-US', cards: [{ front, back, example }]).
 
-СТРАНИЦА 2: Text / Article & Gist Understanding (Общее понимание)
-- Блок text: Учебный текст или транскрипт.
-- Блок multiple_choice: Выбор основной идеи (Main Idea) или Odd One Out (лишний факт).
+2. ПРОСМАТРИВАНИЕ / ЧТЕНИЕ (ОБЩЕЕ ПОНИМАНИЕ / GIST):
+   - Учебный текст или транскрипт (text).
+   - Определение главной идеи (Main idea) из вариантов A/B/C или Odd One Out (multiple_choice).
 
-СТРАНИЦА 3: Detailed Understanding & Grammar Focus (Детальное понимание)
-- Блок multiple_choice: 3-4 детальных вопроса True/False или выбор ответа.
-- Блок grammar_card: Грамматика уровня ${level} из текста с формулой, правилом и примерами.
-  * Грамматика для уровня ${level}:
-    - A1: Present Simple, to be, there is/are, going to, modal can/must.
-    - A2: Past Simple, Present Continuous for future, Comparatives, should/have to.
-    - B1: Past Continuous/Perfect, Conditionals 1 & 2, Passive Voice, Reported Speech, Present Perfect vs Past Simple.
-    - B2: Conditionals 3 & Mixed, Future Perfect/Continuous, Past Modals (should have/could have), wish/if only, Gerund vs Infinitive.
-    - C1: Inversion, Advanced Narrative Tenses, Cleft sentences (It was... that), Advanced Passive.
+3. ДЕТАЛЬНОЕ ПОНИМАНИЕ (DETAILED UNDERSTANDING):
+   - Упражнения True / False или вопросы на детали (multiple_choice: question, options, correct, explanation).
+   - Детальный пропуск слов из аудио/текста (gap_fill: text format 'Sentence [answer] end.', answers: ['answer']).
 
-СТРАНИЦА 4: Controlled & Transformational Practice (Подстановочные и трансформационные задания)
-- Блок matching: 4-6 пар синонимов/антонимов или устойчивых словосочетаний (pairs изначально ВЕРНО соединены!).
-- Блок sentence_reorder: 2-3 задания на сборку предложений с нужным порядком слов/грамматикой.
-- Блок categorization: Сортировка 6 слов/фраз по 2 категории.
+4 - 6. ЛЕКСИКА И ГРАММАТИКА (ВВОД, ПОДСТАНОВКА И ТРАНСФОРМАЦИЯ - ОТ ПРОСТОГО К СЛОЖНОМУ):
+   - Грамматическое правило уровня ${level} на примере текста (grammar_card: title, formula, explanation, examples).
+   - Подстановочные задания: Сопоставление синонимов/антонимов/коллокаций (matching: pairs: [{ left, right }]), выбор значения (multiple_choice), вставка фраз (gap_fill).
+   - Трансформационные задания: Сборка предложений из перемешанных слов (sentence_reorder: sentence, words), сортировка слов по категориям (categorization: categories, items).
 
-СТРАНИЦА 5: Homework & Freer Production (Продуктивная практика и ДЗ)
-- Блок gap_fill: 3-5 пропусков в предложениях (формат 'Sentence [answer] here.', answers: ['answer']).
-- Блок open_input: 2 глубоких дискуссионных вопроса для обсуждения/письма.
+   ГРАММАТИЧЕСКАЯ СЕТКА CEFR ПО УРОВНЯМ:
+   - A1: Present Simple, to be, there is/are, going to, Past Simple 'be', Articles, modal can/must.
+   - A2: Past Simple (all verbs), Present Continuous for future, Comparatives, modal should/have to, like/want + -ing/inf.
+   - B1: Past Continuous/Perfect, Conditionals 1 & 2, Passive Voice, Reported Speech, Relative Clauses, Present Perfect vs Past Simple.
+   - B2: Conditionals 3 & Mixed, Future Perfect/Continuous, Past Modals (should have/could have), wish/if only, Gerund vs Infinitive.
+   - C1: Inversion (after negatives), Narrative Tenses (Past Perfect Continuous), Cleft sentences ('It was... that'), Advanced Passive.
+
+7 - 8. ПРОДУКТИВНЫЕ ЗАДАНИЯ (ГОВОРЕНИЕ, РОЛЕВЫЕ ИГРЫ И ПИСЬМО):
+   - Ролевая игра, пересказ, обсуждение актуальной темы, дебаты или мини-презентация (open_input: prompt, placeholder).
+   - Домашнее задание на закрепление целевой лексики (gap_fill & open_input).
 
 ВЕРНИ СТРОГО ЧИСТЫЙ JSON БЕЗ МАРКДАУН ОБЕРТОК (без \`\`\`json):
 {
   "title": "Название урока на английском",
   "level": "${level}",
   "topic": "${topic}",
-  "description": "Подробное описание урока",
+  "description": "Описание результатов урока",
   "pages": [
     { "id": "p1", "title": "Часть 1: Lead-in & Target Vocabulary", "blocks": [...] },
     { "id": "p2", "title": "Часть 2: Text & Gist Understanding", "blocks": [...] },
-    { "id": "p3", "title": "Часть 3: Detailed Practice & Grammar Focus", "blocks": [...] },
-    { "id": "p4", "title": "Часть 4: Controlled & Transformational Practice", "blocks": [...] },
-    { "id": "p5", "title": "Часть 5: Freer Speaking & Homework", "blocks": [...] }
+    { "id": "p3", "title": "Часть 3: Detailed Comprehension", "blocks": [...] },
+    { "id": "p4", "title": "Часть 4: Grammar Focus & Rule", "blocks": [...] },
+    { "id": "p5", "title": "Часть 5: Controlled Substitution Practice", "blocks": [...] },
+    { "id": "p6", "title": "Часть 6: Transformational Word Order & Sorting", "blocks": [...] },
+    { "id": "p7", "title": "Часть 7: Freer Speaking & Role-Play", "blocks": [...] },
+    { "id": "p8", "title": "Часть 8: Homework Practice", "blocks": [...] }
   ]
 }`;
 
-        // Call Cloudflare Workers AI
+        // Call Cloudflare Workers AI (Llama 3.1 70B)
         const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Материалы учебника для генерации урока:\n\n${text}` }
+            { role: 'user', content: `Учебный материал для разбора и создания урока:\n\n${text}` }
           ],
           max_tokens: 3800,
           temperature: 0.3
