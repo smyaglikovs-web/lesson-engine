@@ -9,3 +9,6 @@ directory = "./dist"
 binding = "DB"
 database_name = "lesson-engine-db"
 database_id = "37e843d9-622c-434a-9de1-1e61d2c31dce"
+
+[ai]
+binding = "AI"
