@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lesson Engine MVP</title>
-  <!-- Tailwind CSS для стилей -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- React & ReactDOM CDN -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <!-- Babel для поддержки JSX прямо в браузере -->
+  <!-- Babel standalone for in-browser JSX parsing -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans min-h-screen">
@@ -19,15 +19,14 @@
   <script type="text/babel">
     const { useState } = React;
 
-    // Шаблонный JSON по умолчанию
     const DEFAULT_LESSON = {
       "version": "1.0",
-      "title": "Past Simple: Первое знакомство",
-      "description": "Базовый урок по правильным и неправильным глаголам.",
+      "title": "Past Simple: First Steps",
+      "description": "Basic lesson covering regular and irregular verbs.",
       "pages": [
         {
           "id": "p1",
-          "title": "Страница 1",
+          "title": "Page 1",
           "blocks": [
             {
               "id": "b1",
@@ -38,20 +37,20 @@
             {
               "id": "b2",
               "type": "text",
-              "text": "Past Simple используется для действий, которые завершились в прошлом."
+              "text": "Past Simple is used to talk about actions that happened and finished in the past."
             },
             {
               "id": "b3",
               "type": "multiple_choice",
-              "question": "Как звучит прошедшее время от глагола 'go'?",
+              "question": "What is the past simple form of the verb 'go'?",
               "options": ["goed", "went", "gone"],
               "correct": 1,
-              "explanation": "Go — неправильный глагол. Вторая форма — went."
+              "explanation": "'Go' is an irregular verb. The past form is 'went'."
             },
             {
               "id": "b4",
               "type": "gap_fill",
-              "instruction": "Заполните пропуск нужной формой глагола (play):",
+              "instruction": "Fill in the blank using the past form of (play):",
               "text": "Yesterday I [played] football with my friends.",
               "answers": ["played"]
             }
@@ -60,20 +59,22 @@
       ]
     };
 
-    // --- КОМПОНЕНТЫ БЛОКОВ ---
+    // --- BLOCK COMPONENTS ---
 
     const BlockHeading = ({ block }) => {
-      const Tag = `h${block.level || 2}`;
+      const level = block.level || 2;
       const styles = {
         1: "text-3xl font-bold text-slate-800 mb-4",
         2: "text-2xl font-bold text-slate-800 mb-3",
         3: "text-xl font-semibold text-slate-700 mb-2"
       };
-      return <Tag className={styles[block.level] || styles[2]}>{block.text}</Tag>;
+      if (level === 1) return <h1 className={styles[1]}>{block.text}</h1>;
+      if (level === 3) return <h3 className={styles[3]}>{block.text}</h3>;
+      return <h2 className={styles[2]}>{block.text}</h2>;
     };
 
     const BlockText = ({ block }) => (
-      <p class="text-slate-600 text-lg leading-relaxed mb-4">{block.text}</p>
+      <p className="text-slate-600 text-lg leading-relaxed mb-4">{block.text}</p>
     );
 
     const BlockImage = ({ block }) => (
@@ -121,11 +122,11 @@
               onClick={() => setSubmitted(true)}
               className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg disabled:opacity-50 hover:bg-indigo-700 transition"
             >
-              Проверить
+              Check Answer
             </button>
           ) : (
             <div className={`mt-4 p-4 rounded-lg text-sm ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-              <p className="font-bold mb-1">{isCorrect ? 'Правильно! 🎉' : 'Неверно ❌'}</p>
+              <p className="font-bold mb-1">{isCorrect ? 'Correct! 🎉' : 'Incorrect ❌'}</p>
               {block.explanation && <p>{block.explanation}</p>}
             </div>
           )}
@@ -156,7 +157,7 @@
                   ? isCorrect ? 'border-green-500 bg-green-50 text-green-900' : 'border-red-500 bg-red-50 text-red-900'
                   : 'border-indigo-500 focus:border-indigo-700'
               }`}
-              placeholder="введите ответ"
+              placeholder="type here"
             />
             <span>{block.text.split(/\[.*?\]/)[1]}</span>
           </div>
@@ -166,18 +167,17 @@
               onClick={() => setSubmitted(true)}
               className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg disabled:opacity-50 hover:bg-indigo-700 transition"
             >
-              Проверить
+              Check Answer
             </button>
           ) : (
             <div className={`mt-2 p-3 rounded-lg text-sm ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-              {isCorrect ? 'Верно!' : `Правильный ответ: ${block.answers.join(' или ')}`}
+              {isCorrect ? 'Correct!' : `Correct answer: ${block.answers.join(' or ')}`}
             </div>
           )}
         </div>
       );
     };
 
-    // Диспетчер блоков
     const BlockRenderer = ({ block }) => {
       switch (block.type) {
         case 'heading': return <BlockHeading block={block} />;
@@ -188,25 +188,25 @@
         default:
           return (
             <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg mb-4 text-sm">
-              Неизвестный тип блока: <code>{block.type}</code>
+              Unknown block type: <code>{block.type}</code>
             </div>
           );
       }
     };
 
-    // --- ГЛАВНОЕ ПРИЛОЖЕНИЕ ---
+    // --- MAIN APP ---
 
     function App() {
       const [jsonInput, setJsonInput] = useState(JSON.stringify(DEFAULT_LESSON, null, 2));
       const [lessonData, setLessonData] = useState(DEFAULT_LESSON);
       const [error, setError] = useState(null);
-      const [activeTab, setActiveTab] = useState('preview'); // 'editor' | 'preview'
+      const [activeTab, setActiveTab] = useState('preview');
 
       const handleImport = () => {
         try {
           const parsed = JSON.parse(jsonInput);
           if (!parsed.pages || !Array.isArray(parsed.pages)) {
-            throw new Error("JSON должен содержать массив 'pages'");
+            throw new Error("JSON must contain a 'pages' array");
           }
           setLessonData(parsed);
           setError(null);
@@ -218,44 +218,44 @@
 
       return (
         <div className="max-w-4xl mx-auto px-4 py-8">
-          <!-- Шапка -->
+          {/* Header */}
           <header className="flex justify-between items-center mb-8 pb-4 border-b border-slate-200">
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Lesson Engine</h1>
-              <p className="text-sm text-slate-500">Движок интерактивных уроков v0.1 (MVP)</p>
+              <p className="text-sm text-slate-500">Interactive Lesson Engine v0.1 (MVP)</p>
             </div>
             <div className="flex gap-2 bg-slate-200 p-1 rounded-lg">
               <button
                 onClick={() => setActiveTab('editor')}
                 className={`px-4 py-2 rounded-md font-medium text-sm transition ${activeTab === 'editor' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
               >
-                Вставить JSON
+                Paste JSON
               </button>
               <button
                 onClick={() => setActiveTab('preview')}
                 className={`px-4 py-2 rounded-md font-medium text-sm transition ${activeTab === 'preview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
               >
-                Просмотр урока
+                Lesson Preview
               </button>
             </div>
           </header>
 
-          <!-- Контент -->
+          {/* Content */}
           {activeTab === 'editor' ? (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <label className="block text-sm font-semibold text-slate-700">Вставьте JSON урока от AI:</label>
+                <label className="block text-sm font-semibold text-slate-700">Paste AI-generated Lesson JSON:</label>
                 <button
                   onClick={handleImport}
                   className="px-6 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition shadow-sm"
                 >
-                  Импортировать и Открыть
+                  Import & Render
                 </button>
               </div>
               
               {error && (
                 <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm font-mono">
-                  ❌ Ошибка в JSON: {error}
+                  ❌ Invalid JSON: {error}
                 </div>
               )}
 
@@ -264,7 +264,7 @@
                 value={jsonInput}
                 onChange={(e) => setJsonInput(e.target.value)}
                 className="w-full p-4 font-mono text-sm bg-slate-900 text-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                placeholder="Вставьте JSON сюда..."
+                placeholder="Paste JSON here..."
               ></textarea>
             </div>
           ) : (
@@ -285,7 +285,7 @@
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12 text-slate-400">Нет загруженного урока</div>
+                <div className="text-center py-12 text-slate-400">No lesson loaded</div>
               )}
             </main>
           )}
@@ -298,4 +298,3 @@
   </script>
 </body>
 </html>
-
