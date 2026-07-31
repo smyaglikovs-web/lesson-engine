@@ -1,29 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { BlockRenderer } from './components/BlockRenderer.jsx';
-
-const DEFAULT_NEW_JSON = {
-  "title": "B1 Grammar & Video Lesson: Present Continuous",
-  "level": "B1",
-  "topic": "Грамматика и Видео",
-  "description": "Урок с поддержкой видео YouTube, аудио, упражнений и домашнего задания.",
-  "pages": [
-    {
-      "id": "p1",
-      "title": "Часть 1: Видео и Правило",
-      "blocks": [
-        { "id": "b1", "type": "heading", "level": 1, "text": "Present Continuous in English" },
-        { "id": "b2", "type": "video", "title": "Посмотрите обучающее видео:", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
-        { "id": "b3", "type": "grammar_card", "title": "Правило образования", "formula": "Subject + am / is / are + Verb-ing", "explanation": "Используется для запланированных действий в будущем.", "examples": ["I am meeting my friends tonight.", "She is flying to London tomorrow."] }
-      ]
-    }
-  ]
-};
 
 export default function App() {
-  const [view, setView] = useState('library');
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeLessonId, setActiveLessonId] = useState(null);
 
   useEffect(() => {
     fetch('/api/lessons')
@@ -33,25 +12,27 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('library')}>
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">L</div>
-            <span className="font-bold text-slate-900 text-lg">Lesson Engine</span>
-          </div>
+    <div className="min-h-screen bg-slate-50 text-slate-900 p-8">
+      <header className="max-w-4xl mx-auto flex justify-between items-center mb-8">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">L</div>
+          <h1 className="text-xl font-bold">Lesson Engine</h1>
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
+      <main className="max-w-4xl mx-auto">
+        <h2 className="text-2xl font-bold mb-4">Облачная библиотека</h2>
         {loading ? (
-          <div className="text-center py-12 text-slate-400">Загрузка из D1...</div>
+          <p className="text-slate-400">Загрузка из D1...</p>
+        ) : lessons.length === 0 ? (
+          <p className="text-slate-400 bg-white p-6 rounded-2xl border">Пока нет уроков. Начните создавать!</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {lessons.map(l => (
-              <div key={l.id} className="bg-white rounded-2xl p-6 border shadow-sm">
-                <h3 className="text-xl font-bold text-slate-800 mb-2">{l.title}</h3>
-                <p className="text-slate-600 text-sm mb-4">{l.description}</p>
+              <div key={l.id} className="bg-white p-6 rounded-xl border shadow-sm">
+                <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-full uppercase">{l.level || 'A2'}</span>
+                <h3 className="font-bold text-lg mt-2">{l.title}</h3>
+                <p className="text-slate-500 text-sm mt-1">{l.description}</p>
               </div>
             ))}
           </div>
