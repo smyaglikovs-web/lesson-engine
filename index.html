@@ -1,516 +1,514 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lesson Engine — Движок интерактивных уроков</title>
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- React & ReactDOM CDN -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <!-- Babel Standalone -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lesson Engine</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans min-h-screen">
+<body class="bg-slate-50 text-slate-900 font-sans antialiased">
+    <!-- The root element where React will render our app -->
+    <div id="root"></div>
 
-  <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-  <script type="text/babel">
-    const { useState, useEffect } = React;
+        // --- ICON COMPONENTS (Replaces lucide-react dependencies) ---
+        const IconBase = ({ children, className = "w-6 h-6" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {children}
+            </svg>
+        );
+        const Play = ({className}) => <IconBase className={className}><polygon points="5 3 19 12 5 21 5 3"></polygon></IconBase>;
+        const Code = ({className}) => <IconBase className={className}><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></IconBase>;
+        const AlertCircle = ({className}) => <IconBase className={className}><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></IconBase>;
+        const CheckCircle2 = ({className}) => <IconBase className={className}><circle cx="12" cy="12" r="10"></circle><polyline points="9 12 11 14 15 10"></polyline></IconBase>;
+        const ArrowRight = ({className}) => <IconBase className={className}><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></IconBase>;
+        const ArrowLeft = ({className}) => <IconBase className={className}><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></IconBase>;
+        const BookOpen = ({className}) => <IconBase className={className}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></IconBase>;
+        const Plus = ({className}) => <IconBase className={className}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></IconBase>;
+        const Save = ({className}) => <IconBase className={className}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></IconBase>;
+        const Copy = ({className}) => <IconBase className={className}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></IconBase>;
+        const Check = ({className}) => <IconBase className={className}><polyline points="20 6 9 17 4 12"></polyline></IconBase>;
 
-    // Начальные демонстрационные уроки в библиотеке
-    const INITIAL_LESSONS = [
-      {
-        id: "past-simple-101",
-        title: "Past Simple: Первые шаги",
-        level: "A2",
-        topic: "Грамматика",
-        description: "Базовый урок по правильным и неправильным глаголам с упражнениями.",
-        pages: [
-          {
-            id: "p1",
-            title: "Страница 1",
-            blocks: [
-              { id: "b1", type: "heading", level: 1, text: "Welcome to Past Simple!" },
-              { id: "b2", type: "text", text: "Past Simple используется для действий, которые завершились в прошлом." },
-              {
-                id: "b3",
-                type: "multiple_choice",
-                question: "Как звучит прошедшая форма глагола 'go'?",
-                options: ["goed", "went", "gone"],
-                correct: 1,
-                explanation: "Go — неправильный глагол. Прошедшая форма: went."
-              },
-              {
-                id: "b4",
-                type: "gap_fill",
-                instruction: "Заполните пропуск нужной формой глагола (play):",
-                text: "Yesterday I [played] football with my friends.",
-                answers: ["played"]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        id: "travel-vocab-b1",
-        title: "Airport & Travel Vocabulary",
-        level: "B1",
-        topic: "Лексика",
-        description: "Подготовка к поездкам: регистрация на рейс, багаж, таможня.",
-        pages: [
-          {
-            id: "p1",
-            title: "Страница 1",
-            blocks: [
-              { id: "b1", type: "heading", level: 1, text: "At the Airport" },
-              { id: "b2", type: "text", text: "Let's learn key phrases for checking in your luggage." },
-              {
-                id: "b3",
-                type: "multiple_choice",
-                question: "Where do you get your boarding pass?",
-                options: ["At security check", "At the check-in desk", "At duty free"],
-                correct: 1,
-                explanation: "You receive your boarding pass at the check-in desk."
-              }
-            ]
-          }
-        ]
-      }
-    ];
-
-    const DEFAULT_NEW_JSON = {
-      "title": "Новый урок от AI",
-      "level": "B1",
-      "topic": "Разговорная речь",
-      "description": "Описание вашего урока...",
-      "pages": [
+        const DEFAULT_JSON = `{
+  "title": "Present Simple vs Continuous",
+  "description": "A basic grammar lesson for elementary students.",
+  "level": "A2",
+  "topic": "Grammar",
+  "pages": [
+    {
+      "id": "page-1",
+      "blocks": [
         {
-          "id": "p1",
-          "title": "Часть 1",
-          "blocks": [
-            { "id": "b1", "type": "heading", "level": 1, "text": "Заголовок урока" },
-            { "id": "b2", "type": "text", "text": "Текст вводной части..." }
-          ]
+          "id": "b1",
+          "type": "heading",
+          "content": "Present Simple vs Continuous"
+        },
+        {
+          "id": "b2",
+          "type": "text",
+          "content": "Read the rules carefully before starting the exercises."
+        },
+        {
+          "id": "b3",
+          "type": "multiple_choice",
+          "question": "What is the capital of Great Britain?",
+          "options": ["Paris", "London", "New York"],
+          "correctIndex": 1
+        },
+        {
+          "id": "b4",
+          "type": "gap_fill",
+          "text": "The quick brown {gap} jumps over the lazy {gap}.",
+          "answers": ["fox", "dog"]
         }
       ]
-    };
+    }
+  ]
+}`;
 
-    // --- РЕНДЕРЕР БЛОКОВ ---
+        const MOCK_DB = [JSON.parse(DEFAULT_JSON)];
 
-    const BlockHeading = ({ block }) => {
-      const level = block.level || 2;
-      const styles = {
-        1: "text-3xl font-bold text-slate-800 mb-4",
-        2: "text-2xl font-bold text-slate-800 mb-3",
-        3: "text-xl font-semibold text-slate-700 mb-2"
-      };
-      if (level === 1) return <h1 className={styles[1]}>{block.text}</h1>;
-      if (level === 3) return <h3 className={styles[3]}>{block.text}</h3>;
-      return <h2 className={styles[2]}>{block.text}</h2>;
-    };
+        const HeadingBlock = ({ block }) => (
+          <h2 className="text-2xl font-bold text-slate-800 mb-4 mt-6">{block.content}</h2>
+        );
 
-    const BlockText = ({ block }) => (
-      <p className="text-slate-600 text-lg leading-relaxed mb-4">{block.text}</p>
-    );
+        const TextBlock = ({ block }) => (
+          <p className="text-slate-600 mb-4 leading-relaxed">{block.content}</p>
+        );
 
-    const BlockImage = ({ block }) => (
-      <div className="my-6">
-        <img src={block.url} alt={block.caption || 'Lesson visual'} className="w-full max-h-96 object-cover rounded-xl shadow-md" />
-        {block.caption && <p className="text-sm text-slate-500 text-center mt-2">{block.caption}</p>}
-      </div>
-    );
+        const MultipleChoiceBlock = ({ block }) => {
+          const [selected, setSelected] = useState(null);
+          const [isSubmitted, setIsSubmitted] = useState(false);
+          const isCorrect = selected === block.correctIndex;
 
-    const BlockMultipleChoice = ({ block }) => {
-      const [selected, setSelected] = useState(null);
-      const [submitted, setSubmitted] = useState(false);
-      const isCorrect = selected === block.correct;
-
-      return (
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
-          <h4 className="font-semibold text-lg text-slate-800 mb-4">{block.question}</h4>
-          <div className="space-y-2 mb-4">
-            {block.options.map((option, idx) => {
-              let btnStyle = "w-full text-left p-3 rounded-lg border text-slate-700 transition ";
-              if (submitted) {
-                if (idx === block.correct) btnStyle += "bg-green-50 border-green-500 text-green-900 font-medium";
-                else if (idx === selected) btnStyle += "bg-red-50 border-red-500 text-red-900";
-                else btnStyle += "border-slate-200 opacity-50";
-              } else {
-                btnStyle += idx === selected ? "border-indigo-600 bg-indigo-50 text-indigo-900" : "border-slate-200 hover:bg-slate-50";
-              }
-              return (
-                <button key={idx} disabled={submitted} onClick={() => setSelected(idx)} className={btnStyle}>
-                  {option}
-                </button>
-              );
-            })}
-          </div>
-          {!submitted ? (
-            <button
-              disabled={selected === null}
-              onClick={() => setSubmitted(true)}
-              className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg disabled:opacity-50 hover:bg-indigo-700 transition"
-            >
-              Ответить
-            </button>
-          ) : (
-            <div className={`mt-4 p-4 rounded-lg text-sm ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-              <p className="font-bold mb-1">{isCorrect ? 'Правильно! 🎉' : 'Неверно ❌'}</p>
-              {block.explanation && <p>{block.explanation}</p>}
-            </div>
-          )}
-        </div>
-      );
-    };
-
-    const BlockGapFill = ({ block }) => {
-      const [userAnswer, setUserAnswer] = useState('');
-      const [submitted, setSubmitted] = useState(false);
-      const isCorrect = block.answers.some(ans => ans.trim().toLowerCase() === userAnswer.trim().toLowerCase());
-
-      return (
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
-          {block.instruction && <p className="text-slate-600 mb-3">{block.instruction}</p>}
-          <div className="flex flex-wrap items-center gap-2 text-lg mb-4">
-            <span>{block.text.split(/\[.*?\]/)[0]}</span>
-            <input
-              type="text"
-              value={userAnswer}
-              disabled={submitted}
-              onChange={(e) => setUserAnswer(e.target.value)}
-              className={`border-b-2 outline-none px-2 py-1 text-center font-medium ${
-                submitted
-                  ? isCorrect ? 'border-green-500 bg-green-50 text-green-900' : 'border-red-500 bg-red-50 text-red-900'
-                  : 'border-indigo-500 focus:border-indigo-700'
-              }`}
-              placeholder="введите ответ"
-            />
-            <span>{block.text.split(/\[.*?\]/)[1]}</span>
-          </div>
-          {!submitted ? (
-            <button
-              disabled={!userAnswer.trim()}
-              onClick={() => setSubmitted(true)}
-              className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg disabled:opacity-50 hover:bg-indigo-700 transition"
-            >
-              Проверить
-            </button>
-          ) : (
-            <div className={`mt-2 p-3 rounded-lg text-sm ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-              {isCorrect ? 'Отлично!' : `Правильный ответ: ${block.answers.join(' или ')}`}
-            </div>
-          )}
-        </div>
-      );
-    };
-
-    const BlockRenderer = ({ block }) => {
-      switch (block.type) {
-        case 'heading': return <BlockHeading block={block} />;
-        case 'text': return <BlockText block={block} />;
-        case 'image': return <BlockImage block={block} />;
-        case 'multiple_choice': return <BlockMultipleChoice block={block} />;
-        case 'gap_fill': return <BlockGapFill block={block} />;
-        default: return <div className="p-4 bg-amber-50 text-amber-800 rounded-lg">Тип блока {block.type}</div>;
-      }
-    };
-
-    // --- ОСНОВНЫЕ ЭКРАНЫ ---
-
-    // 1. Экран Библиотеки Уроков
-    const LibraryView = ({ lessons, onStartLesson, onCreateNew }) => {
-      const [search, setSearch] = useState('');
-
-      const filteredLessons = lessons.filter(l => 
-        l.title.toLowerCase().includes(search.toLowerCase()) || 
-        l.topic.toLowerCase().includes(search.toLowerCase())
-      );
-
-      return (
-        <div>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">Моя библиотека уроков</h2>
-              <p className="text-slate-500 text-sm">Выберите готовый урок для проведения или создайте новый</p>
-            </div>
-            <button
-              onClick={onCreateNew}
-              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 transition shadow-sm"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
-              Создать урок (JSON)
-            </button>
-          </div>
-
-          <div className="mb-6">
-            <input
-              type="text"
-              placeholder="Поиск по названию или теме..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full sm:w-80 px-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-indigo-500 shadow-sm"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {filteredLessons.map((lesson) => (
-              <div key={lesson.id} className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="px-3 py-1 bg-indigo-50 text-indigo-700 font-semibold text-xs rounded-full uppercase tracking-wider">
-                      {lesson.level || 'A2-B1'}
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium">{lesson.topic || 'Общий'}</span>
-                  </div>
-                  <h3 className="text-xl font-bold text-slate-800 mb-2">{lesson.title}</h3>
-                  <p className="text-slate-600 text-sm mb-6 line-clamp-2">{lesson.description}</p>
-                </div>
-                
-                <div className="flex gap-3 pt-4 border-t border-slate-100">
-                  <button
-                    onClick={() => onStartLesson(lesson)}
-                    className="flex-1 py-2.5 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 transition flex items-center justify-center gap-2 shadow-sm"
+          return (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
+              <h3 className="font-semibold text-lg text-slate-800 mb-4">{block.question}</h3>
+              <div className="space-y-3">
+                {block.options.map((option, idx) => (
+                  <label 
+                    key={idx} 
+                    className={`flex items-center p-3 rounded-lg border cursor-pointer transition-colors ${
+                      selected === idx ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'
+                    } ${isSubmitted && selected === idx ? (isCorrect ? 'border-emerald-500 bg-emerald-50' : 'border-rose-500 bg-rose-50') : ''}`}
                   >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"/></svg>
-                    Провести урок
-                  </button>
-                </div>
+                    <input 
+                      type="radio" 
+                      name={`mcq-${block.id}`} 
+                      value={idx} 
+                      checked={selected === idx}
+                      onChange={() => !isSubmitted && setSelected(idx)}
+                      className="w-4 h-4 text-indigo-600 mr-3"
+                      disabled={isSubmitted}
+                    />
+                    <span className={isSubmitted && selected === idx ? (isCorrect ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-700'}>
+                      {option}
+                    </span>
+                  </label>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      );
-    };
-
-    // 2. Экран Редактора (Создание/Импорт JSON)
-    const CreateLessonView = ({ onSaveLesson, onCancel }) => {
-      const [jsonText, setJsonText] = useState(JSON.stringify(DEFAULT_NEW_JSON, null, 2));
-      const [parsedLesson, setParsedLesson] = useState(DEFAULT_NEW_JSON);
-      const [error, setError] = useState(null);
-
-      const handleJsonChange = (val) => {
-        setJsonText(val);
-        try {
-          const parsed = JSON.parse(val);
-          setParsedLesson(parsed);
-          setError(null);
-        } catch (err) {
-          setError(err.message);
-        }
-      };
-
-      const handleSave = () => {
-        if (error || !parsedLesson) return;
-        const newLesson = {
-          ...parsedLesson,
-          id: 'lesson-' + Date.now()
+              {selected !== null && !isSubmitted && (
+                <button 
+                  onClick={() => setIsSubmitted(true)}
+                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm"
+                >
+                  Check Answer
+                </button>
+              )}
+              {isSubmitted && (
+                <div className={`mt-4 text-sm font-medium flex items-center ${isCorrect ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {isCorrect ? <CheckCircle2 className="w-4 h-4 mr-1" /> : <AlertCircle className="w-4 h-4 mr-1" />}
+                  {isCorrect ? 'Correct!' : 'Incorrect. Try again.'}
+                </div>
+              )}
+            </div>
+          );
         };
-        onSaveLesson(newLesson);
-      };
 
-      return (
-        <div>
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">Создание нового урока</h2>
-              <p className="text-slate-500 text-sm">Вставьте JSON, сгенерированный нейросетью</p>
+        const GapFillBlock = ({ block }) => {
+          const parts = block.text.split('{gap}');
+          const [inputs, setInputs] = useState(Array(parts.length - 1).fill(''));
+          const [isSubmitted, setIsSubmitted] = useState(false);
+
+          const handleInputChange = (index, value) => {
+            if (isSubmitted) return;
+            const newInputs = [...inputs];
+            newInputs[index] = value;
+            setInputs(newInputs);
+          };
+
+          const checkAnswers = () => setIsSubmitted(true);
+
+          return (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
+              <div className="leading-loose text-slate-800 text-lg">
+                {parts.map((part, index) => (
+                  <React.Fragment key={index}>
+                    <span>{part}</span>
+                    {index < parts.length - 1 && (
+                      <input
+                        type="text"
+                        value={inputs[index]}
+                        onChange={(e) => handleInputChange(index, e.target.value)}
+                        disabled={isSubmitted}
+                        className={`inline-block mx-1 px-2 py-1 border-b-2 bg-slate-50 focus:outline-none focus:border-indigo-500 w-24 text-center transition-colors ${
+                          isSubmitted 
+                            ? (inputs[index].toLowerCase().trim() === block.answers[index].toLowerCase() 
+                                ? 'border-emerald-500 text-emerald-700 bg-emerald-50' 
+                                : 'border-rose-500 text-rose-700 bg-rose-50')
+                            : 'border-slate-300'
+                        }`}
+                      />
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+              {!isSubmitted && inputs.some(i => i.trim() !== '') && (
+                <button 
+                  onClick={checkAnswers}
+                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm"
+                >
+                  Check Answers
+                </button>
+              )}
             </div>
-            <div className="flex gap-3">
-              <button onClick={onCancel} className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-100 transition">
-                Отмена
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={!!error}
-                className="px-6 py-2 bg-indigo-600 text-white font-medium rounded-xl disabled:opacity-50 hover:bg-indigo-700 transition shadow-sm"
-              >
-                Сохранить в библиотеку
-              </button>
+          );
+        };
+
+        const BlockRenderer = ({ block }) => {
+          switch (block.type) {
+            case 'heading': return <HeadingBlock block={block} />;
+            case 'text': return <TextBlock block={block} />;
+            case 'multiple_choice': return <MultipleChoiceBlock block={block} />;
+            case 'gap_fill': return <GapFillBlock block={block} />;
+            default:
+              return (
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg text-orange-800 mb-4 text-sm">
+                  Unknown block type: <strong>{block.type}</strong>
+                </div>
+              );
+          }
+        };
+
+        const HomeView = ({ navigate }) => (
+          <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+            <div className="max-w-4xl w-full">
+              <h1 className="text-4xl font-extrabold text-slate-900 mb-10 text-center tracking-tight">
+                Lesson Engine <span className="text-indigo-600">Workspace</span>
+              </h1>
+              
+              <div className="grid md:grid-cols-2 gap-6">
+                <button 
+                  onClick={() => navigate('editor')}
+                  className="group text-left bg-white p-8 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-300 transition-all duration-300 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
+                  <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mb-6 relative z-10 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    <Plus className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2 relative z-10">Create Lesson</h2>
+                  <p className="text-slate-500 relative z-10">Paste your generated JSON and instantly turn it into an interactive lesson.</p>
+                </button>
+
+                <button 
+                  onClick={() => navigate('library')}
+                  className="group text-left bg-white p-8 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:emerald-300 transition-all duration-300 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 relative z-10 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <BookOpen className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2 relative z-10">Lesson Library</h2>
+                  <p className="text-slate-500 relative z-10">Access your saved lessons, organize them, and start a live session.</p>
+                </button>
+              </div>
             </div>
           </div>
+        );
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Левая колонка: JSON */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">JSON Урока:</label>
-              {error && <div className="p-3 mb-3 bg-red-50 text-red-700 rounded-lg text-xs font-mono">Ошибка: {error}</div>}
-              <textarea
-                rows="24"
-                value={jsonText}
-                onChange={(e) => handleJsonChange(e.target.value)}
-                className="w-full p-4 font-mono text-xs bg-slate-900 text-emerald-400 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-              ></textarea>
-            </div>
+        const LibraryView = ({ navigate, lessons, onStartLesson }) => (
+          <div className="min-h-screen bg-slate-50">
+            <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-10">
+              <div className="max-w-6xl mx-auto flex items-center justify-between">
+                <div className="flex items-center">
+                  <button onClick={() => navigate('home')} className="p-2 mr-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                  <h1 className="text-xl font-bold text-slate-800 flex items-center">
+                    <BookOpen className="w-5 h-5 mr-2 text-emerald-600" />
+                    My Library
+                  </h1>
+                </div>
+                <button 
+                  onClick={() => navigate('editor')}
+                  className="flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> New Lesson
+                </button>
+              </div>
+            </header>
 
-            {/* Правая колонка: Предпросмотр */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm max-h-[700px] overflow-y-auto">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Предпросмотр отображения</h3>
-              {parsedLesson && parsedLesson.pages ? (
-                <div>
-                  <h1 className="text-2xl font-bold text-slate-900 mb-1">{parsedLesson.title}</h1>
-                  <p className="text-slate-500 text-sm mb-6">{parsedLesson.description}</p>
-                  {parsedLesson.pages.map(page => (
-                    <div key={page.id} className="space-y-4">
-                      {page.blocks?.map(block => (
-                        <BlockRenderer key={block.id} block={block} />
-                      ))}
+            <main className="max-w-6xl mx-auto p-6">
+              {lessons.length === 0 ? (
+                <div className="text-center py-20">
+                  <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-slate-600">Your library is empty</h3>
+                  <p className="text-slate-500 mt-1">Create your first lesson to see it here.</p>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {lessons.map((lesson, idx) => (
+                    <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-md transition-shadow flex flex-col">
+                      <div className="flex justify-between items-start mb-4">
+                        <h3 className="font-bold text-lg text-slate-800 line-clamp-2">{lesson.title || 'Untitled Lesson'}</h3>
+                      </div>
+                      <p className="text-sm text-slate-500 line-clamp-2 mb-4 flex-grow">{lesson.description}</p>
+                      
+                      <div className="flex flex-wrap gap-2 mb-6">
+                        {lesson.level && <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md">{lesson.level}</span>}
+                        {lesson.topic && <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md">{lesson.topic}</span>}
+                      </div>
+
+                      <button 
+                        onClick={() => onStartLesson(lesson)}
+                        className="w-full flex items-center justify-center px-4 py-2.5 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors"
+                      >
+                        <Play className="w-4 h-4 mr-2" /> Start Lesson
+                      </button>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="text-slate-400 text-sm">Некорректная структура JSON</p>
               )}
-            </div>
+            </main>
           </div>
-        </div>
-      );
-    };
+        );
 
-    // 3. Экран Проведения Урока (Live Room)
-    const RoomView = ({ lesson, onClose }) => {
-      const [copied, setCopied] = useState(false);
-      const roomUrl = `${window.location.origin}/?room=${lesson.id}`;
+        const EditorView = ({ navigate, onSave }) => {
+          const [jsonInput, setJsonInput] = useState(DEFAULT_JSON);
+          const [previewData, setPreviewData] = useState(null);
+          const [error, setError] = useState(null);
+          const [currentPage, setCurrentPage] = useState(0);
 
-      const handleCopy = () => {
-        navigator.clipboard.writeText(roomUrl);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      };
+          useEffect(() => { handleImport(); }, []);
 
-      return (
-        <div>
-          {/* Панель Учителя */}
-          <div className="bg-slate-900 text-white p-4 rounded-2xl mb-8 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-lg">
-            <div className="flex items-center gap-3">
-              <span className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></span>
-              <div>
-                <h4 className="font-semibold text-sm">Комната открыта: {lesson.title}</h4>
-                <p className="text-xs text-slate-400">Ученик еще не подключился (Ожидание...)</p>
-              </div>
-            </div>
+          const handleImport = () => {
+            try {
+              const parsed = JSON.parse(jsonInput);
+              if (!parsed.pages || !Array.isArray(parsed.pages)) throw new Error("Invalid format: 'pages' array is missing.");
+              setPreviewData(parsed);
+              setError(null);
+              setCurrentPage(0);
+            } catch (err) {
+              setError(err.message);
+              setPreviewData(null);
+            }
+          };
 
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <button
-                onClick={handleCopy}
-                className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-medium rounded-lg transition flex items-center justify-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                {copied ? "Ссылка скопирована! ✅" : "Скопировать ссылку для ученика"}
-              </button>
-              <button
-                onClick={onClose}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-lg transition"
-              >
-                Завершить
-              </button>
-            </div>
-          </div>
+          const handleSave = () => {
+            if (previewData) {
+              onSave(previewData);
+              navigate('library');
+            }
+          };
 
-          {/* Сам урок */}
-          <div className="max-w-3xl mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-            <h1 className="text-3xl font-extrabold text-slate-900 mb-2">{lesson.title}</h1>
-            <p className="text-slate-500 mb-8 pb-4 border-b border-slate-100">{lesson.description}</p>
-            
-            {lesson.pages.map(page => (
-              <div key={page.id} className="space-y-6">
-                {page.blocks.map(block => (
-                  <BlockRenderer key={block.id} block={block} />
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    };
+          return (
+            <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
+              <div className="w-full md:w-1/3 border-r border-slate-200 bg-white flex flex-col h-screen">
+                <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                  <div className="flex items-center text-slate-800 font-bold">
+                    <button onClick={() => navigate('home')} className="p-1 mr-2 text-slate-500 hover:bg-slate-200 rounded transition-colors">
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
+                    Lesson Editor
+                  </div>
+                </div>
+                
+                <div className="flex-grow p-4 flex flex-col">
+                  <textarea
+                    value={jsonInput}
+                    onChange={(e) => setJsonInput(e.target.value)}
+                    className="flex-grow w-full p-4 border border-slate-300 rounded-xl font-mono text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                    spellCheck="false"
+                  />
+                  
+                  <div className="mt-4 flex gap-2">
+                    <button onClick={handleImport} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium flex items-center justify-center transition-colors">
+                      <Code className="w-4 h-4 mr-2" /> Validate
+                    </button>
+                    <button 
+                      onClick={handleSave} 
+                      disabled={!previewData || error}
+                      className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm"
+                    >
+                      <Save className="w-4 h-4 mr-2" /> Save to Library
+                    </button>
+                  </div>
 
-    // --- ГЛАВНОЕ ПРИЛОЖЕНИЕ ---
-
-    function App() {
-      const [view, setView] = useState('library'); // 'library' | 'create' | 'room'
-      const [lessons, setLessons] = useState(() => {
-        const saved = localStorage.getItem('lesson_engine_data');
-        return saved ? JSON.parse(saved) : INITIAL_LESSONS;
-      });
-      const [activeLesson, setActiveLesson] = useState(null);
-
-      useEffect(() => {
-        localStorage.setItem('lesson_engine_data', JSON.stringify(lessons));
-      }, [lessons]);
-
-      const handleSaveLesson = (newLesson) => {
-        setLessons([newLesson, ...lessons]);
-        setView('library');
-      };
-
-      const handleStartLesson = (lesson) => {
-        setActiveLesson(lesson);
-        setView('room');
-      };
-
-      return (
-        <div className="min-h-screen flex flex-col">
-          {/* Шапка сайта */}
-          <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-            <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-              <div 
-                onClick={() => setView('library')}
-                className="flex items-center gap-2 cursor-pointer"
-              >
-                <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">L</div>
-                <span className="font-bold text-slate-900 text-lg">Lesson Engine</span>
+                  {error && (
+                    <div className="mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm flex items-start">
+                      <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {view !== 'room' && (
-                <nav className="flex gap-1">
-                  <button
-                    onClick={() => setView('library')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${view === 'library' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:text-slate-900'}`}
+              <div className="w-full md:w-2/3 flex flex-col h-screen overflow-hidden bg-slate-50 relative">
+                <div className="absolute top-4 right-4 bg-white/80 backdrop-blur px-3 py-1 rounded-full text-xs font-semibold text-slate-500 border border-slate-200 shadow-sm z-10">
+                  Preview Mode
+                </div>
+                {previewData ? (
+                  <>
+                    <main className="flex-grow overflow-y-auto p-6 md:p-12">
+                      <div className="max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+                        <header className="mb-8 border-b border-slate-100 pb-6">
+                          <h1 className="text-3xl font-extrabold text-slate-900">{previewData.title || 'Untitled Lesson'}</h1>
+                          {previewData.description && <p className="text-slate-500 mt-2">{previewData.description}</p>}
+                        </header>
+                        {previewData.pages[currentPage]?.blocks.map((block) => (
+                          <BlockRenderer key={block.id || Math.random()} block={block} />
+                        ))}
+                      </div>
+                    </main>
+                    {previewData.pages.length > 1 && (
+                      <footer className="bg-white border-t border-slate-200 p-4 flex justify-center gap-4 flex-shrink-0">
+                        <button disabled={currentPage === 0} onClick={() => setCurrentPage(p => p - 1)} className="px-4 py-2 text-slate-600 font-medium disabled:opacity-50 hover:bg-slate-100 rounded-lg transition-colors">Previous</button>
+                        <span className="flex items-center text-sm font-medium text-slate-500">Page {currentPage + 1} of {previewData.pages.length}</span>
+                        <button disabled={currentPage === previewData.pages.length - 1} onClick={() => setCurrentPage(p => p + 1)} className="px-4 py-2 text-indigo-600 font-medium disabled:opacity-50 hover:bg-indigo-50 rounded-lg transition-colors">Next</button>
+                      </footer>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex-grow flex items-center justify-center p-6 text-slate-400">
+                    Waiting for valid JSON...
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        };
+
+        const LessonRoomView = ({ lesson, navigate }) => {
+          const [currentPage, setCurrentPage] = useState(0);
+          const [copied, setCopied] = useState(false);
+          const mockLink = `lesson.site/room/${Math.random().toString(36).substr(2, 6)}`;
+
+          const handleCopy = () => {
+            navigator.clipboard.writeText(mockLink);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          };
+
+          return (
+            <div className="min-h-screen bg-slate-50 flex flex-col">
+              <header className="bg-slate-900 text-white p-4 flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center">
+                  <div className="flex items-center gap-2 mr-6">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                    <span className="font-bold text-sm tracking-wide uppercase">Live Session</span>
+                  </div>
+                  <h1 className="text-slate-300 font-medium hidden md:block">{lesson.title}</h1>
+                </div>
+                
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center bg-slate-800 rounded-lg p-1 pr-3 border border-slate-700">
+                    <button 
+                      onClick={handleCopy}
+                      className="p-2 hover:bg-slate-700 rounded-md transition-colors mr-2 text-slate-400 hover:text-white"
+                      title="Copy invite link"
+                    >
+                      {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    <span className="text-xs font-mono text-slate-400 select-all">{mockLink}</span>
+                  </div>
+                  
+                  <button 
+                    onClick={() => navigate('library')}
+                    className="px-4 py-2 bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    Библиотека
+                    End Lesson
                   </button>
-                  <button
-                    onClick={() => setView('create')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${view === 'create' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:text-slate-900'}`}
-                  >
-                    + Создать урок
-                  </button>
-                </nav>
-              )}
+                </div>
+              </header>
+
+              <main className="flex-grow overflow-y-auto p-4 md:p-8">
+                <div className="max-w-3xl mx-auto">
+                  {lesson.pages[currentPage]?.blocks.map((block) => (
+                    <BlockRenderer key={block.id || Math.random()} block={block} />
+                  ))}
+                </div>
+              </main>
+
+              <footer className="bg-white border-t border-slate-200 p-4 flex justify-between items-center flex-shrink-0">
+                <button 
+                  disabled={currentPage === 0}
+                  onClick={() => setCurrentPage(p => p - 1)}
+                  className="px-6 py-2 border border-slate-200 text-slate-600 font-medium disabled:opacity-50 hover:bg-slate-50 rounded-lg transition-colors"
+                >
+                  Previous
+                </button>
+                
+                <div className="flex gap-2">
+                  {lesson.pages.map((_, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`w-2.5 h-2.5 rounded-full ${idx === currentPage ? 'bg-indigo-600' : 'bg-slate-200'}`}
+                    />
+                  ))}
+                </div>
+
+                <button 
+                  disabled={currentPage === lesson.pages.length - 1}
+                  onClick={() => setCurrentPage(p => p + 1)}
+                  className="px-6 py-2 bg-indigo-600 text-white font-medium disabled:opacity-50 disabled:bg-indigo-300 hover:bg-indigo-700 rounded-lg transition-colors flex items-center"
+                >
+                  Next <ArrowRight className="w-4 h-4 ml-2" />
+                </button>
+              </footer>
             </div>
-          </header>
+          );
+        };
 
-          {/* Контент страницы */}
-          <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
-            {view === 'library' && (
-              <LibraryView
-                lessons={lessons}
-                onStartLesson={handleStartLesson}
-                onCreateNew={() => setView('create')}
-              />
-            )}
+        const App = () => {
+          const [currentView, setCurrentView] = useState('home');
+          const [savedLessons, setSavedLessons] = useState(MOCK_DB);
+          const [activeLesson, setActiveLesson] = useState(null);
 
-            {view === 'create' && (
-              <CreateLessonView
-                onSaveLesson={handleSaveLesson}
-                onCancel={() => setView('library')}
-              />
-            )}
+          const handleNavigate = (view) => {
+            setCurrentView(view);
+            if (view !== 'lesson_room') setActiveLesson(null);
+          };
 
-            {view === 'room' && activeLesson && (
-              <RoomView
-                lesson={activeLesson}
-                onClose={() => setView('library')}
-              />
-            )}
-          </main>
-        </div>
-      );
-    }
+          const handleSaveLesson = (lessonData) => {
+            setSavedLessons(prev => [lessonData, ...prev]);
+          };
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
+          const handleStartLesson = (lesson) => {
+            setActiveLesson(lesson);
+            setCurrentView('lesson_room');
+          };
+
+          return (
+            <div className="font-sans text-slate-900">
+              {currentView === 'home' && <HomeView navigate={handleNavigate} />}
+              {currentView === 'editor' && <EditorView navigate={handleNavigate} onSave={handleSaveLesson} />}
+              {currentView === 'library' && <LibraryView navigate={handleNavigate} lessons={savedLessons} onStartLesson={handleStartLesson} />}
+              {currentView === 'lesson_room' && activeLesson && <LessonRoomView lesson={activeLesson} navigate={handleNavigate} />}
+            </div>
+          );
+        };
+
+        // Render the app to the root element
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
