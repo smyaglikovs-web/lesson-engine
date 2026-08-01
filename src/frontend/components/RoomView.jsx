@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BlockRenderer } from './BlockRenderer.jsx';
+import { triggerConfetti, playVictorySound } from '../utils/sounds.js';
 
 export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [currentPageIdx, setCurrentPageIdx] = useState(0);
@@ -11,6 +12,22 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [isLessonCompleted, setIsLessonCompleted] = useState(false);
   const [studentName, setStudentName] = useState('');
   const [hasStartedHomework, setHasStartedHomework] = useState(false);
+
+  // AUTO-RESUME: Restore answers & student name from localStorage on refresh
+  useEffect(() => {
+    if (!roomId) return;
+    try {
+      const savedName = localStorage.getItem(`student_name_${roomId}`);
+      if (savedName) {
+        setStudentName(savedName);
+        setHasStartedHomework(true);
+      }
+      const savedAnswers = localStorage.getItem(`student_answers_${roomId}`);
+      if (savedAnswers) {
+        setUserAnswers(JSON.parse(savedAnswers));
+      }
+    } catch(e) {}
+  }, [roomId]);
 
   // REALTIME POLLING: Page changes & answer sync
   useEffect(() => {
@@ -65,6 +82,19 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }
     setUserAnswers(updated);
     syncRoomState(currentPageIdx, updated);
+
+    // Save to LocalStorage instantly
+    try {
+      localStorage.setItem(`student_answers_${roomId}`, JSON.stringify(updated));
+    } catch(e) {}
+  };
+
+  const handleStartHomework = () => {
+    if (!studentName.trim()) return;
+    setHasStartedHomework(true);
+    try {
+      localStorage.setItem(`student_name_${roomId}`, studentName.trim());
+    } catch(e) {}
   };
 
   const handleResetWholeLesson = async () => {
@@ -72,25 +102,14 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     setUserAnswers({});
     setCurrentPageIdx(0);
     setIsLessonCompleted(false);
+    try {
+      localStorage.removeItem(`student_answers_${roomId}`);
+    } catch(e) {}
     await syncRoomState(0, {});
   };
 
   const submitHomework = async () => {
     if (!activeLesson || !studentName.trim()) return alert('Введите ваше имя');
-    let score = 0;
-    let totalInteractive = 0;
-
-    (activeLesson.pages || []).forEach(page => {
-      (page.blocks || []).forEach(b => {
-        if (b.type === 'multiple_choice' || b.type === 'gap_fill' || b.type === 'matching') {
-          totalInteractive++;
-          const ans = userAnswers[b.id];
-          if (b.type === 'multiple_choice' && Number(ans?.selected) === Number(b.correct)) score++;
-          if (b.type === 'gap_fill' && ans?.submitted) score++;
-          if (b.type === 'matching' && ans?.matched?.length === b.pairs?.length) score++;
-        }
-      });
-    });
 
     try {
       await fetch('/api/homework/submit', {
@@ -99,12 +118,16 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         body: JSON.stringify({
           lessonId: activeLesson.id,
           studentName,
-          score,
-          totalQuestions: totalInteractive,
           answers: userAnswers
         })
       });
+
+      playVictorySound();
+      triggerConfetti();
       setIsLessonCompleted(true);
+      try {
+        localStorage.removeItem(`student_answers_${roomId}`);
+      } catch(e) {}
     } catch (e) {
       alert('Ошибка отправки домашнего задания');
     }
@@ -114,6 +137,8 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     if (isTeacher) {
       onExitRoom();
     } else {
+      playVictorySound();
+      triggerConfetti();
       setIsLessonCompleted(true);
     }
   };
@@ -144,7 +169,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           <div>
             <button
               disabled={!studentName.trim()}
-              onClick={() => setHasStartedHomework(true)}
+              onClick={handleStartHomework}
               className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl disabled:opacity-40 hover:bg-indigo-700 shadow-md transition"
             >
               Начать выполнение
