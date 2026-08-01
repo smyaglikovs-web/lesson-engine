@@ -2,14 +2,12 @@ import React, { useState } from 'react';
 import { BlockRenderer } from './BlockRenderer.jsx';
 import { BlockVideo } from './BlockMedia.jsx';
 
-// Extract YouTube Video ID
 function getYouTubeId(url = '') {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// Free Open-Source YouTube Captions Fetcher
 const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   const videoId = getYouTubeId(videoUrl);
   if (!videoId) return null;
@@ -74,7 +72,82 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  // VIDEO BLOCK WITH AUTO SUBTITLE FETCH BUTTON
+  // IMAGE & PHOTO GALLERY BLOCK (URL + FILE UPLOAD)
+  if (block.type === 'image') {
+    const images = block.images || (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
+
+    const updateImg = (idx, field, val) => {
+      const updated = [...images];
+      updated[idx] = { ...updated[idx], [field]: val };
+      onChange({ ...block, images: updated, url: updated[0]?.url || '' });
+    };
+
+    const handleAddUrl = () => {
+      const url = prompt('Вставьте ссылку на изображение (Image URL):');
+      if (url) {
+        const updated = [...images, { url, caption: '' }];
+        onChange({ ...block, images: updated, url: updated[0]?.url || '' });
+      }
+    };
+
+    const handleFileUpload = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Url = event.target.result;
+        const updated = [...images, { url: base64Url, caption: file.name }];
+        onChange({ ...block, images: updated, url: updated[0]?.url || '' });
+      };
+      reader.readAsDataURL(file);
+    };
+
+    const removeImg = (idx) => {
+      const updated = images.filter((_, i) => i !== idx);
+      onChange({ ...block, images: updated, url: updated[0]?.url || '' });
+    };
+
+    return (
+      <div className="space-y-4">
+        <input
+          type="text"
+          value={block.caption || ''}
+          onChange={e => onChange({ ...block, caption: e.target.value })}
+          placeholder="Заголовок галереи / описание (Опционально)..."
+          className="p-2.5 border rounded-xl text-xs font-bold w-full"
+        />
+
+        {images.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {images.map((img, i) => (
+              <div key={i} className="p-2 bg-slate-50 border rounded-xl space-y-2 relative group">
+                <img src={img.url} alt="Thumb" className="w-full h-28 object-cover rounded-lg border" />
+                <input
+                  type="text"
+                  value={img.caption || ''}
+                  onChange={e => updateImg(i, 'caption', e.target.value)}
+                  placeholder="Подпись к фото..."
+                  className="p-1.5 border rounded-lg text-xs w-full bg-white"
+                />
+                <button onClick={() => removeImg(i)} className="absolute top-1 right-1 bg-red-600 text-white text-xs w-6 h-6 rounded-full font-bold shadow-md">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={handleAddUrl} className="px-3.5 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-100 flex items-center gap-1">
+            🔗 Добавить картинку по ссылке
+          </button>
+          <label className="px-3.5 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 cursor-pointer flex items-center gap-1">
+            📁 Загрузить с компьютера / телефона
+            <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+          </label>
+        </div>
+      </div>
+    );
+  }
+
   if (block.type === 'video') {
     const handleUrlChange = async (newUrl) => {
       onChange({ ...block, url: newUrl });
@@ -126,7 +199,6 @@ const EditableBlockCard = ({ block, onChange }) => {
           />
         </div>
 
-        {/* TRANSCRIPT & AUTO-FETCH BUTTON */}
         <div className="space-y-1.5">
           <div className="flex justify-between items-center">
             <label className="text-[10px] font-bold text-slate-500 uppercase">
@@ -138,7 +210,7 @@ const EditableBlockCard = ({ block, onChange }) => {
               onClick={handleAutoFetchSubtitles}
               className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
             >
-              {fetchingSubtitles ? '⌛ Загрузка субтитров...' : '🪄 Авто-Извлечь Субтитры'}
+              {fetchingSubtitles ? '⌛ Загрузка...' : '🪄 Авто-Извлечь Субтитры'}
             </button>
           </div>
 
@@ -148,7 +220,7 @@ const EditableBlockCard = ({ block, onChange }) => {
             rows="3"
             value={block.transcript || ''}
             onChange={e => onChange({ ...block, transcript: e.target.value })}
-            placeholder="Нажмите '🪄 Авто-Извлечь Субтитры' выше, или вставьте субтитры/описание видео вручную сюда..."
+            placeholder="Нажмите '🪄 Авто-Извлечь Субтитры' выше..."
             className="w-full p-2.5 border rounded-xl text-xs font-sans bg-slate-50 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"
           ></textarea>
         </div>
@@ -388,6 +460,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     if (type === 'heading') newBlock = { ...newBlock, level: 2, text: 'Новый заголовок' };
     else if (type === 'text') newBlock = { ...newBlock, text: 'Введите текст...' };
     else if (type === 'video') newBlock = { ...newBlock, title: 'Посмотрите видео:', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', transcript: '' };
+    else if (type === 'image') newBlock = { ...newBlock, caption: 'Картинки', images: [{ url: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d', caption: '' }] };
     else if (type === 'flashcards') newBlock = { ...newBlock, title: 'Ключевые слова', cards: [{ front: 'Word', back: 'Перевод', example: 'Sentence' }] };
     else if (type === 'multiple_choice') newBlock = { ...newBlock, question: 'Вопрос теста?', options: ['Вариант A', 'Вариант B'], correct: 0 };
     else if (type === 'gap_fill') newBlock = { ...newBlock, instruction: 'Заполните пропуск:', text: 'She [is working] today.', answers: ['is working'] };
@@ -584,4 +657,97 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
       </div>
 
       {/* Active Page Title Inline Edit */}
-      <div className="flex items-center gap-3 bg-indigo
+      <div className="flex items-center gap-3 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+        <span className="text-xs font-bold text-indigo-700 uppercase">Название текущей страницы:</span>
+        <input
+          type="text"
+          value={pages[activePageIndex]?.title || ''}
+          onChange={(e) => {
+            const updated = [...pages];
+            updated[activePageIndex].title = e.target.value;
+            setPages(updated);
+          }}
+          className="p-1.5 border rounded-lg text-xs font-bold text-slate-800 bg-white flex-1 outline-none focus:ring-2 focus:ring-indigo-500"
+          placeholder="например: Часть 1: Чтение и Теория..."
+        />
+      </div>
+
+      {/* Main Builder Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Left Palette */}
+        <div className="lg:col-span-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 h-fit sticky top-20">
+          <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">🛠️ Палитра блоков</h3>
+          
+          <div className="space-y-1.5 text-xs font-semibold">
+            <p className="text-slate-400 text-[10px] uppercase font-bold pt-1">Материалы</p>
+            <button onClick={() => handleAddBlock('heading')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">📝 Заголовок</button>
+            <button onClick={() => handleAddBlock('text')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">📄 Текст / Статья</button>
+            <button onClick={() => handleAddBlock('video')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🎥 Видео YouTube</button>
+            <button onClick={() => handleAddBlock('image')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🖼️ Картинки / Галерея</button>
+
+            <p className="text-slate-400 text-[10px] uppercase font-bold pt-3">Интерактив</p>
+            <button onClick={() => handleAddBlock('flashcards')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🎴 Флешкарты</button>
+            <button onClick={() => handleAddBlock('multiple_choice')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">❓ Тест Multiple Choice</button>
+            <button onClick={() => handleAddBlock('gap_fill')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">✏️ Пропуски (Gap Fill)</button>
+            <button onClick={() => handleAddBlock('matching')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🔗 Сопоставление пар</button>
+            <button onClick={() => handleAddBlock('open_input')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">💬 Вопрос для ответа</button>
+          </div>
+        </div>
+
+        {/* Center Canvas Page */}
+        <div className="lg:col-span-3 space-y-6">
+          {activePage.blocks.length === 0 ? (
+            <div className="bg-white p-12 rounded-2xl border-2 border-dashed border-slate-200 text-center space-y-3">
+              <span className="text-4xl">🧩</span>
+              <h3 className="font-bold text-slate-800 text-lg">Страница пуста</h3>
+              <p className="text-slate-400 text-xs">Нажмите на инструмент слева, чтобы добавить первый блок!</p>
+            </div>
+          ) : (
+            activePage.blocks.map((b, idx) => {
+              const isPreview = previewBlockIds[b.id];
+              const isBeingDragged = draggedBlockIdx === idx;
+              const isDragTarget = dragOverIdx === idx;
+
+              return (
+                <div
+                  key={b.id || idx}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  className={`bg-white p-6 rounded-2xl border shadow-sm relative transition ${isBeingDragged ? 'opacity-30 border-dashed border-indigo-400' : ''} ${isDragTarget ? 'border-2 border-indigo-600 bg-indigo-50/20 ring-2 ring-indigo-500/20' : 'border-slate-200 hover:border-indigo-300'}`}
+                >
+                  {/* Floating Toolbar */}
+                  <div className="flex justify-between items-center bg-slate-100 p-2 rounded-xl mb-4 text-xs font-bold border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, idx)}
+                        onDragEnd={handleDragEnd}
+                        className="cursor-grab active:cursor-grabbing p-1 bg-white rounded-lg border border-slate-200 text-slate-400 hover:text-slate-800 hover:border-indigo-400 text-xs font-mono"
+                        title="Зажмите и перетащите блок"
+                      >
+                        ⠿ Drag
+                      </span>
+                      <span className="text-slate-500 uppercase">Блок #{idx + 1}: {b.type}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {pages.length > 1 && (
+                        <select
+                          value={activePageIndex}
+                          onChange={(e) => handleMoveBlockToPage(idx, Number(e.target.value))}
+                          className="p-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 outline-none"
+                          title="Переместить этот блок на другую страницу"
+                        >
+                          {pages.map((p, pIdx) => (
+                            <option key={p.id} value={pIdx}>
+                              {pIdx === activePageIndex ? '📄 Тек. страница' : `➡️ На стр. ${pIdx + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      <button onClick={() => togglePreview(b.id)} className="p-1 px-2.5 bg-white rounded-lg border hover:bg-slate-50 text-indigo-600 font-bold">
+                        {isPreview ? '✏️ Редактировать' : '👁️ Предпросмотр'}
+                      </button>
+                      <button onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-30">⬆️</button>
+                      <button onClick={() => handleMoveBlock(idx, 1)} disabled={idx === activePage.blocks.length - 1} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-30">⬇️</button>
