@@ -26,17 +26,60 @@ export const BlockHeading = ({ block }) => {
 
 export const BlockText = ({ block }) => <p className="text-slate-600 text-lg leading-relaxed mb-4">{block.text}</p>;
 
-export const BlockImage = ({ block, onEditMedia }) => (
-  <div className="my-6 relative group">
-    <img src={block.url} alt={block.caption || 'Visual'} className="w-full max-h-96 object-cover rounded-xl shadow-md" />
-    {block.caption && <p className="text-sm text-slate-500 text-center mt-2">{block.caption}</p>}
-    {onEditMedia && (
-      <button onClick={() => onEditMedia(block.id, 'url', block.url)} className="absolute top-3 right-3 bg-slate-900/80 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition">
-        🔗 Вставить ссылку на фото
-      </button>
-    )}
-  </div>
-);
+// PHOTO GALLERY COMPONENT WITH RESPONSIVE GRID & LIGHTBOX
+export const BlockImage = ({ block, onEditMedia }) => {
+  const [lightboxUrl, setLightboxUrl] = useState(null);
+
+  const imageList = block.images && block.images.length > 0
+    ? block.images
+    : (block.url ? [{ url: block.url, caption: block.caption }] : []);
+
+  if (imageList.length === 0) return null;
+
+  const gridCols = imageList.length === 1 ? 'grid-cols-1 max-w-xl mx-auto' :
+                   imageList.length === 2 ? 'grid-cols-1 sm:grid-cols-2' :
+                   imageList.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4';
+
+  return (
+    <div className="my-6 space-y-3">
+      {block.caption && <h4 className="font-bold text-slate-800 text-base">{block.caption}</h4>}
+
+      <div className={`grid ${gridCols} gap-4`}>
+        {imageList.map((img, idx) => (
+          <div
+            key={idx}
+            onClick={() => setLightboxUrl(img.url)}
+            className="group relative overflow-hidden rounded-2xl border border-slate-200 shadow-sm bg-slate-100 cursor-pointer hover:shadow-md transition"
+          >
+            <img
+              src={img.url}
+              alt={img.caption || `Visual ${idx + 1}`}
+              className="w-full h-48 sm:h-56 object-cover group-hover:scale-105 transition duration-300"
+            />
+            {img.caption && (
+              <div className="p-2.5 bg-white/95 backdrop-blur-xs text-xs font-semibold text-slate-700 text-center border-t border-slate-100">
+                {img.caption}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Lightbox Modal */}
+      {lightboxUrl && (
+        <div
+          onClick={() => setLightboxUrl(null)}
+          className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div className="relative max-w-4xl max-h-[90vh]">
+            <img src={lightboxUrl} alt="Zoomed" className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain" />
+            <button onClick={() => setLightboxUrl(null)} className="absolute top-2 right-2 bg-slate-900/80 text-white w-8 h-8 rounded-full font-bold">✕</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const BlockVideo = ({ block, onEditMedia }) => {
   const embedUrl = getYouTubeEmbedUrl(block.url);
@@ -51,11 +94,6 @@ export const BlockVideo = ({ block, onEditMedia }) => {
           <video controls className="w-full h-full"><source src={block.url} type="video/mp4" /></video>
         )}
       </div>
-      {onEditMedia && (
-        <button onClick={() => onEditMedia(block.id, 'url', block.url)} className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition">
-          🔗 Изменить ссылку на видео (YouTube / MP4)
-        </button>
-      )}
     </div>
   );
 };
@@ -69,11 +107,6 @@ export const BlockAudio = ({ block, onEditMedia }) => {
           <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white">🎧</div>
           <h4 className="font-semibold text-lg">{block.title || 'Прослушайте запись:'}</h4>
         </div>
-        {onEditMedia && (
-          <button onClick={() => onEditMedia(block.id, 'url', block.url)} className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700">
-            🔗 Вставить MP3 ссылку
-          </button>
-        )}
       </div>
       <audio controls className="w-full mb-4"><source src={block.url} type="audio/mpeg" /></audio>
       {block.transcript && (
