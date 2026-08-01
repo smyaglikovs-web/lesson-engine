@@ -3,6 +3,7 @@ import { BlockHeading, BlockText, BlockImage, BlockVideo, BlockAudio, BlockGramm
 import { BlockMultipleChoice } from './BlockMultipleChoice.jsx';
 import { BlockMatching } from './BlockMatching.jsx';
 import { BlockGapFill } from './BlockGapFill.jsx';
+import { BlockGapFillBank } from './BlockGapFillBank.jsx';
 import { BlockOpenInput } from './BlockOpenInput.jsx';
 import { BlockFlashcards } from './BlockFlashcards.jsx';
 import { BlockReorder } from './BlockReorder.jsx';
@@ -16,6 +17,7 @@ export const BlockRenderer = ({ block, value, onChange, isTeacher, onEditMedia }
     case 'video': return <BlockVideo block={block} onEditMedia={onEditMedia} />;
     case 'multiple_choice': return <BlockMultipleChoice block={block} value={value} onChange={onChange} />;
     case 'gap_fill': return <BlockGapFill block={block} value={value} onChange={onChange} />;
+    case 'gap_fill_bank': return <BlockGapFillBank block={block} value={value} onChange={onChange} />;
     case 'matching': return <BlockMatching block={block} value={value} onChange={onChange} />;
     case 'audio': return <BlockAudio block={block} onEditMedia={onEditMedia} />;
     case 'open_input': return <BlockOpenInput block={block} value={value} onChange={onChange} />;
