@@ -28,13 +28,12 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// DIRECT YOUTUBE TIMEDTEXT TRANSCRIPT EXTRACTOR (0.05s Instant Response)
+// DIRECT YOUTUBE TIMEDTEXT TRANSCRIPT EXTRACTOR
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
     if (!videoId) return null;
 
-    // 1. Fetch Title via oEmbed
     let title = '';
     try {
       const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: HEADERS });
@@ -46,7 +45,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
 
     let transcriptText = '';
 
-    // LAYER 1: YouTube Direct TimedText API (lang=en & kind=asr)
     const ttUrls = [
       `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
       `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
@@ -71,7 +69,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       } catch(e) {}
     }
 
-    // LAYER 2: Song Lyrics Search API Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) {
@@ -114,7 +111,7 @@ export async function transformBlockWithAI(env, payload) {
     if (transcript.length > 50) {
       sourceTextContent = `VIDEO TITLE: "${videoTitle}"\n\nSPOKEN VIDEO TRANSCRIPT:\n"${transcript}"`;
     } else {
-      sourceTextContent = `VIDEO TITLE & TOPIC: "${videoTitle}"\n\nNOTE: Create educational comprehension and vocabulary questions based on the scientific topic "${videoTitle}".`;
+      sourceTextContent = `VIDEO TITLE & TOPIC: "${videoTitle}"\n\nNOTE: Create educational comprehension and vocabulary questions based on the topic "${videoTitle}".`;
     }
   } else if (sourceBlock.type === 'text') {
     sourceTextContent = sourceBlock.text || '';
@@ -127,22 +124,22 @@ export async function transformBlockWithAI(env, payload) {
   const taskInstructions = [];
 
   if (actions.includes('listening') || actions.includes('true_false') || actions.includes('quiz')) {
-    taskInstructions.push(`- COMPREHENSION QUIZ: 4-5 multiple-choice questions testing educational understanding of the topic/content (e.g. key concepts, facts, ideas). Format: { "type": "multiple_choice", "question": "Educational Question about the topic?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
+    taskInstructions.push(`- COMPREHENSION QUIZ: 4-5 multiple-choice questions. Format: { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
   }
   if (actions.includes('flashcards')) {
-    taskInstructions.push(`- FLASHCARDS: 6-8 key vocabulary words related to this topic with Russian translation and example sentence. Format: { "type": "flashcards", "title": "Key Vocabulary", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
+    taskInstructions.push(`- FLASHCARDS: 6-8 key vocabulary words. Format: { "type": "flashcards", "title": "Key Vocabulary", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
   }
   if (actions.includes('gap_fill')) {
-    taskInstructions.push(`- GAP FILL: 5 sentences testing key vocabulary in format 'Sentence [answer] here.': { "type": "gap_fill", "instruction": "Fill the gaps:", "text": "Sentence [answer] here.", "answers": ["answer"] }`);
+    taskInstructions.push(`- GAP FILL: 5 sentences format 'Sentence [answer] here.': { "type": "gap_fill", "instruction": "Fill the gaps:", "text": "Sentence [answer] here.", "answers": ["answer"] }`);
   }
   if (actions.includes('gap_fill_bank')) {
-    taskInstructions.push(`- WORD BANK GAP FILL: Sentences with key words in [brackets] plus 2 distractor words: { "type": "gap_fill_bank", "instruction": "🧩 Заполните пропуски словами из банка:", "text": "Sentence [word1] and [word2].", "distractors": ["fake1", "fake2"] }`);
+    taskInstructions.push(`- WORD BANK GAP FILL: Sentences with key words in [brackets] plus distractors: { "type": "gap_fill_bank", "instruction": "Fill the gaps:", "text": "Sentence [word1] and [word2].", "distractors": ["fake1", "fake2"] }`);
   }
   if (actions.includes('matching')) {
-    taskInstructions.push(`- MATCHING: 6 pairs of vocabulary words and definitions/translations: { "type": "matching", "instruction": "Match the pairs:", "pairs": [{ "left": "Word", "right": "Match" }] }`);
+    taskInstructions.push(`- MATCHING: 6 pairs: { "type": "matching", "instruction": "Match the pairs:", "pairs": [{ "left": "Word", "right": "Match" }] }`);
   }
   if (actions.includes('discussion')) {
-    taskInstructions.push(`- DISCUSSION: 3 deep speaking discussion questions on the topic: { "type": "open_input", "prompt": "Discussion question?", "placeholder": "Your answer..." }`);
+    taskInstructions.push(`- DISCUSSION: 3 questions: { "type": "open_input", "prompt": "Discussion question?", "placeholder": "Your answer..." }`);
   }
 
   if (taskInstructions.length === 0) {
@@ -153,14 +150,10 @@ export async function transformBlockWithAI(env, payload) {
 Твоя задача — создать СТРОГО УКАЗАННЫЕ ИНТЕРАКТИВНЫЕ БЛОКИ ДЛЯ ОБУЧЕНИЯ АНГЛИЙСКОМУ ЯЗЫКУ.
 Уровень языка: ${level}.
 
-КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
-1. Задавай вопросы ИСКЛЮЧИТЕЛЬНО по учебному содержанию темы/видео/текста (например, про мозг, память, науку, лексику).
-2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО задавать мета-вопросы о программном коде, ID видео, названии файлов, наличии субтитров или системных данных!
-
 ТРЕБУЕМЫЕ БЛОКИ:
 ${taskInstructions.join('\n')}
 
-ВЕРНИ СТРОГО ЧИСТЫЙ JSON МАССИВ БЛОКОВ (без \`\`\`json):
+ВЕРНИ СТРОГО ЧИСТЫЙ JSON МАССИВ БЛОКОВ:
 {
   "blocks": [
     /* созданные учебные блоки */
@@ -188,5 +181,58 @@ ${taskInstructions.join('\n')}
     return { success: true, newBlocks };
   } catch (err) {
     return { error: 'AI error: ' + err.message };
+  }
+}
+
+// FULL LESSON GENERATOR FROM TEXT / TOPIC
+export async function generateFullLessonWithAI(env, payload) {
+  const { text = '', level = 'B1', topic = 'General English' } = payload;
+
+  const systemPrompt = `Ты — ведущий методист английского языка.
+Создай ПОЛНЫЙ ИНТЕРАКТИВНЫЙ УРОК по теме "${topic}" (Уровень ${level}) в формате JSON.
+
+Структура урока должна содержать 3-4 страницы ("pages"), каждая с блоками ("blocks"):
+- Заголовки (heading)
+- Текст истории/правила (text)
+- Карточки лексики (flashcards)
+- Выбор ответа (multiple_choice)
+- Пропуски в тексте (gap_fill_bank или gap_fill)
+- Сопоставление пар (matching)
+- Вопросы для обсуждения (open_input)
+
+ВЕРНИ СТРОГО ЧИСТЫЙ JSON УРОКА:
+{
+  "title": "...",
+  "level": "${level}",
+  "topic": "${topic}",
+  "description": "...",
+  "pages": [
+    {
+      "id": "p1",
+      "title": "Часть 1: Введение",
+      "blocks": [ ... ]
+    }
+  ]
+}`;
+
+  const userPrompt = text ? `МАТЕРИАЛЫ УРОКА:\n${text}` : `Тема урока: ${topic}`;
+
+  try {
+    const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      max_tokens: 4000,
+      temperature: 0.3
+    });
+
+    const generatedText = aiResponse.response || "";
+    var tb = String.fromCharCode(96, 96, 96);
+    var cleanJsonText = generatedText.split(tb + 'json').join('').split(tb).join('').trim();
+
+    return { success: true, jsonText: cleanJsonText };
+  } catch (err) {
+    return { error: 'AI generation error: ' + err.message };
   }
 }
