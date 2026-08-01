@@ -84,119 +84,94 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// AUTHENTICATED YOUTUBE CAPTION EXTRACTOR (Extracts INNERTUBE_API_KEY)
-export async function fetchYouTubeTranscriptNative(videoUrl) {
+export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   try {
     const videoId = getYouTubeId(videoUrl);
     if (!videoId) return null;
 
     let title = '';
+    let description = '';
     let transcriptText = '';
 
-    // Step 1: Fetch Video Title via oEmbed
+    const apiKey = env.YOUTUBE_API_KEY || '';
+
+    // Step 1: Query Official YouTube Data API v3 for Metadata
+    if (apiKey) {
+      try {
+        const apiRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`);
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          if (apiData.items && apiData.items.length > 0) {
+            title = apiData.items[0].snippet?.title || '';
+            description = apiData.items[0].snippet?.description || '';
+          }
+        }
+      } catch(e) {}
+    }
+
+    if (!title) {
+      try {
+        const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: BROWSER_HEADERS });
+        if (oembedRes.ok) {
+          const odata = await oembedRes.json();
+          title = odata.title || '';
+        }
+      } catch(e) {}
+    }
+
+    // Step 2: InnerTube API with fmt=json3 Parameter Fix
     try {
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: BROWSER_HEADERS });
-      if (oembedRes.ok) {
-        const odata = await oembedRes.json();
-        title = odata.title || '';
-      }
-    } catch(e) {}
+      const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 12; en_US)'
+        },
+        body: JSON.stringify({
+          context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38', hl: 'en', gl: 'US' } },
+          videoId: videoId
+        })
+      });
 
-    // Step 2: Extract Captions or INNERTUBE_API_KEY from Watch Page
-    try {
-      const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: BROWSER_HEADERS });
-      if (pageRes.ok) {
-        const html = await pageRes.text();
-
-        // 2a. Direct extraction from ytInitialPlayerResponse if embedded in page
-        const splitted = html.split('ytInitialPlayerResponse = ');
-        if (splitted.length > 1) {
-          const jsonStr = splitted[1].split(';\n')[0].split(';var ')[0].split(';</script>')[0];
-          try {
-            const playerData = JSON.parse(jsonStr);
-            if (!title && playerData.videoDetails?.title) {
-              title = playerData.videoDetails.title;
-            }
-
-            const captionTracks = playerData.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-            const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.vssId?.includes('en')) || captionTracks[0];
-
-            if (track && track.baseUrl) {
-              const xmlRes = await fetch(track.baseUrl, { headers: BROWSER_HEADERS });
-              if (xmlRes.ok) {
-                const xml = await xmlRes.text();
-                const cleanText = xml
-                  .replace(/<text[^>]*>/g, ' ')
-                  .replace(/<\/text>/g, ' ')
-                  .replace(/<[^>]+>/g, '')
-                  .replace(/&amp;/g, '&')
-                  .replace(/&#39;/g, "'")
-                  .replace(/&quot;/g, '"')
-                  .replace(/\s+/g, ' ')
-                  .trim();
-
-                if (cleanText.length > 50) {
-                  transcriptText = cleanText.slice(0, 3500);
-                }
-              }
-            }
-          } catch(e) {}
+      if (innertubeRes.ok) {
+        const playerData = await innertubeRes.json();
+        if (!title && playerData.videoDetails?.title) {
+          title = playerData.videoDetails.title;
         }
 
-        // 2b. Authenticated InnerTube API call using page's INNERTUBE_API_KEY
-        if (!transcriptText) {
-          const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
-          if (apiKeyMatch && apiKeyMatch[1]) {
-            const apiKey = apiKeyMatch[1];
-            const innertubeRes = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${apiKey}`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'User-Agent': BROWSER_HEADERS['User-Agent']
-              },
-              body: JSON.stringify({
-                videoId: videoId,
-                context: {
-                  client: {
-                    clientName: 'ANDROID',
-                    clientVersion: '17.31.35',
-                    androidSdkVersion: 30
+        const captionTracks = playerData.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+        const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.vssId?.includes('en')) || captionTracks[0];
+
+        if (track && track.baseUrl) {
+          let targetUrl = track.baseUrl.replace('fmt=srv3', 'fmt=json3');
+          const subRes = await fetch(targetUrl, { headers: BROWSER_HEADERS });
+
+          if (subRes.ok) {
+            const rawContent = await subRes.text();
+            try {
+              const jsonData = JSON.parse(rawContent);
+              if (jsonData.events) {
+                const words = [];
+                for (const ev of jsonData.events) {
+                  if (ev.segs) {
+                    for (const seg of ev.segs) {
+                      if (seg.utf8 && seg.utf8 !== '\n') words.push(seg.utf8);
+                    }
                   }
                 }
-              })
-            });
-
-            if (innertubeRes.ok) {
-              const pData = await innertubeRes.json();
-              const captionTracks = pData.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-              const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.vssId?.includes('en')) || captionTracks[0];
-
-              if (track && track.baseUrl) {
-                const subRes = await fetch(track.baseUrl, { headers: BROWSER_HEADERS });
-                if (subRes.ok) {
-                  const xml = await subRes.text();
-                  const cleanText = xml
-                    .replace(/<text[^>]*>/g, ' ')
-                    .replace(/<\/text>/g, ' ')
-                    .replace(/<[^>]+>/g, '')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&#39;/g, "'")
-                    .replace(/&quot;/g, '"')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-
-                  if (cleanText.length > 50) {
-                    transcriptText = cleanText.slice(0, 3500);
-                  }
-                }
+                const fullText = words.join(' ').replace(/\s+/g, ' ').trim();
+                if (fullText.length > 50) transcriptText = fullText.slice(0, 3500);
               }
+            } catch(e) {
+              const cleanText = rawContent.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+              if (cleanText.length > 50) transcriptText = cleanText.slice(0, 3500);
             }
           }
         }
       }
     } catch(e) {}
 
-    // Step 3: Open Piped Instances Fallback
+    // Step 3: Piped Mirror Instances Fallback
     if (!transcriptText) {
       const pipedInstances = [
         'https://pipedapi.kavin.rocks',
@@ -230,7 +205,12 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     }
 
-    // Step 4: Song Lyrics Fallback
+    // Step 4: Description Fallback
+    if (!transcriptText && description.length > 80) {
+      transcriptText = `VIDEO DESCRIPTION & SUMMARY:\n${description.slice(0, 2000)}`;
+    }
+
+    // Step 5: Song Lyrics Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) transcriptText = songLyrics;
@@ -251,7 +231,7 @@ export async function transformBlockWithAI(env, payload) {
 
   let videoDetailsText = '';
   if (sourceBlock.type === 'video' && sourceBlock.url) {
-    const ytData = await fetchYouTubeTranscriptNative(sourceBlock.url);
+    const ytData = await fetchYouTubeTranscriptNative(sourceBlock.url, env);
     if (ytData) {
       if (ytData.title) sourceBlock.title = ytData.title;
       if (ytData.transcript) {
