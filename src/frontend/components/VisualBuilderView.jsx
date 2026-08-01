@@ -8,61 +8,15 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// MULTI-ENDPOINT SUBTITLE EXTRACTOR (Extracts Kurzgesagt / TED transcripts)
 const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   const videoId = getYouTubeId(videoUrl);
   if (!videoId) return null;
 
-  // Endpoint 1: Vercel Captions API
   try {
     const res1 = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
     if (res1.ok) {
       const text1 = await res1.text();
       if (text1.length > 50) return text1.slice(0, 3500);
-    }
-  } catch(e) {}
-
-  // Endpoint 2: AllOrigins CORS Proxy parsing YouTube's official captionTracks XML
-  try {
-    const targetUrl = encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`);
-    const res2 = await fetch(`https://api.allorigins.win/get?url=${targetUrl}`);
-    if (res2.ok) {
-      const data2 = await res2.json();
-      const html = data2.contents || '';
-      const captionMatch = html.match(/"captionTracks":\s*(\[.*?\])/);
-      if (captionMatch) {
-        const tracks = JSON.parse(captionMatch[1]);
-        const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || tracks[0];
-        if (enTrack && enTrack.baseUrl) {
-          const subUrl = encodeURIComponent(enTrack.baseUrl);
-          const subRes = await fetch(`https://api.allorigins.win/get?url=${subUrl}`);
-          if (subRes.ok) {
-            const subData = await subRes.json();
-            const xmlText = subData.contents || '';
-            const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-            if (cleanText.length > 50) return cleanText.slice(0, 3500);
-          }
-        }
-      }
-    }
-  } catch(e) {}
-
-  // Endpoint 3: LemnosLife API
-  try {
-    const res3 = await fetch(`https://yt.lemnoslife.com/nokey/captions?videoId=${videoId}`);
-    if (res3.ok) {
-      const data3 = await res3.json();
-      if (data3.captionTracks && data3.captionTracks.length > 0) {
-        const track = data3.captionTracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || data3.captionTracks[0];
-        if (track && track.baseUrl) {
-          const subRes = await fetch(track.baseUrl);
-          if (subRes.ok) {
-            const xmlText = await subRes.text();
-            const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-            if (cleanText.length > 50) return cleanText.slice(0, 3500);
-          }
-        }
-      }
     }
   } catch(e) {}
 
@@ -240,14 +194,42 @@ const EditableBlockCard = ({ block, onChange }) => {
       setFetchingSubtitles(true);
       setSubtitleStatus('⌛ Извлечение субтитров...');
 
-      const transcript = await fetchYouTubeTranscriptAuto(block.url);
+      let transcript = null;
+      let source = '';
+
+      // 1. Try Worker Backend API with 5s timeout
+      try {
+        const res = await fetch('/api/youtube/transcript', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: block.url })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.transcript) {
+            transcript = data.transcript;
+            source = 'YouTube InnerTube API';
+          }
+        }
+      } catch(e) {}
+
+      // 2. Client-Side Proxy Fallback if server timed out
+      if (!transcript) {
+        try {
+          transcript = await fetchYouTubeTranscriptAuto(block.url);
+          if (transcript) source = 'Backup Subtitle Proxy';
+        } catch(e) {}
+      }
+
       setFetchingSubtitles(false);
 
       if (transcript) {
         onChange({ ...block, transcript });
-        setSubtitleStatus(`✅ Субтитры загружены (${transcript.split(' ').length} слов)`);
+        setSubtitleStatus(`✅ Субтитры загружены [${source}] (${transcript.split(' ').length} слов)`);
       } else {
-        setSubtitleStatus(`ℹ️ Субтитры не найдены. AI Llama 3.1 сгенерирует задания по научному содержанию темы "${block.title || 'Видео'}"!`);
+        const fallbackText = `Видео на тему: "${block.title || 'Educational Video'}"`;
+        onChange({ ...block, transcript: fallbackText });
+        setSubtitleStatus(`ℹ️ Субтитры не найдены. AI сгенерирует задания по теме "${block.title || 'Видео'}"!`);
       }
     };
 
@@ -281,11 +263,11 @@ const EditableBlockCard = ({ block, onChange }) => {
               onClick={handleAutoFetchSubtitles}
               className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
             >
-              {fetchingSubtitles ? '⌛ Загрузка...' : '🪄 Авто-Извлечь Субтитры'}
+              {fetchingSubtitles ? '⌛ Извлечение...' : '🪄 Авто-Извлечь Субтитры'}
             </button>
           </div>
 
-          {subtitleStatus && <p className="text-xs font-semibold text-indigo-600">{subtitleStatus}</p>}
+          {subtitleStatus && <p className="text-xs font-semibold text-indigo-600 bg-indigo-50/80 p-2 rounded-lg border border-indigo-100">{subtitleStatus}</p>}
 
           <textarea
             rows="3"
@@ -895,12 +877,12 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
 
               <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
                 <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
-                <span>🎴 Флешкарты (Ключевая лексика с переводом)</span>
+                <span>🎴 Только Флешкарты (Ключевая лексика с переводом)</span>
               </label>
 
               <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
                 <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600" />
-                <span>❓ Тест True / False (Правда или Ложь)</span>
+                <span>❓ Только Тест True / False (Правда или Ложь)</span>
               </label>
 
               <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
