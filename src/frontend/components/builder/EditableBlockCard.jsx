@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
-import { compressAndUploadImage } from '@utils/youtube.js';
+import { compressAndUploadImage, getYouTubeId } from '@utils/youtube.js';
 
 export const EditableBlockCard = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
@@ -140,36 +140,73 @@ export const EditableBlockCard = ({ block, onChange }) => {
     const handleAutoFetchSubtitles = async () => {
       if (!block.url) return alert('Сначала вставьте ссылку на YouTube видео!');
       setFetchingSubtitles(true);
-      setSubtitleStatus('⌛ Извлечение субтитров из YouTube...');
+      setSubtitleStatus('⌛ Извлечение речевого транскрипта из YouTube...');
 
+      const videoId = getYouTubeId(block.url);
       let transcript = null;
       let title = block.title || '';
 
-      try {
-        const res = await fetch('/api/youtube/transcript', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: block.url })
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          if (data.transcript && data.transcript.length > 50) {
-            transcript = data.transcript;
-            if (data.title) title = data.title;
-          }
+      // Step 1: Direct Browser Fetch (Executes on user's internet connection - 0 Cloudflare blocks!)
+      if (videoId) {
+        const clientUrls = [
+          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
+          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
+          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`,
+          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`
+        ];
+
+        for (const url of clientUrls) {
+          if (transcript) break;
+          try {
+            const res = await fetch(url);
+            if (res.ok) {
+              const text = await res.text();
+              if (text && text.includes('<text') && text.length > 200) {
+                const clean = text
+                  .replace(/<text[^>]*>/g, ' ')
+                  .replace(/<\/text>/g, ' ')
+                  .replace(/<[^>]+>/g, '')
+                  .replace(/&amp;/g, '&')
+                  .replace(/&#39;/g, "'")
+                  .replace(/&quot;/g, '"')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+
+                if (clean.length > 100) {
+                  transcript = clean.slice(0, 3500);
+                }
+              }
+            }
+          } catch(e) {}
         }
-      } catch(e) {}
+      }
+
+      // Step 2: Server API Fallback
+      if (!transcript) {
+        try {
+          const res = await fetch('/api/youtube/transcript', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: block.url })
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (data.transcript && data.transcript.length > 100 && !data.transcript.includes('VIDEO DESCRIPTION')) {
+              transcript = data.transcript;
+              if (data.title) title = data.title;
+            }
+          }
+        } catch(e) {}
+      }
 
       setFetchingSubtitles(false);
 
       if (transcript) {
         onChange({ ...block, title: title || block.title, transcript });
-        setSubtitleStatus(`✅ Субтитры успешно загружены! (${transcript.split(' ').length} слов)`);
+        setSubtitleStatus(`✅ Речевой транскрипт загружен! (${transcript.split(' ').length} слов)`);
       } else {
-        const fallbackText = `Видео на тему: "${block.title || 'Educational Video'}"`;
-        onChange({ ...block, transcript: fallbackText });
-        setSubtitleStatus(`ℹ️ Субтитры не найдены. AI сгенерирует задания по теме "${block.title || 'Видео'}"!`);
+        setSubtitleStatus(`ℹ️ Субтитры не найдены на YouTube. Вы можете вставить текст вручную.`);
       }
     };
 
