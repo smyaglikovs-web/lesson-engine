@@ -15,10 +15,10 @@ export default {
     const getTeacherPassword = () => request.headers.get('x-teacher-password') || '';
 
     try {
-      // 1. YouTube Subtitles API (Android InnerTube Engine)
+      // 1. YouTube Subtitles API (Official API + Android InnerTube Engine)
       if (path === '/api/youtube/transcript' && method === 'POST') {
         const { url: videoUrl } = await request.json();
-        const data = await fetchYouTubeTranscriptNative(videoUrl);
+        const data = await fetchYouTubeTranscriptNative(videoUrl, env);
         return json({ success: !!data?.transcript, ...data });
       }
 
