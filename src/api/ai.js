@@ -28,13 +28,16 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// DIRECT YOUTUBE TIMEDTEXT TRANSCRIPT EXTRACTOR
+// RELIABLE YOUTUBE WATCH-PAGE CAPTION TRACK EXTRACTOR
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
     if (!videoId) return null;
 
     let title = '';
+    let transcriptText = '';
+
+    // Step 1: Fetch Video Title via oEmbed
     try {
       const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: HEADERS });
       if (oembedRes.ok) {
@@ -43,37 +46,78 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     } catch(e) {}
 
-    let transcriptText = '';
+    // Step 2: Fetch Watch Page & Extract Caption Track BaseURL
+    try {
+      const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: HEADERS });
+      if (pageRes.ok) {
+        const html = await pageRes.text();
+        const splitted = html.split('ytInitialPlayerResponse = ');
+        if (splitted.length > 1) {
+          const jsonStr = splitted[1].split(';\n')[0].split(';var ')[0].split(';</script>')[0];
+          const playerData = JSON.parse(jsonStr);
 
-    const ttUrls = [
-      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
-      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`,
-      `https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`
-    ];
+          if (!title && playerData.videoDetails?.title) {
+            title = playerData.videoDetails.title;
+          }
 
-    for (const ttUrl of ttUrls) {
-      if (transcriptText) break;
-      try {
-        const res = await fetch(ttUrl, { headers: HEADERS });
-        if (res.ok) {
-          const xml = await res.text();
-          if (xml && (xml.includes('<text') || xml.length > 100)) {
-            const cleanText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-            if (cleanText.length > 50) {
-              transcriptText = cleanText.slice(0, 3500);
-              break;
+          const captionTracks = playerData.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+          
+          // Find English track first, or fallback to first track
+          let track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US') || captionTracks[0];
+
+          if (track && track.baseUrl) {
+            const xmlRes = await fetch(track.baseUrl, { headers: HEADERS });
+            if (xmlRes.ok) {
+              const xml = await xmlRes.text();
+              const cleanText = xml
+                .replace(/<text[^>]*>/g, ' ')
+                .replace(/<\/text>/g, ' ')
+                .replace(/<[^>]+>/g, '')
+                .replace(/&amp;/g, '&')
+                .replace(/&#39;/g, "'")
+                .replace(/&quot;/g, '"')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+              if (cleanText.length > 50) {
+                transcriptText = cleanText.slice(0, 3500);
+              }
             }
           }
         }
-      } catch(e) {}
+      }
+    } catch(e) {}
+
+    // Step 3: Direct timedtext Fallbacks
+    if (!transcriptText) {
+      const ttUrls = [
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
+        `https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`
+      ];
+
+      for (const ttUrl of ttUrls) {
+        if (transcriptText) break;
+        try {
+          const res = await fetch(ttUrl, { headers: HEADERS });
+          if (res.ok) {
+            const xml = await res.text();
+            if (xml && (xml.includes('<text') || xml.length > 100)) {
+              const cleanText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+              if (cleanText.length > 50) {
+                transcriptText = cleanText.slice(0, 3500);
+                break;
+              }
+            }
+          }
+        } catch(e) {}
+      }
     }
 
+    // Step 4: Song Lyrics Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
-      if (songLyrics) {
-        transcriptText = songLyrics;
-      }
+      if (songLyrics) transcriptText = songLyrics;
     }
 
     return { title, transcript: transcriptText, videoId };
@@ -124,19 +168,19 @@ export async function transformBlockWithAI(env, payload) {
   const taskInstructions = [];
 
   if (actions.includes('listening') || actions.includes('true_false') || actions.includes('quiz')) {
-    taskInstructions.push(`- COMPREHENSION QUIZ: 4-5 multiple-choice questions. Format: { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
+    taskInstructions.push(`- COMPREHENSION QUIZ: 4-5 multiple-choice questions testing educational understanding of the topic/content. Format: { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
   }
   if (actions.includes('flashcards')) {
-    taskInstructions.push(`- FLASHCARDS: 6-8 key vocabulary words. Format: { "type": "flashcards", "title": "Key Vocabulary", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
+    taskInstructions.push(`- FLASHCARDS: 6-8 key vocabulary words with Russian translation and example sentence. Format: { "type": "flashcards", "title": "Key Vocabulary", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
   }
   if (actions.includes('gap_fill')) {
-    taskInstructions.push(`- GAP FILL: 5 sentences format 'Sentence [answer] here.': { "type": "gap_fill", "instruction": "Fill the gaps:", "text": "Sentence [answer] here.", "answers": ["answer"] }`);
+    taskInstructions.push(`- GAP FILL: 5 sentences testing vocabulary: { "type": "gap_fill", "instruction": "Fill the gaps:", "text": "Sentence [answer] here.", "answers": ["answer"] }`);
   }
   if (actions.includes('gap_fill_bank')) {
-    taskInstructions.push(`- WORD BANK GAP FILL: Sentences with key words in [brackets] plus distractors: { "type": "gap_fill_bank", "instruction": "Fill the gaps:", "text": "Sentence [word1] and [word2].", "distractors": ["fake1", "fake2"] }`);
+    taskInstructions.push(`- WORD BANK GAP FILL: Sentences with words in [brackets] plus 2 distractors: { "type": "gap_fill_bank", "instruction": "🧩 Заполните пропуски:", "text": "Sentence [word1] and [word2].", "distractors": ["fake1", "fake2"] }`);
   }
   if (actions.includes('matching')) {
-    taskInstructions.push(`- MATCHING: 6 pairs: { "type": "matching", "instruction": "Match the pairs:", "pairs": [{ "left": "Word", "right": "Match" }] }`);
+    taskInstructions.push(`- MATCHING: 6 pairs: { "type": "matching", "instruction": "Match pairs:", "pairs": [{ "left": "Word", "right": "Match" }] }`);
   }
   if (actions.includes('discussion')) {
     taskInstructions.push(`- DISCUSSION: 3 questions: { "type": "open_input", "prompt": "Discussion question?", "placeholder": "Your answer..." }`);
@@ -150,10 +194,14 @@ export async function transformBlockWithAI(env, payload) {
 Твоя задача — создать СТРОГО УКАЗАННЫЕ ИНТЕРАКТИВНЫЕ БЛОКИ ДЛЯ ОБУЧЕНИЯ АНГЛИЙСКОМУ ЯЗЫКУ.
 Уровень языка: ${level}.
 
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+1. Задавай вопросы ИСКЛЮЧИТЕЛЬНО по учебному содержанию темы/видео/текста.
+2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО задавать мета-вопросы о коде, ID видео, названии файлов или системных данных!
+
 ТРЕБУЕМЫЕ БЛОКИ:
 ${taskInstructions.join('\n')}
 
-ВЕРНИ СТРОГО ЧИСТЫЙ JSON МАССИВ БЛОКОВ:
+ВЕРНИ СТРОГО ЧИСТЫЙ JSON МАССИВ БЛОКОВ (без \`\`\`json):
 {
   "blocks": [
     /* созданные учебные блоки */
@@ -184,7 +232,6 @@ ${taskInstructions.join('\n')}
   }
 }
 
-// FULL LESSON GENERATOR FROM TEXT / TOPIC
 export async function generateFullLessonWithAI(env, payload) {
   const { text = '', level = 'B1', topic = 'General English' } = payload;
 
