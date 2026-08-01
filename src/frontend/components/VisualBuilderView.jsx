@@ -2,7 +2,43 @@ import React, { useState } from 'react';
 import { BlockRenderer } from './BlockRenderer.jsx';
 import { BlockVideo } from './BlockMedia.jsx';
 
+// Extract YouTube Video ID
+function getYouTubeId(url = '') {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+
+// Free Open-Source YouTube Captions Fetcher
+const fetchYouTubeTranscriptAuto = async (videoUrl) => {
+  const videoId = getYouTubeId(videoUrl);
+  if (!videoId) return null;
+
+  try {
+    const res = await fetch(`https://yt.lemnoslife.com/nokey/captions?videoId=${videoId}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.captionTracks && data.captionTracks.length > 0) {
+        const track = data.captionTracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || data.captionTracks[0];
+        if (track && track.baseUrl) {
+          const subRes = await fetch(track.baseUrl);
+          if (subRes.ok) {
+            const xmlText = await subRes.text();
+            const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+            if (cleanText.length > 50) return cleanText.slice(0, 3500);
+          }
+        }
+      }
+    }
+  } catch(e) {}
+
+  return null;
+};
+
 const EditableBlockCard = ({ block, onChange }) => {
+  const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
+  const [subtitleStatus, setSubtitleStatus] = useState('');
+
   if (block.type === 'heading') {
     return (
       <div className="flex gap-2 items-center">
@@ -38,7 +74,7 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  // VIDEO BLOCK WITH AUTO OEMBED TITLE FETCH
+  // VIDEO BLOCK WITH AUTO SUBTITLE FETCH BUTTON
   if (block.type === 'video') {
     const handleUrlChange = async (newUrl) => {
       onChange({ ...block, url: newUrl });
@@ -52,6 +88,22 @@ const EditableBlockCard = ({ block, onChange }) => {
             }
           }
         } catch(e) {}
+      }
+    };
+
+    const handleAutoFetchSubtitles = async () => {
+      if (!block.url) return alert('Сначала вставьте ссылку на YouTube видео!');
+      setFetchingSubtitles(true);
+      setSubtitleStatus('⌛ Извлечение субтитров...');
+
+      const transcript = await fetchYouTubeTranscriptAuto(block.url);
+      setFetchingSubtitles(false);
+
+      if (transcript) {
+        onChange({ ...block, transcript });
+        setSubtitleStatus(`✅ Субтитры загружены (${transcript.split(' ').length} слов)`);
+      } else {
+        setSubtitleStatus('⚠️ У видео нет доступных английских субтитров. Вставьте описание вручную ниже.');
       }
     };
 
@@ -74,16 +126,29 @@ const EditableBlockCard = ({ block, onChange }) => {
           />
         </div>
 
-        {/* TRANSCRIPT / SUBTITLES FOR AI ASSISTANT */}
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-            📝 Субтитры / Транскрипт / Содержание видео (Опционально)
-          </label>
+        {/* TRANSCRIPT & AUTO-FETCH BUTTON */}
+        <div className="space-y-1.5">
+          <div className="flex justify-between items-center">
+            <label className="text-[10px] font-bold text-slate-500 uppercase">
+              📝 Субтитры / Содержание видео (для AI Помощника)
+            </label>
+            <button
+              type="button"
+              disabled={fetchingSubtitles || !block.url}
+              onClick={handleAutoFetchSubtitles}
+              className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
+            >
+              {fetchingSubtitles ? '⌛ Загрузка субтитров...' : '🪄 Авто-Извлечь Субтитры'}
+            </button>
+          </div>
+
+          {subtitleStatus && <p className="text-xs font-semibold text-indigo-600">{subtitleStatus}</p>}
+
           <textarea
             rows="3"
             value={block.transcript || ''}
             onChange={e => onChange({ ...block, transcript: e.target.value })}
-            placeholder="AI автоматически извлечет субтитры из YouTube! Но если у видео нет субтитров, вставьте текст здесь..."
+            placeholder="Нажмите '🪄 Авто-Извлечь Субтитры' выше, или вставьте субтитры/описание видео вручную сюда..."
             className="w-full p-2.5 border rounded-xl text-xs font-sans bg-slate-50 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"
           ></textarea>
         </div>
@@ -303,7 +368,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
   const [previewBlockIds, setPreviewBlockIds] = useState({});
   const [saving, setSaving] = useState(false);
 
-  // Drag and Drop State
   const [draggedBlockIdx, setDraggedBlockIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
 
@@ -520,193 +584,4 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
       </div>
 
       {/* Active Page Title Inline Edit */}
-      <div className="flex items-center gap-3 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
-        <span className="text-xs font-bold text-indigo-700 uppercase">Название текущей страницы:</span>
-        <input
-          type="text"
-          value={pages[activePageIndex]?.title || ''}
-          onChange={(e) => {
-            const updated = [...pages];
-            updated[activePageIndex].title = e.target.value;
-            setPages(updated);
-          }}
-          className="p-1.5 border rounded-lg text-xs font-bold text-slate-800 bg-white flex-1 outline-none focus:ring-2 focus:ring-indigo-500"
-          placeholder="например: Часть 1: Чтение и Теория..."
-        />
-      </div>
-
-      {/* Main Builder Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left Palette */}
-        <div className="lg:col-span-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 h-fit sticky top-20">
-          <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">🛠️ Палитра блоков</h3>
-          
-          <div className="space-y-1.5 text-xs font-semibold">
-            <p className="text-slate-400 text-[10px] uppercase font-bold pt-1">Материалы</p>
-            <button onClick={() => handleAddBlock('heading')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">📝 Заголовок</button>
-            <button onClick={() => handleAddBlock('text')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">📄 Текст / Статья</button>
-            <button onClick={() => handleAddBlock('video')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🎥 Видео YouTube</button>
-
-            <p className="text-slate-400 text-[10px] uppercase font-bold pt-3">Интерактив</p>
-            <button onClick={() => handleAddBlock('flashcards')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🎴 Флешкарты</button>
-            <button onClick={() => handleAddBlock('multiple_choice')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">❓ Тест Multiple Choice</button>
-            <button onClick={() => handleAddBlock('gap_fill')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">✏️ Пропуски (Gap Fill)</button>
-            <button onClick={() => handleAddBlock('matching')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🔗 Сопоставление пар</button>
-            <button onClick={() => handleAddBlock('open_input')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">💬 Вопрос для ответа</button>
-          </div>
-        </div>
-
-        {/* Center Canvas Page */}
-        <div className="lg:col-span-3 space-y-6">
-          {activePage.blocks.length === 0 ? (
-            <div className="bg-white p-12 rounded-2xl border-2 border-dashed border-slate-200 text-center space-y-3">
-              <span className="text-4xl">🧩</span>
-              <h3 className="font-bold text-slate-800 text-lg">Страница пуста</h3>
-              <p className="text-slate-400 text-xs">Нажмите на инструмент слева, чтобы добавить первый блок!</p>
-            </div>
-          ) : (
-            activePage.blocks.map((b, idx) => {
-              const isPreview = previewBlockIds[b.id];
-              const isBeingDragged = draggedBlockIdx === idx;
-              const isDragTarget = dragOverIdx === idx;
-
-              return (
-                <div
-                  key={b.id || idx}
-                  onDragOver={(e) => handleDragOver(e, idx)}
-                  onDrop={(e) => handleDrop(e, idx)}
-                  className={`bg-white p-6 rounded-2xl border shadow-sm relative transition ${isBeingDragged ? 'opacity-30 border-dashed border-indigo-400' : ''} ${isDragTarget ? 'border-2 border-indigo-600 bg-indigo-50/20 ring-2 ring-indigo-500/20' : 'border-slate-200 hover:border-indigo-300'}`}
-                >
-                  {/* Floating Toolbar */}
-                  <div className="flex justify-between items-center bg-slate-100 p-2 rounded-xl mb-4 text-xs font-bold border border-slate-200">
-                    <div className="flex items-center gap-2">
-                      <span
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, idx)}
-                        onDragEnd={handleDragEnd}
-                        className="cursor-grab active:cursor-grabbing p-1 bg-white rounded-lg border border-slate-200 text-slate-400 hover:text-slate-800 hover:border-indigo-400 text-xs font-mono"
-                        title="Зажмите и перетащите блок"
-                      >
-                        ⠿ Drag
-                      </span>
-                      <span className="text-slate-500 uppercase">Блок #{idx + 1}: {b.type}</span>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      {pages.length > 1 && (
-                        <select
-                          value={activePageIndex}
-                          onChange={(e) => handleMoveBlockToPage(idx, Number(e.target.value))}
-                          className="p-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 outline-none"
-                          title="Переместить этот блок на другую страницу"
-                        >
-                          {pages.map((p, pIdx) => (
-                            <option key={p.id} value={pIdx}>
-                              {pIdx === activePageIndex ? '📄 Тек. страница' : `➡️ На стр. ${pIdx + 1}`}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-
-                      <button onClick={() => togglePreview(b.id)} className="p-1 px-2.5 bg-white rounded-lg border hover:bg-slate-50 text-indigo-600 font-bold">
-                        {isPreview ? '✏️ Редактировать' : '👁️ Предпросмотр'}
-                      </button>
-                      <button onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-30">⬆️</button>
-                      <button onClick={() => handleMoveBlock(idx, 1)} disabled={idx === activePage.blocks.length - 1} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-30">⬇️</button>
-                      <button onClick={() => handleDuplicateBlock(idx)} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50">📋 Клон</button>
-                      <button onClick={() => handleDeleteBlock(idx)} className="p-1 px-2 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100">🗑️</button>
-
-                      {/* ✨ AI BUTTON */}
-                      <button
-                        onClick={() => setAiModalTarget({ block: b, blockIdx: idx })}
-                        className="ml-2 px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-lg shadow-xs hover:opacity-95 transition flex items-center gap-1"
-                      >
-                        ✨ AI Помощник
-                      </button>
-                    </div>
-                  </div>
-
-                  {isPreview ? <BlockRenderer block={b} /> : <EditableBlockCard block={b} onChange={(updated) => handleUpdateBlock(idx, updated)} />}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* SELECTIVE AI MODAL */}
-      {aiModalTarget && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-6 shadow-2xl">
-            <div className="flex justify-between items-center pb-3 border-b">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">✨</span>
-                <h3 className="font-bold text-slate-900 text-lg">AI Помощник для блока #{aiModalTarget.blockIdx + 1} ({aiModalTarget.block.type})</h3>
-              </div>
-              <button onClick={() => setAiModalTarget(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
-            </div>
-
-            <p className="text-xs text-slate-500">Отметьте, какие именно задания сгенерировать из этого блока:</p>
-
-            <div className="space-y-2.5 text-sm font-medium">
-              {aiModalTarget.block.type === 'video' ? (
-                <>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('listening')} onChange={() => toggleTaskSelection('listening')} className="w-4 h-4 accent-indigo-600" />
-                    <span>🎧 Задания на аудирование / Вопросы к видео</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
-                    <span>🎴 Словарный запас из видео (Флешкарты)</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
-                    <span>💬 Разговорные вопросы по теме видео</span>
-                  </label>
-                </>
-              ) : (
-                <>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
-                    <span>🎴 Только Флешкарты (Слова с переводом)</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600" />
-                    <span>❓ Только Тест True / False (Правда или Ложь)</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600" />
-                    <span>✏️ Только Заполнение пропусков (Gap Fill)</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600" />
-                    <span>🔗 Только Сопоставление пар (Синонимы / Перевод)</span>
-                  </label>
-
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
-                    <span>💬 Только Вопросы для разговорной практики</span>
-                  </label>
-                </>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setAiModalTarget(null)} className="px-4 py-2.5 border rounded-xl text-xs font-bold">Отмена</button>
-              <button
-                onClick={handleExecuteAiTasks}
-                disabled={selectedTasks.length === 0 || aiGenerating}
-                className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl text-xs shadow-md disabled:opacity-40"
-              >
-                {aiGenerating ? '⌛ AI создаёт...' : `🚀 Сгенерировать (${selectedTasks.length})`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+      <div className="flex items-center gap-3 bg-indigo
