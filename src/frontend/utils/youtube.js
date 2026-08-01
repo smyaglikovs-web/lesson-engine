@@ -1,6 +1,6 @@
 export function getYouTubeId(url = '') {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
+  const match = String(url).match(regExp);
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
@@ -8,13 +8,30 @@ export const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   const videoId = getYouTubeId(videoUrl);
   if (!videoId) return null;
 
-  try {
-    const res = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
-    if (res.ok) {
-      const text = await res.text();
-      if (text.length > 50) return text.slice(0, 3500);
-    }
-  } catch(e) {}
+  const ttUrls = [
+    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
+    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
+    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`
+  ];
+
+  for (const url of ttUrls) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.length > 100) {
+          const clean = text
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&#39;/g, "'")
+            .replace(/&quot;/g, '"')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (clean.length > 50) return clean.slice(0, 3500);
+        }
+      }
+    } catch(e) {}
+  }
 
   return null;
 };
