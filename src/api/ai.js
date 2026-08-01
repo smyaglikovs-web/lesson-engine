@@ -4,6 +4,26 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
+// Search Song Lyrics API if YouTube CC is missing
+async function fetchLyricsForSong(title = '') {
+  try {
+    const clean = title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').replace(/official video/gi, '').replace(/music video/gi, '').replace(/official/gi, '').trim();
+    const parts = clean.split('-');
+    if (parts.length >= 2) {
+      const artist = parts[0].trim();
+      const song = parts[1].trim();
+      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.lyrics && data.lyrics.length > 50) {
+          return data.lyrics.slice(0, 3500);
+        }
+      }
+    }
+  } catch(e) {}
+  return null;
+}
+
 async function fetchYouTubeTranscriptAndMetadata(url) {
   try {
     const videoId = getYouTubeId(url);
@@ -43,6 +63,14 @@ async function fetchYouTubeTranscriptAndMetadata(url) {
       }
     } catch(e) {}
 
+    // Fallback: If YouTube CC is missing, search Lyrics API for songs
+    if (!transcriptText && title) {
+      const songLyrics = await fetchLyricsForSong(title);
+      if (songLyrics) {
+        transcriptText = songLyrics;
+      }
+    }
+
     return { title, transcript: transcriptText };
   } catch (e) {
     return null;
@@ -62,9 +90,9 @@ export async function transformBlockWithAI(env, payload) {
     if (ytData) {
       if (ytData.title) sourceBlock.title = ytData.title;
       if (ytData.transcript) {
-        videoDetailsText = `SPOKEN VIDEO TRANSCRIPT:\n"${ytData.transcript}"`;
+        videoDetailsText = `SPOKEN VIDEO TRANSCRIPT / LYRICS:\n"${ytData.transcript}"`;
       } else if (ytData.title) {
-        videoDetailsText = `VIDEO TITLE & TOPIC:\n"${ytData.title}"`;
+        videoDetailsText = `VIDEO TITLE & SONG TOPIC:\n"${ytData.title}"`;
       }
     }
   }
@@ -91,13 +119,13 @@ export async function transformBlockWithAI(env, payload) {
     const videoContent = sourceBlock.transcript || videoDetailsText || sourceBlock.title || sourceBlock.url;
 
     if (actions.includes('listening') || actions.includes('true_false')) {
-      taskInstructions.push(`- LISTENING COMPREHENSION: 4-5 quiz questions testing listening comprehension of this video transcript/topic: "${videoContent}". Format: { "type": "multiple_choice", "question": "Question about video?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
+      taskInstructions.push(`- LISTENING COMPREHENSION: 4-5 quiz questions testing listening comprehension of this video transcript/song lyrics: "${videoContent}". Format: { "type": "multiple_choice", "question": "Question about video/lyrics?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
     }
     if (actions.includes('flashcards')) {
-      taskInstructions.push(`- VIDEO VOCABULARY: 6-8 key vocabulary words from this video transcript/topic: "${videoContent}". Format: { "type": "flashcards", "title": "Vocabulary from Video", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
+      taskInstructions.push(`- VIDEO VOCABULARY: 6-8 key vocabulary words from this video transcript/song lyrics: "${videoContent}". Format: { "type": "flashcards", "title": "Vocabulary from Video", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
     }
     if (actions.includes('discussion')) {
-      taskInstructions.push(`- VIDEO DISCUSSION: 3 speaking questions about the video theme: "${videoContent}". Format: { "type": "open_input", "prompt": "Discussion question about video?", "placeholder": "Your thoughts..." }`);
+      taskInstructions.push(`- VIDEO DISCUSSION: 3 speaking questions about the video theme/lyrics: "${videoContent}". Format: { "type": "open_input", "prompt": "Discussion question about video?", "placeholder": "Your thoughts..." }`);
     }
   } else if (sourceBlock.type === 'image') {
     const imgCaption = sourceBlock.caption || (sourceBlock.images || []).map(i => i.caption).join(', ') || 'Visual images';
@@ -124,6 +152,7 @@ export async function transformBlockWithAI(env, payload) {
 
   const systemPrompt = `Ты — ведущий методист английского языка.
 Создай СТРОГО УКАЗАННЫЕ ИНТЕРАКТИВНЫЕ БЛОКИ на основе предоставленного материала.
+Если материал является песней, используй её официальный текст (lyrics) для упражнений.
 Уровень языка: ${level}.
 
 ТРЕБУЕМЫЕ БЛОКИ ДЛЯ СОЗДАНИЯ:
