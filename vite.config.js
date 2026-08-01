@@ -6,8 +6,22 @@ import path from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Custom Bundler Resolver: Intercepts & fixes any youtube.js path error
+const fixYoutubeUtilsPlugin = () => ({
+  name: 'fix-youtube-utils-redirect',
+  resolveId(source) {
+    if (source.includes('youtube.js') || source.endsWith('utils/youtube.js')) {
+      return path.resolve(__dirname, './src/frontend/utils/youtube.js');
+    }
+    return null;
+  }
+});
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    fixYoutubeUtilsPlugin()
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
