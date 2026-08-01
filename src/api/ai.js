@@ -4,12 +4,6 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// Fetch helper with User-Agent header (Bypasses YouTube 403 blocks!)
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-  'Accept-Language': 'en-US,en;q=0.9'
-};
-
 async function fetchLyricsForSong(title = '') {
   try {
     const clean = title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').replace(/official video/gi, '').replace(/music video/gi, '').replace(/official/gi, '').trim();
@@ -17,7 +11,7 @@ async function fetchLyricsForSong(title = '') {
     if (parts.length >= 2) {
       const artist = parts[0].trim();
       const song = parts[1].trim();
-      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`, { headers: HEADERS });
+      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.lyrics && data.lyrics.length > 50) {
@@ -29,7 +23,7 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// DIRECT YOUTUBE TIMEDTEXT + INNERTUBE SUBTITLE EXTRACTOR
+// HUGGINGFACE PYTHON YOUTUBE TRANSCRIPT MICROSERVICE
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
@@ -38,7 +32,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
     // 1. Fetch Title via oEmbed
     let title = '';
     try {
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: HEADERS });
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
       if (oembedRes.ok) {
         const odata = await oembedRes.json();
         title = odata.title || '';
@@ -47,67 +41,34 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
 
     let transcriptText = '';
 
-    // LAYER 1: YouTube Direct TimedText API (lang=en & kind=asr)
-    const ttUrls = [
-      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
-      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`,
-      `https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`
-    ];
-
-    for (const ttUrl of ttUrls) {
-      if (transcriptText) break;
-      try {
-        const res = await fetch(ttUrl, { headers: HEADERS });
-        if (res.ok) {
-          const xml = await res.text();
-          if (xml && (xml.includes('<text') || xml.length > 100)) {
-            const cleanText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-            if (cleanText.length > 50) {
-              transcriptText = cleanText.slice(0, 3500);
-              break;
-            }
+    // ENGINE 1: Free HuggingFace Python youtube_transcript_api Microservice
+    try {
+      const hfRes = await fetch(`https://kassambara-youtube-transcript.hf.space/transcript?video_id=${videoId}`);
+      if (hfRes.ok) {
+        const hfData = await hfRes.json();
+        if (Array.isArray(hfData) && hfData.length > 0) {
+          const fullText = hfData.map(item => item.text).join(' ');
+          if (fullText.length > 50) {
+            transcriptText = fullText.slice(0, 3500);
           }
         }
-      } catch(e) {}
-    }
+      }
+    } catch(e) {}
 
-    // LAYER 2: Android InnerTube Player API
+    // ENGINE 2: Vercel Subtitles Microservice
     if (!transcriptText) {
       try {
-        const innerRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'com.google.android.youtube/19.08.35 (Linux; U; Android 11; US)'
-          },
-          body: JSON.stringify({
-            context: { client: { clientName: 'ANDROID', clientVersion: '19.08.35' } },
-            videoId: videoId
-          })
-        });
-
-        if (innerRes.ok) {
-          const data = await innerRes.json();
-          const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-          if (tracks && tracks.length > 0) {
-            const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || tracks[0];
-            if (enTrack && enTrack.baseUrl) {
-              const subRes = await fetch(enTrack.baseUrl, { headers: HEADERS });
-              if (subRes.ok) {
-                const xmlText = await subRes.text();
-                const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-                if (cleanText.length > 50) {
-                  transcriptText = cleanText.slice(0, 3500);
-                }
-              }
-            }
+        const vRes = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
+        if (vRes.ok) {
+          const vText = await vRes.text();
+          if (vText && vText.length > 50) {
+            transcriptText = vText.slice(0, 3500);
           }
         }
       } catch(e) {}
     }
 
-    // LAYER 3: Song Lyrics Search API Fallback
+    // ENGINE 3: Song Lyrics Search API Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) {
