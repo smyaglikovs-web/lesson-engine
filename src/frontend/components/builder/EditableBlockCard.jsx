@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
-import { compressAndUploadImage, getYouTubeId } from '@utils/youtube.js';
+import { compressAndUploadImage } from '@utils/youtube.js';
 
 export const EditableBlockCard = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
@@ -145,7 +145,6 @@ export const EditableBlockCard = ({ block, onChange }) => {
       let transcript = null;
       let title = block.title || '';
 
-      // 1. Try Server Fetch First
       try {
         const res = await fetch('/api/youtube/transcript', {
           method: 'POST',
@@ -161,41 +160,6 @@ export const EditableBlockCard = ({ block, onChange }) => {
           }
         }
       } catch(e) {}
-
-      // 2. Client-Side Direct Fetch Fallback (Bypasses Datacenter Blocks using User Browser IP)
-      if (!transcript) {
-        const videoId = getYouTubeId(block.url);
-        if (videoId) {
-          const clientUrls = [
-            `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
-            `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-            `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`
-          ];
-
-          for (const url of clientUrls) {
-            if (transcript) break;
-            try {
-              const res = await fetch(url);
-              if (res.ok) {
-                const text = await res.text();
-                if (text && text.length > 100) {
-                  const clean = text
-                    .replace(/<[^>]+>/g, ' ')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&#39;/g, "'")
-                    .replace(/&quot;/g, '"')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-
-                  if (clean.length > 50) {
-                    transcript = clean.slice(0, 3500);
-                  }
-                }
-              }
-            } catch(e) {}
-          }
-        }
-      }
 
       setFetchingSubtitles(false);
 
