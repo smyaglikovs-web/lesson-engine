@@ -20,18 +20,9 @@ export default function App() {
   const [roomId, setRoomId] = useState('');
   const [viewSubmissionsLesson, setViewSubmissionsLesson] = useState(null);
 
-  // SMART PASSWORD FALLBACK: Asks for password if session ever drops
+  // ALWAYS REMEMBERS TEACHER PASSWORD FROM LOCALSTORAGE
   const getAuthPassword = () => {
-    let pass = sessionStorage.getItem('teacher_pass');
-    if (!pass) {
-      pass = prompt('Введите пароль учителя (teacher123):');
-      if (pass) {
-        sessionStorage.setItem('teacher_pass', pass);
-        sessionStorage.setItem('teacher_auth', 'true');
-        setIsAuthenticated(true);
-      }
-    }
-    return pass || '';
+    return localStorage.getItem('teacher_pass') || 'teacher123';
   };
 
   const fetchLessons = async () => {
@@ -48,8 +39,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    const authSaved = sessionStorage.getItem('teacher_auth') === 'true';
-    if (authSaved) setIsAuthenticated(true);
+    const authSaved = localStorage.getItem('teacher_auth') === 'true';
+    if (authSaved) {
+      setIsAuthenticated(true);
+      setIsTeacher(true);
+      fetchLessons();
+    }
 
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
@@ -70,7 +65,6 @@ export default function App() {
     }
 
     setIsTeacher(true);
-    if (authSaved) fetchLessons();
   }, []);
 
   const handleTeacherLogin = async (passwordInput) => {
@@ -81,8 +75,8 @@ export default function App() {
         body: JSON.stringify({ password: passwordInput })
       });
       if (res.ok) {
-        sessionStorage.setItem('teacher_auth', 'true');
-        sessionStorage.setItem('teacher_pass', passwordInput);
+        localStorage.setItem('teacher_auth', 'true');
+        localStorage.setItem('teacher_pass', passwordInput);
         setIsAuthenticated(true);
         setIsTeacher(true);
         setLoginError(false);
@@ -96,8 +90,8 @@ export default function App() {
   };
 
   const handleTeacherLogout = () => {
-    sessionStorage.removeItem('teacher_auth');
-    sessionStorage.removeItem('teacher_pass');
+    localStorage.removeItem('teacher_auth');
+    localStorage.removeItem('teacher_pass');
     setIsAuthenticated(false);
   };
 
@@ -120,15 +114,12 @@ export default function App() {
   };
 
   const handleSaveLesson = async (newLesson) => {
-    const pass = getAuthPassword();
-    if (!pass) return alert('Пароль учителя обязателен для сохранения');
-
     try {
       const res = await fetch('/api/lessons', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-teacher-password': pass
+          'x-teacher-password': getAuthPassword()
         },
         body: JSON.stringify(newLesson)
       });
@@ -148,13 +139,10 @@ export default function App() {
   const handleDeleteLesson = async (id, e) => {
     e.stopPropagation();
     if (!confirm('Вы уверены, что хотите удалить этот урок из базы данных?')) return;
-    const pass = getAuthPassword();
-    if (!pass) return;
-
     try {
       const res = await fetch('/api/lessons/' + id, { 
         method: 'DELETE',
-        headers: { 'x-teacher-password': pass }
+        headers: { 'x-teacher-password': getAuthPassword() }
       });
       const data = await res.json();
       if (res.ok && data.success) fetchLessons();
