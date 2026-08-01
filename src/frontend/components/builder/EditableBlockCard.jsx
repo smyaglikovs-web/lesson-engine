@@ -155,7 +155,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
           const data = await res.json();
           if (data.success && data.transcript) {
             transcript = data.transcript;
-            source = 'YouTube InnerTube API';
+            source = 'YouTube Direct API';
             if (data.title && !block.title) {
               onChange({ ...block, title: data.title, transcript });
             }
@@ -212,7 +212,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
               onClick={handleAutoFetchSubtitles}
               className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
             >
-              {fetchingSubtitles ? '⌛ Загрузка...' : '🪄 Авто-Извлечь Субтитры'}
+              {fetchingSubtitles ? '⌛ Извлечение...' : '🪄 Авто-Извлечь Субтитры'}
             </button>
           </div>
 
