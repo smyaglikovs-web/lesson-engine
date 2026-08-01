@@ -99,6 +99,14 @@ export async function transformBlockWithAI(env, payload) {
     if (actions.includes('discussion')) {
       taskInstructions.push(`- VIDEO DISCUSSION: 3 speaking questions about the video theme: "${videoContent}". Format: { "type": "open_input", "prompt": "Discussion question about video?", "placeholder": "Your thoughts..." }`);
     }
+  } else if (sourceBlock.type === 'image') {
+    const imgCaption = sourceBlock.caption || (sourceBlock.images || []).map(i => i.caption).join(', ') || 'Visual images';
+    if (actions.includes('discussion')) {
+      taskInstructions.push(`- IMAGE DISCUSSION: 3 speaking discussion questions based on these visual themes (${imgCaption}). Format: { "type": "open_input", "prompt": "Speaking Question about the image?", "placeholder": "Describe what you see..." }`);
+    }
+    if (actions.includes('flashcards')) {
+      taskInstructions.push(`- IMAGE VOCABULARY: 6-8 key vocabulary words describing these images (${imgCaption}). Format: { "type": "flashcards", "title": "Vocabulary for Images", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
+    }
   } else if (sourceBlock.type === 'flashcards') {
     if (actions.includes('matching')) {
       const words = (sourceBlock.cards || []).map(c => `${c.front} = ${c.back}`).join(', ');
