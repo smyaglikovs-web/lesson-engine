@@ -104,82 +104,67 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     } catch(e) {}
 
-    // Step 2: Try Open Piped Mirror Instances (Bypasses Datacenter IP Blocks)
-    const pipedInstances = [
-      'https://pipedapi.kavin.rocks',
-      'https://api.piped.privacydev.net',
-      'https://pipedapi.tokhmi.xyz',
-      'https://piped-api.garudalinux.org'
-    ];
+    // Step 2: Query YouTube Track List to find exact lang & kind (ASR vs Manual)
+    try {
+      const listRes = await fetch(`https://www.youtube.com/api/timedtext?type=list&v=${videoId}`, { headers: BROWSER_HEADERS });
+      if (listRes.ok) {
+        const listXml = await listRes.text();
+        const trackMatches = listXml.match(/<track[^>]+>/gi) || [];
+        const tracks = [];
 
-    for (const instance of pipedInstances) {
-      if (transcriptText) break;
-      try {
-        const res = await fetch(`${instance}/streams/${videoId}`, { headers: BROWSER_HEADERS });
-        if (res.ok) {
-          const data = await res.json();
-          if (!title && data.title) title = data.title;
+        for (const tTag of trackMatches) {
+          const langMatch = tTag.match(/lang_code="([^"]+)"/);
+          const kindMatch = tTag.match(/kind="([^"]+)"/);
+          const nameMatch = tTag.match(/name="([^"]+)"/);
+          if (langMatch) {
+            tracks.push({
+              lang: langMatch[1],
+              kind: kindMatch ? kindMatch[1] : '',
+              name: nameMatch ? nameMatch[1] : ''
+            });
+          }
+        }
 
-          const subtitles = data.subtitles || [];
-          const englishSub = subtitles.find(s => s.code === 'en' || s.code === 'en-US' || s.name?.toLowerCase().includes('english')) || subtitles[0];
+        const englishTrack = tracks.find(t => t.lang.startsWith('en') && !t.kind) || 
+                             tracks.find(t => t.lang.startsWith('en')) || 
+                             tracks[0];
 
-          if (englishSub && englishSub.url) {
-            const subRes = await fetch(englishSub.url);
-            if (subRes.ok) {
-              const rawSub = await subRes.text();
-              const clean = parseVttToText(rawSub);
-              if (clean.length > 50) {
-                transcriptText = clean.slice(0, 3500);
-                break;
-              }
+        if (englishTrack) {
+          let trackUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${englishTrack.lang}`;
+          if (englishTrack.kind) trackUrl += `&kind=${englishTrack.kind}`;
+          if (englishTrack.name) trackUrl += `&name=${encodeURIComponent(englishTrack.name)}`;
+
+          const subRes = await fetch(trackUrl, { headers: BROWSER_HEADERS });
+          if (subRes.ok) {
+            const xml = await subRes.text();
+            const clean = xml
+              .replace(/<text[^>]*>/g, ' ')
+              .replace(/<\/text>/g, ' ')
+              .replace(/<[^>]+>/g, '')
+              .replace(/&amp;/g, '&')
+              .replace(/&#39;/g, "'")
+              .replace(/&quot;/g, '"')
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            if (clean.length > 50) {
+              transcriptText = clean.slice(0, 3500);
             }
           }
         }
-      } catch(e) {}
-    }
-
-    // Step 3: Try Invidious Mirror API Instances
-    if (!transcriptText) {
-      const invidiousInstances = [
-        'https://inv.tux.pizza',
-        'https://invidious.drgns.space',
-        'https://vid.puffyan.us'
-      ];
-
-      for (const instance of invidiousInstances) {
-        if (transcriptText) break;
-        try {
-          const res = await fetch(`${instance}/api/v1/captions/${videoId}`, { headers: BROWSER_HEADERS });
-          if (res.ok) {
-            const data = await res.json();
-            const captions = data.captions || [];
-            const enCap = captions.find(c => c.languageCode === 'en' || c.languageCode === 'en-US') || captions[0];
-
-            if (enCap && enCap.url) {
-              const subRes = await fetch(`${instance}${enCap.url}`);
-              if (subRes.ok) {
-                const rawSub = await subRes.text();
-                const clean = parseVttToText(rawSub);
-                if (clean.length > 50) {
-                  transcriptText = clean.slice(0, 3500);
-                  break;
-                }
-              }
-            }
-          }
-        } catch(e) {}
       }
-    }
+    } catch(e) {}
 
-    // Step 4: Direct TimedText API Fallback
+    // Step 3: Direct Fallbacks (Testing auto-generated kind=asr specifically)
     if (!transcriptText) {
-      const timedTextUrls = [
+      const fallbackUrls = [
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
         `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`,
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=srv3`
       ];
 
-      for (const ttUrl of timedTextUrls) {
+      for (const ttUrl of fallbackUrls) {
         if (transcriptText) break;
         try {
           const res = await fetch(ttUrl, { headers: BROWSER_HEADERS });
@@ -197,6 +182,40 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
               if (clean.length > 50) {
                 transcriptText = clean.slice(0, 3500);
                 break;
+              }
+            }
+          }
+        } catch(e) {}
+      }
+    }
+
+    // Step 4: Open Piped Mirror Fallbacks
+    if (!transcriptText) {
+      const pipedInstances = [
+        'https://pipedapi.kavin.rocks',
+        'https://api.piped.privacydev.net',
+        'https://pipedapi.tokhmi.xyz'
+      ];
+
+      for (const instance of pipedInstances) {
+        if (transcriptText) break;
+        try {
+          const res = await fetch(`${instance}/streams/${videoId}`, { headers: BROWSER_HEADERS });
+          if (res.ok) {
+            const data = await res.json();
+            if (!title && data.title) title = data.title;
+            const subtitles = data.subtitles || [];
+            const englishSub = subtitles.find(s => s.code === 'en' || s.code === 'en-US' || s.name?.toLowerCase().includes('english')) || subtitles[0];
+
+            if (englishSub && englishSub.url) {
+              const subRes = await fetch(englishSub.url);
+              if (subRes.ok) {
+                const rawSub = await subRes.text();
+                const clean = parseVttToText(rawSub);
+                if (clean.length > 50) {
+                  transcriptText = clean.slice(0, 3500);
+                  break;
+                }
               }
             }
           }
