@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
-import { fetchYouTubeTranscriptAuto, compressAndUploadImage } from '../../utils/youtube.js';
+
 // Inline Helpers (Zero External Import Dependencies)
 function getYouTubeId(url = '') {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -248,7 +248,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
             type="text"
             value={block.url || ''}
             onChange={e => handleUrlChange(e.target.value)}
-            placeholder="Ссылка YouTube (https://www.youtube.com/watch?v=...)"
+            placeholder="Ссылка YouTube (...)"
             className="p-2.5 border rounded-xl text-xs font-mono"
           />
         </div>
