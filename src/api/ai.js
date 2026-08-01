@@ -1,17 +1,14 @@
-// Extract YouTube Video ID
 function getYouTubeId(url = '') {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// Fetch YouTube Subtitles & Metadata automatically on the server
 async function fetchYouTubeTranscriptAndMetadata(url) {
   try {
     const videoId = getYouTubeId(url);
     if (!videoId) return null;
 
-    // 1. Fetch Title via oEmbed
     let title = '';
     try {
       const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
@@ -21,7 +18,6 @@ async function fetchYouTubeTranscriptAndMetadata(url) {
       }
     } catch(e) {}
 
-    // 2. Fetch English Transcript/Subtitles from YouTube
     let transcriptText = '';
     try {
       const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
@@ -40,7 +36,6 @@ async function fetchYouTubeTranscriptAndMetadata(url) {
             const subRes = await fetch(enTrack.baseUrl);
             if (subRes.ok) {
               const xmlText = await subRes.text();
-              // Clean XML tags to get raw spoken transcript text
               transcriptText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim().slice(0, 3500);
             }
           }
@@ -61,7 +56,6 @@ export async function transformBlockWithAI(env, payload) {
     return { error: 'Выберите хотя бы одно задание.' };
   }
 
-  // AUTOMATIC YOUTUBE TRANSCRIPT FETCHING
   let videoDetailsText = '';
   if (sourceBlock.type === 'video' && sourceBlock.url) {
     const ytData = await fetchYouTubeTranscriptAndMetadata(sourceBlock.url);
@@ -77,7 +71,6 @@ export async function transformBlockWithAI(env, payload) {
 
   const taskInstructions = [];
 
-  // 1. TEXT BLOCK ACTIONS
   if (sourceBlock.type === 'text') {
     if (actions.includes('flashcards')) {
       taskInstructions.push(`- FLASHCARDS: 6-8 key words with Russian translation and example sentence. Format: { "type": "flashcards", "title": "Target Vocabulary", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
@@ -94,10 +87,7 @@ export async function transformBlockWithAI(env, payload) {
     if (actions.includes('discussion')) {
       taskInstructions.push(`- DISCUSSION: 3 deep discussion questions: { "type": "open_input", "prompt": "Discussion question?", "placeholder": "Your answer..." }`);
     }
-  }
-
-  // 2. VIDEO BLOCK ACTIONS (Uses Scraped YouTube Transcript)
-  else if (sourceBlock.type === 'video') {
+  } else if (sourceBlock.type === 'video') {
     const videoContent = sourceBlock.transcript || videoDetailsText || sourceBlock.title || sourceBlock.url;
 
     if (actions.includes('listening') || actions.includes('true_false')) {
@@ -109,10 +99,7 @@ export async function transformBlockWithAI(env, payload) {
     if (actions.includes('discussion')) {
       taskInstructions.push(`- VIDEO DISCUSSION: 3 speaking questions about the video theme: "${videoContent}". Format: { "type": "open_input", "prompt": "Discussion question about video?", "placeholder": "Your thoughts..." }`);
     }
-  }
-
-  // 3. FLASHCARDS ACTIONS
-  else if (sourceBlock.type === 'flashcards') {
+  } else if (sourceBlock.type === 'flashcards') {
     if (actions.includes('matching')) {
       const words = (sourceBlock.cards || []).map(c => `${c.front} = ${c.back}`).join(', ');
       taskInstructions.push(`- MATCHING: Convert these words to matching pairs: ${words}. Format: { "type": "matching", "instruction": "Match the pairs:", "pairs": [{ "left": "Word", "right": "Translation" }] }`);
@@ -123,7 +110,6 @@ export async function transformBlockWithAI(env, payload) {
     }
   }
 
-  // Fallback
   if (taskInstructions.length === 0) {
     taskInstructions.push(`- PRACTICE TASK: 3 discussion questions: { "type": "open_input", "prompt": "Practice question?" }`);
   }
