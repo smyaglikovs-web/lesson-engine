@@ -84,6 +84,7 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
+// HIGH-PERFORMANCE NATIVE YOUTUBE TRANSCRIPT EXTRACTOR
 export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   try {
     const videoId = getYouTubeId(videoUrl);
@@ -94,7 +95,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
 
     const apiKey = env.YOUTUBE_API_KEY || '';
 
-    // Step 1: Query YouTube Data API for Title
+    // Step 1: Query Official YouTube Data API v3 for Metadata (Title)
     if (apiKey) {
       try {
         const apiRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`);
@@ -117,86 +118,79 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
       } catch(e) {}
     }
 
-    // Step 2: InnerTube API Captions
+    // Step 2: Extract captionTracks from Watch Page HTML via Regex
     try {
-      const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 12; en_US)'
-        },
-        body: JSON.stringify({
-          context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38', hl: 'en', gl: 'US' } },
-          videoId: videoId
-        })
-      });
+      const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: BROWSER_HEADERS });
+      if (pageRes.ok) {
+        const html = await pageRes.text();
 
-      if (innertubeRes.ok) {
-        const playerData = await innertubeRes.json();
-        if (!title && playerData.videoDetails?.title) {
-          title = playerData.videoDetails.title;
-        }
+        const captionRegex = /"captionTracks":\s*(\[.*?\])/;
+        const match = html.match(captionRegex);
 
-        const captionTracks = playerData.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-        const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.vssId?.includes('en')) || captionTracks[0];
+        if (match && match[1]) {
+          const captionTracks = JSON.parse(match[1]);
+          const track = captionTracks.find(t => t.languageCode && t.languageCode.startsWith('en')) || captionTracks[0];
 
-        if (track && track.baseUrl) {
-          let targetUrl = track.baseUrl.replace('fmt=srv3', 'fmt=json3');
-          const subRes = await fetch(targetUrl, { headers: BROWSER_HEADERS });
+          if (track && track.baseUrl) {
+            const subRes = await fetch(track.baseUrl, { headers: BROWSER_HEADERS });
+            if (subRes.ok) {
+              const xml = await subRes.text();
+              const textRegex = /<text[^>]*>(.*?)<\/text>/g;
+              let fullText = '';
+              let m;
 
-          if (subRes.ok) {
-            const rawContent = await subRes.text();
-            try {
-              const jsonData = JSON.parse(rawContent);
-              if (jsonData.events) {
-                const words = [];
-                for (const ev of jsonData.events) {
-                  if (ev.segs) {
-                    for (const seg of ev.segs) {
-                      if (seg.utf8 && seg.utf8 !== '\n') words.push(seg.utf8);
-                    }
-                  }
-                }
-                const fullText = words.join(' ').replace(/\s+/g, ' ').trim();
-                if (fullText.length > 50) transcriptText = fullText.slice(0, 3500);
+              while ((m = textRegex.exec(xml)) !== null) {
+                let decodedText = m[1]
+                  .replace(/&amp;/g, '&')
+                  .replace(/&lt;/g, '<')
+                  .replace(/&gt;/g, '>')
+                  .replace(/&#39;/g, "'")
+                  .replace(/&quot;/g, '"')
+                  .replace(/<[^>]+>/g, '')
+                  .trim();
+                if (decodedText) fullText += decodedText + ' ';
               }
-            } catch(e) {
-              const cleanText = rawContent.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-              if (cleanText.length > 50) transcriptText = cleanText.slice(0, 3500);
+
+              fullText = fullText.replace(/\s+/g, ' ').trim();
+              if (fullText.length > 50) {
+                transcriptText = fullText.slice(0, 3500);
+              }
             }
           }
         }
       }
     } catch(e) {}
 
-    // Step 3: Piped Mirror Instances Fallback
+    // Step 3: Direct TimedText API Fallback (Enforcing kind=asr for Auto-Captions)
     if (!transcriptText) {
-      const pipedInstances = [
-        'https://pipedapi.kavin.rocks',
-        'https://api.piped.privacydev.net',
-        'https://pipedapi.tokhmi.xyz'
+      const timedTextUrls = [
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
+        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`
       ];
 
-      for (const instance of pipedInstances) {
+      for (const ttUrl of timedTextUrls) {
         if (transcriptText) break;
         try {
-          const res = await fetch(`${instance}/streams/${videoId}`, { headers: BROWSER_HEADERS });
+          const res = await fetch(ttUrl, { headers: BROWSER_HEADERS });
           if (res.ok) {
-            const data = await res.json();
-            if (!title && data.title) title = data.title;
-            const subtitles = data.subtitles || [];
-            const englishSub = subtitles.find(s => s.code === 'en' || s.code === 'en-US' || s.name?.toLowerCase().includes('english')) || subtitles[0];
-
-            if (englishSub && englishSub.url) {
-              const subRes = await fetch(englishSub.url);
-              if (subRes.ok) {
-                const rawSub = await subRes.text();
-                const clean = parseVttToText(rawSub);
-                if (clean.length > 50) {
-                  transcriptText = clean.slice(0, 3500);
-                  break;
-                }
+            const xml = await res.text();
+            if (xml && xml.includes('<text')) {
+              const textRegex = /<text[^>]*>(.*?)<\/text>/g;
+              let fullText = '';
+              let m;
+              while ((m = textRegex.exec(xml)) !== null) {
+                let decodedText = m[1]
+                  .replace(/&amp;/g, '&')
+                  .replace(/&lt;/g, '<')
+                  .replace(/&gt;/g, '>')
+                  .replace(/&#39;/g, "'")
+                  .replace(/&quot;/g, '"')
+                  .trim();
+                if (decodedText) fullText += decodedText + ' ';
               }
+              fullText = fullText.replace(/\s+/g, ' ').trim();
+              if (fullText.length > 50) transcriptText = fullText.slice(0, 3500);
             }
           }
         } catch(e) {}
