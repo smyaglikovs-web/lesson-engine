@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
-import { compressAndUploadImage, getYouTubeId } from '@utils/youtube.js';
+import { compressAndUploadImage } from '@utils/youtube.js';
 
-// Auto-cleaner for raw VTT/SRT subtitle files and timestamped text
+// Instant VTT / SRT / YouTube transcript timestamp cleaner
 function cleanVttToSentences(vttText = '') {
   if (!vttText) return '';
   return vttText
@@ -161,7 +161,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
 
     const handleTranscriptInput = (e) => {
       let textVal = e.target.value;
-      // Auto-clean WebVTT or SRT timestamps if pasted
+      // Instant auto-clean if timestamped VTT or SRT text is pasted
       if (textVal.includes('-->') || textVal.includes('WEBVTT')) {
         textVal = cleanVttToSentences(textVal);
       }
@@ -171,63 +171,32 @@ export const EditableBlockCard = ({ block, onChange }) => {
     const handleAutoFetchSubtitles = async () => {
       if (!block.url) return alert('Сначала вставьте ссылку на YouTube видео!');
       setFetchingSubtitles(true);
-      setSubtitleStatus('⌛ Извлечение речевого транскрипта из YouTube...');
+      setSubtitleStatus('⌛ Извлечение транскрипта из бэкенд-сервиса...');
 
-      const videoId = getYouTubeId(block.url);
       let transcript = null;
-      let title = block.title || '';
 
-      // Step 1: Invidious Open CORS Subtitle API (<500ms)
-      if (videoId) {
-        const invidiousEndpoints = [
-          `https://inv.tux.pizza/api/v1/captions/${videoId}?lang=en`,
-          `https://invidious.drgns.space/api/v1/captions/${videoId}?lang=en`,
-          `https://vid.puffyan.us/api/v1/captions/${videoId}?lang=en`
-        ];
-
-        for (const endpoint of invidiousEndpoints) {
-          if (transcript) break;
-          try {
-            const invRes = await fetch(endpoint);
-            if (invRes.ok) {
-              const vtt = await invRes.text();
-              if (vtt && vtt.length > 100) {
-                const clean = cleanVttToSentences(vtt);
-                if (clean.length > 50) {
-                  transcript = clean.slice(0, 3500);
-                }
-              }
-            }
-          } catch(e) {}
-        }
-      }
-
-      // Step 2: Server API Fallback
-      if (!transcript) {
-        try {
-          const res = await fetch('/api/youtube/transcript', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: block.url })
-          });
-          
-          if (res.ok) {
-            const data = await res.json();
-            if (data.transcript && data.transcript.length > 50) {
-              transcript = cleanVttToSentences(data.transcript);
-              if (data.title) title = data.title;
-            }
+      try {
+        const res = await fetch('/api/youtube/transcript', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: block.url })
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.transcript) {
+            transcript = cleanVttToSentences(data.transcript);
           }
-        } catch(e) {}
-      }
+        }
+      } catch(e) {}
 
       setFetchingSubtitles(false);
 
       if (transcript) {
-        onChange({ ...block, title: title || block.title, transcript });
+        onChange({ ...block, transcript });
         setSubtitleStatus(`✅ Речевой транскрипт загружен! (${transcript.split(' ').length} слов)`);
       } else {
-        setSubtitleStatus(`ℹ️ Скопируйте текст из TubeTranscript/YouTube и вставьте в поле ниже — оно автоматически очистит таймкоды!`);
+        setSubtitleStatus(`ℹ️ Субтитры не извлечены автоматически. Скопируйте текст из TubeTranscript/YouTube и вставьте ниже — таймкоды очистятся автоматически!`);
       }
     };
 
