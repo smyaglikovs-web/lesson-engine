@@ -2,7 +2,8 @@ import { ensureTables } from '../db/schema.js';
 
 export async function verifyTeacherLogin(env, password) {
   const clean = (password || '').trim();
-  return { success: clean === 'teacher123' };
+  const expectedPass = env.TEACHER_PASSWORD || 'teacher123';
+  return { success: clean === expectedPass };
 }
 
 export async function getLessons(env) {
@@ -27,7 +28,8 @@ export async function getSingleLesson(env, lessonId) {
 
 export async function deleteLesson(env, lessonId, password) {
   const clean = (password || '').trim();
-  if (clean !== 'teacher123') return { error: "Неверный пароль учителя!" };
+  const expectedPass = env.TEACHER_PASSWORD || 'teacher123';
+  if (clean !== expectedPass) return { error: "Неверный пароль учителя!" };
   await env.DB.prepare("DELETE FROM lessons WHERE id = ?").bind(lessonId).run();
   return { success: true };
 }
