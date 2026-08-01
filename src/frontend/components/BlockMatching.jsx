@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { playCorrectSound, playWrongSound } from '../utils/sounds.js';
 
 const shuffleArray = (arr) => {
   const res = [...arr];
@@ -11,6 +12,7 @@ const shuffleArray = (arr) => {
 
 export const BlockMatching = ({ block, value, onChange }) => {
   const matched = value?.matched || [];
+  const mistakes = value?.mistakes || 0;
   const [selectedLeft, setSelectedLeft] = useState(null);
   const [wrongPair, setWrongPair] = useState(false);
 
@@ -18,24 +20,43 @@ export const BlockMatching = ({ block, value, onChange }) => {
     return shuffleArray((block.pairs || []).map(p => p.right));
   }, [block.id]);
 
-  const handleLeftClick = (leftText) => { if (matched.some(m => m.left === leftText)) return; setSelectedLeft(leftText); setWrongPair(false); };
+  const handleLeftClick = (leftText) => {
+    if (matched.some(m => m.left === leftText)) return;
+    setSelectedLeft(leftText);
+    setWrongPair(false);
+  };
+
   const handleRightClick = (rightText) => {
     if (!selectedLeft || matched.some(m => m.right === rightText)) return;
     const correctPair = block.pairs.find(p => p.left === selectedLeft && p.right === rightText);
+
     if (correctPair) {
+      playCorrectSound();
       const newMatched = [...matched, { left: selectedLeft, right: rightText }];
-      onChange({ matched: newMatched });
+      onChange({ matched: newMatched, mistakes });
       setSelectedLeft(null);
     } else {
+      playWrongSound();
       setWrongPair(true);
-      setTimeout(() => setWrongPair(false), 1000);
+      const newMistakes = mistakes + 1;
+      onChange({ matched, mistakes: newMistakes });
+      setTimeout(() => setWrongPair(false), 800);
     }
   };
 
   const isCompleted = matched.length === (block.pairs?.length || 0);
+
   return (
     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
-      <h4 className="font-semibold text-lg text-slate-800 mb-4">{block.instruction || 'Соедините пары:'}</h4>
+      <div className="flex justify-between items-center mb-4">
+        <h4 className="font-semibold text-lg text-slate-800">{block.instruction || 'Соедините пары:'}</h4>
+        {mistakes > 0 && (
+          <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-bold text-xs rounded-full border border-rose-200 animate-pulse">
+            ⚠️ Ошибок: {mistakes}
+          </span>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="space-y-2">
           {block.pairs?.map((p, idx) => {
@@ -48,18 +69,25 @@ export const BlockMatching = ({ block, value, onChange }) => {
             return <button key={`${block.id}-left-${idx}`} disabled={isMatched} onClick={() => handleLeftClick(p.left)} className={style}>{p.left} {isMatched && '✓'}</button>;
           })}
         </div>
+
         <div className="space-y-2">
           {rightItems.map((rightText, idx) => {
             const isMatched = matched.some(m => m.right === rightText);
             let style = "w-full p-3 text-left rounded-lg border font-medium transition text-sm ";
             if (isMatched) style += "bg-green-50 border-green-500 text-green-800 opacity-60";
-            else if (wrongPair && selectedLeft) style += "bg-red-50 border-red-300 text-slate-700";
+            else if (wrongPair && selectedLeft) style += "bg-red-50 border-red-300 text-slate-700 animate-bounce";
             else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-700";
             return <button key={`${block.id}-right-${idx}`} disabled={isMatched} onClick={() => handleRightClick(rightText)} className={style}>{rightText} {isMatched && '✓'}</button>;
           })}
         </div>
       </div>
-      {isCompleted && <div className="p-3 bg-green-100 text-green-800 rounded-lg text-sm font-bold text-center">Все пары соединены верно 🎉</div>}
+
+      {isCompleted && (
+        <div className="p-3 bg-green-100 text-green-800 rounded-lg text-sm font-bold text-center flex justify-between items-center px-4">
+          <span>Все пары соединены верно! 🎉</span>
+          <span className="text-xs font-normal">Всего ошибок: {mistakes}</span>
+        </div>
+      )}
     </div>
   );
 };
