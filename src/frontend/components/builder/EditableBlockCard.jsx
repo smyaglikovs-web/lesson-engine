@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
-import { compressAndUploadImage } from '@utils/youtube.js';
+import { compressAndUploadImage, getYouTubeId } from '@utils/youtube.js';
 
 export const EditableBlockCard = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
@@ -145,6 +145,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
       let transcript = null;
       let title = block.title || '';
 
+      // Step 1: Server-Side Multi-Provider Fetch
       try {
         const res = await fetch('/api/youtube/transcript', {
           method: 'POST',
@@ -160,6 +161,25 @@ export const EditableBlockCard = ({ block, onChange }) => {
           }
         }
       } catch(e) {}
+
+      // Step 2: Direct Client-Side Browser Fallback (youtube-transcript.ai Open CORS Engine)
+      if (!transcript) {
+        const videoId = getYouTubeId(block.url);
+        if (videoId) {
+          try {
+            const clientRes = await fetch(`https://youtube-transcript.ai/transcript/${videoId}.txt`);
+            if (clientRes.ok) {
+              const text = await clientRes.text();
+              if (text && text.length > 50 && !text.includes('Error') && !text.includes('not found')) {
+                const cleanText = text.replace(/\[\d+:\d+\]/g, '').replace(/\s+/g, ' ').trim();
+                if (cleanText.length > 50) {
+                  transcript = cleanText.slice(0, 3500);
+                }
+              }
+            }
+          } catch(e) {}
+        }
+      }
 
       setFetchingSubtitles(false);
 
