@@ -197,7 +197,7 @@ const EditableBlockCard = ({ block, onChange }) => {
       let transcript = null;
       let source = '';
 
-      // 1. Try Worker Backend API with 5s timeout
+      // 1. Backend InnerTube API
       try {
         const res = await fetch('/api/youtube/transcript', {
           method: 'POST',
@@ -209,11 +209,14 @@ const EditableBlockCard = ({ block, onChange }) => {
           if (data.success && data.transcript) {
             transcript = data.transcript;
             source = 'YouTube InnerTube API';
+            if (data.title && !block.title) {
+              onChange({ ...block, title: data.title, transcript });
+            }
           }
         }
       } catch(e) {}
 
-      // 2. Client-Side Proxy Fallback if server timed out
+      // 2. Client-Side Backup Proxy Fallback
       if (!transcript) {
         try {
           transcript = await fetchYouTubeTranscriptAuto(block.url);
@@ -229,7 +232,7 @@ const EditableBlockCard = ({ block, onChange }) => {
       } else {
         const fallbackText = `Видео на тему: "${block.title || 'Educational Video'}"`;
         onChange({ ...block, transcript: fallbackText });
-        setSubtitleStatus(`ℹ️ Субтитры не найдены. AI сгенерирует задания по теме "${block.title || 'Видео'}"!`);
+        setSubtitleStatus(`ℹ️ Субтитры не найдены. AI сгенерирует задания по научному содержанию темы "${block.title || 'Видео'}"!`);
       }
     };
 
