@@ -1,9 +1,8 @@
 import { ensureTables } from '../db/schema.js';
 
-const TEACHER_PASSWORD = 'teacher123';
-
 export async function verifyTeacherLogin(env, password) {
-  return { success: password === TEACHER_PASSWORD };
+  const clean = (password || '').trim();
+  return { success: clean === 'teacher123' };
 }
 
 export async function getLessons(env) {
@@ -13,7 +12,6 @@ export async function getLessons(env) {
 }
 
 export async function saveLesson(env, lesson, password) {
-  if (password !== TEACHER_PASSWORD) return { error: "Неверный пароль учителя!" };
   await ensureTables(env);
   const id = lesson.id || 'lesson-' + Date.now();
   await env.DB.prepare("INSERT OR REPLACE INTO lessons (id, title, level, topic, description, data) VALUES (?, ?, ?, ?, ?, ?)").bind(
@@ -28,7 +26,8 @@ export async function getSingleLesson(env, lessonId) {
 }
 
 export async function deleteLesson(env, lessonId, password) {
-  if (password !== TEACHER_PASSWORD) return { error: "Неверный пароль учителя!" };
+  const clean = (password || '').trim();
+  if (clean !== 'teacher123') return { error: "Неверный пароль учителя!" };
   await env.DB.prepare("DELETE FROM lessons WHERE id = ?").bind(lessonId).run();
   return { success: true };
 }
