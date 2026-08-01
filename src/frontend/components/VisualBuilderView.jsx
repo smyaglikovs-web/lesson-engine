@@ -266,11 +266,15 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
   ]);
 
   const [activePageIndex, setActivePageIndex] = useState(0);
-  const [aiModalTarget, setAiModalTarget] = useState(null); // { block, blockIdx }
+  const [aiModalTarget, setAiModalTarget] = useState(null);
   const [selectedTasks, setSelectedTasks] = useState(['flashcards']);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [previewBlockIds, setPreviewBlockIds] = useState({});
   const [saving, setSaving] = useState(false);
+
+  // Drag and Drop State
+  const [draggedBlockIdx, setDraggedBlockIdx] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
 
   const activePage = pages[activePageIndex] || pages[0];
 
@@ -300,6 +304,37 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     setPages(updatedPages);
   };
 
+  // DRAG AND DROP REORDERING
+  const handleDragStart = (e, idx) => {
+    setDraggedBlockIdx(idx);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, idx) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverIdx !== idx) setDragOverIdx(idx);
+  };
+
+  const handleDrop = (e, dropIdx) => {
+    e.preventDefault();
+    if (draggedBlockIdx === null || draggedBlockIdx === dropIdx) return;
+
+    const updatedPages = [...pages];
+    const blocks = updatedPages[activePageIndex].blocks;
+    const [draggedBlock] = blocks.splice(draggedBlockIdx, 1);
+    blocks.splice(dropIdx, 0, draggedBlock);
+
+    setPages(updatedPages);
+    setDraggedBlockIdx(null);
+    setDragOverIdx(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedBlockIdx(null);
+    setDragOverIdx(null);
+  };
+
   const handleMoveBlock = (blockIdx, direction) => {
     const targetIdx = blockIdx + direction;
     if (targetIdx < 0 || targetIdx >= activePage.blocks.length) return;
@@ -307,6 +342,14 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     const blocks = updatedPages[activePageIndex].blocks;
     const [moved] = blocks.splice(blockIdx, 1);
     blocks.splice(targetIdx, 0, moved);
+    setPages(updatedPages);
+  };
+
+  const handleMoveBlockToPage = (blockIdx, targetPageIndex) => {
+    if (targetPageIndex === activePageIndex) return;
+    const updatedPages = [...pages];
+    const [movedBlock] = updatedPages[activePageIndex].blocks.splice(blockIdx, 1);
+    updatedPages[targetPageIndex].blocks.push(movedBlock);
     setPages(updatedPages);
   };
 
@@ -367,6 +410,24 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     }
   };
 
+  const handleAddPage = () => {
+    const newPage = {
+      id: 'p-' + Date.now(),
+      title: `Часть ${pages.length + 1}: Новый раздел`,
+      blocks: []
+    };
+    setPages([...pages, newPage]);
+    setActivePageIndex(pages.length);
+  };
+
+  const handleDeletePage = (pageIdx) => {
+    if (pages.length <= 1) return alert('Урок должен содержать хотя бы 1 страницу!');
+    if (!confirm('Удалить эту страницу со всеми её блоками?')) return;
+    const updatedPages = pages.filter((_, i) => i !== pageIdx);
+    setPages(updatedPages);
+    setActivePageIndex(Math.max(0, pageIdx - 1));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     const lessonData = {
@@ -383,7 +444,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
 
   return (
     <div className="space-y-6">
-      {/* Top Bar */}
+      {/* Top Header Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="space-y-2 w-full max-w-xl">
           <input
@@ -409,7 +470,42 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
         </div>
       </div>
 
-      {/* Main Grid */}
+      {/* Pages Tabs Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+        <span className="text-xs font-bold text-slate-400 uppercase px-2">Страницы:</span>
+        {pages.map((p, idx) => (
+          <div key={p.id} className="flex items-center gap-1">
+            <button
+              onClick={() => setActivePageIndex(idx)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex-shrink-0 ${activePageIndex === idx ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-50 border text-slate-700 hover:bg-slate-100'}`}
+            >
+              {p.title || `Страница ${idx + 1}`}
+            </button>
+            {pages.length > 1 && activePageIndex === idx && (
+              <button onClick={() => handleDeletePage(idx)} className="p-1 text-slate-400 hover:text-red-600 text-xs font-bold" title="Удалить страницу">✕</button>
+            )}
+          </div>
+        ))}
+        <button onClick={handleAddPage} className="px-3.5 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl text-xs font-bold transition">+ Добавить страницу</button>
+      </div>
+
+      {/* Active Page Title Inline Edit */}
+      <div className="flex items-center gap-3 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+        <span className="text-xs font-bold text-indigo-700 uppercase">Название текущей страницы:</span>
+        <input
+          type="text"
+          value={pages[activePageIndex]?.title || ''}
+          onChange={(e) => {
+            const updated = [...pages];
+            updated[activePageIndex].title = e.target.value;
+            setPages(updated);
+          }}
+          className="p-1.5 border rounded-lg text-xs font-bold text-slate-800 bg-white flex-1 outline-none focus:ring-2 focus:ring-indigo-500"
+          placeholder="например: Часть 1: Чтение и Теория..."
+        />
+      </div>
+
+      {/* Main Builder Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Left Palette */}
         <div className="lg:col-span-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 h-fit sticky top-20">
@@ -436,18 +532,54 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             <div className="bg-white p-12 rounded-2xl border-2 border-dashed border-slate-200 text-center space-y-3">
               <span className="text-4xl">🧩</span>
               <h3 className="font-bold text-slate-800 text-lg">Страница пуста</h3>
-              <p className="text-slate-400 text-xs">Нажмите на инструмент слева, чтобы добавить блок!</p>
+              <p className="text-slate-400 text-xs">Нажмите на инструмент слева, чтобы добавить первый блок!</p>
             </div>
           ) : (
             activePage.blocks.map((b, idx) => {
               const isPreview = previewBlockIds[b.id];
+              const isBeingDragged = draggedBlockIdx === idx;
+              const isDragTarget = dragOverIdx === idx;
+
               return (
-                <div key={b.id || idx} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative group hover:border-indigo-300 transition">
+                <div
+                  key={b.id || idx}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  className={`bg-white p-6 rounded-2xl border shadow-sm relative transition ${isBeingDragged ? 'opacity-30 border-dashed border-indigo-400' : ''} ${isDragTarget ? 'border-2 border-indigo-600 bg-indigo-50/20 ring-2 ring-indigo-500/20' : 'border-slate-200 hover:border-indigo-300'}`}
+                >
                   {/* Floating Toolbar */}
                   <div className="flex justify-between items-center bg-slate-100 p-2 rounded-xl mb-4 text-xs font-bold border border-slate-200">
-                    <span className="text-slate-500 uppercase px-2">Блок #{idx + 1}: {b.type}</span>
+                    <div className="flex items-center gap-2">
+                      {/* DRAG HANDLE */}
+                      <span
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, idx)}
+                        onDragEnd={handleDragEnd}
+                        className="cursor-grab active:cursor-grabbing p-1 bg-white rounded-lg border border-slate-200 text-slate-400 hover:text-slate-800 hover:border-indigo-400 text-xs font-mono"
+                        title="Зажмите и перетащите блок"
+                      >
+                        ⠿ Drag
+                      </span>
+                      <span className="text-slate-500 uppercase">Блок #{idx + 1}: {b.type}</span>
+                    </div>
 
                     <div className="flex items-center gap-1">
+                      {/* MOVE TO ANOTHER PAGE SELECTOR */}
+                      {pages.length > 1 && (
+                        <select
+                          value={activePageIndex}
+                          onChange={(e) => handleMoveBlockToPage(idx, Number(e.target.value))}
+                          className="p-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 outline-none"
+                          title="Переместить этот блок на другую страницу"
+                        >
+                          {pages.map((p, pIdx) => (
+                            <option key={p.id} value={pIdx}>
+                              {pIdx === activePageIndex ? '📄 Тек. страница' : `➡️ На стр. ${pIdx + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
                       <button onClick={() => togglePreview(b.id)} className="p-1 px-2.5 bg-white rounded-lg border hover:bg-slate-50 text-indigo-600 font-bold">
                         {isPreview ? '✏️ Редактировать' : '👁️ Предпросмотр'}
                       </button>
@@ -456,7 +588,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
                       <button onClick={() => handleDuplicateBlock(idx)} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50">📋 Клон</button>
                       <button onClick={() => handleDeleteBlock(idx)} className="p-1 px-2 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100">🗑️</button>
 
-                      {/* ✨ AI BUTTON -> OPENS SELECTIVE MODAL */}
+                      {/* ✨ AI BUTTON */}
                       <button
                         onClick={() => setAiModalTarget({ block: b, blockIdx: idx })}
                         className="ml-2 px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-lg shadow-xs hover:opacity-95 transition flex items-center gap-1"
@@ -483,51 +615,4 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
                 <span className="text-xl">✨</span>
                 <h3 className="font-bold text-slate-900 text-lg">AI Помощник для блока #{aiModalTarget.blockIdx + 1}</h3>
               </div>
-              <button onClick={() => setAiModalTarget(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
-            </div>
-
-            <p className="text-xs text-slate-500">Отметьте, какие именно задания сгенерировать из этого блока:</p>
-
-            <div className="space-y-2.5 text-sm font-medium">
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
-                <span>🎴 Только Флешкарты (Слова с переводом)</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600" />
-                <span>❓ Только Тест True / False (Правда или Ложь)</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600" />
-                <span>✏️ Только Заполнение пропусков (Gap Fill)</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600" />
-                <span>🔗 Только Сопоставление пар (Синонимы / Перевод)</span>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
-                <span>💬 Только Вопросы для разговорной практики</span>
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setAiModalTarget(null)} className="px-4 py-2.5 border rounded-xl text-xs font-bold">Отмена</button>
-              <button
-                onClick={handleExecuteAiTasks}
-                disabled={selectedTasks.length === 0 || aiGenerating}
-                className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl text-xs shadow-md disabled:opacity-40"
-              >
-                {aiGenerating ? '⌛ AI создаёт...' : `🚀 Сгенерировать (${selectedTasks.length})`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+              <button onClick={() => setAiModalTarget(null)} className="text-slate-400 hover:text-slate-600 font-bold te
