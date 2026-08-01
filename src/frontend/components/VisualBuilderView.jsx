@@ -33,6 +33,37 @@ const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   return null;
 };
 
+// AUTOMATIC IMAGE COMPRESSOR (Shrinks 10MB photos to ~100KB for D1)
+const compressImageFile = (file, maxWidth = 1200, quality = 0.75) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedBase64);
+      };
+      img.onerror = (err) => reject(err);
+    };
+  });
+};
+
 const EditableBlockCard = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
   const [subtitleStatus, setSubtitleStatus] = useState('');
@@ -72,6 +103,7 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
+  // IMAGE & PHOTO GALLERY BLOCK WITH AUTO-COMPRESSOR
   if (block.type === 'image') {
     const images = block.images || (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
@@ -89,16 +121,16 @@ const EditableBlockCard = ({ block, onChange }) => {
       }
     };
 
-    const handleFileUpload = (e) => {
+    const handleFileUpload = async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64Url = event.target.result;
-        const updated = [...images, { url: base64Url, caption: file.name }];
+      try {
+        const compressedBase64 = await compressImageFile(file);
+        const updated = [...images, { url: compressedBase64, caption: file.name }];
         onChange({ ...block, images: updated, url: updated[0]?.url || '' });
-      };
-      reader.readAsDataURL(file);
+      } catch(err) {
+        alert('Ошибка загрузки фото: ' + err.message);
+      }
     };
 
     const removeImg = (idx) => {
