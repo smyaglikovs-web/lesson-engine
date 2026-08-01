@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
-import { fetchYouTubeTranscriptAuto, compressAndUploadImage } from '../../../utils/youtube.js';
+import { fetchYouTubeTranscriptAuto, compressAndUploadImage } from '../../utils/youtube.js';
 
 export const EditableBlockCard = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
