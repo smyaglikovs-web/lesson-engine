@@ -4,15 +4,41 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
+// Fetch helper with User-Agent header (Bypasses YouTube 403 blocks!)
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+  'Accept-Language': 'en-US,en;q=0.9'
+};
+
+async function fetchLyricsForSong(title = '') {
+  try {
+    const clean = title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').replace(/official video/gi, '').replace(/music video/gi, '').replace(/official/gi, '').trim();
+    const parts = clean.split('-');
+    if (parts.length >= 2) {
+      const artist = parts[0].trim();
+      const song = parts[1].trim();
+      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`, { headers: HEADERS });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.lyrics && data.lyrics.length > 50) {
+          return data.lyrics.slice(0, 3500);
+        }
+      }
+    }
+  } catch(e) {}
+  return null;
+}
+
 // DIRECT YOUTUBE TIMEDTEXT + INNERTUBE SUBTITLE EXTRACTOR
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
     if (!videoId) return null;
 
+    // 1. Fetch Title via oEmbed
     let title = '';
     try {
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: HEADERS });
       if (oembedRes.ok) {
         const odata = await oembedRes.json();
         title = odata.title || '';
@@ -21,57 +47,72 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
 
     let transcriptText = '';
 
-    // LAYER 1: YouTube Direct TimedText API (lang=en)
-    try {
-      const ttRes = await fetch(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`);
-      if (ttRes && ttRes.ok) {
-        const xml = await ttRes.text();
-        if (xml && xml.includes('<text')) {
-          transcriptText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim().slice(0, 3500);
-        }
-      }
-    } catch(e) {}
+    // LAYER 1: YouTube Direct TimedText API (lang=en & kind=asr)
+    const ttUrls = [
+      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
+      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
+      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`,
+      `https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`
+    ];
 
-    // LAYER 2: YouTube Direct TimedText ASR Auto-Captions (lang=en&kind=asr)
-    if (!transcriptText) {
+    for (const ttUrl of ttUrls) {
+      if (transcriptText) break;
       try {
-        const ttAsrRes = await fetch(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`);
-        if (ttAsrRes && ttAsrRes.ok) {
-          const xml = await ttAsrRes.text();
-          if (xml && xml.includes('<text')) {
-            transcriptText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim().slice(0, 3500);
+        const res = await fetch(ttUrl, { headers: HEADERS });
+        if (res.ok) {
+          const xml = await res.text();
+          if (xml && (xml.includes('<text') || xml.length > 100)) {
+            const cleanText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+            if (cleanText.length > 50) {
+              transcriptText = cleanText.slice(0, 3500);
+              break;
+            }
           }
         }
       } catch(e) {}
     }
 
-    // LAYER 3: Android InnerTube Player API
+    // LAYER 2: Android InnerTube Player API
     if (!transcriptText) {
       try {
         const innerRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'com.google.android.youtube/19.08.35 (Linux; U; Android 11; US)'
+          },
           body: JSON.stringify({
             context: { client: { clientName: 'ANDROID', clientVersion: '19.08.35' } },
             videoId: videoId
           })
         });
 
-        if (innerRes && innerRes.ok) {
+        if (innerRes.ok) {
           const data = await innerRes.json();
           const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
           if (tracks && tracks.length > 0) {
             const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || tracks[0];
             if (enTrack && enTrack.baseUrl) {
-              const subRes = await fetch(enTrack.baseUrl);
-              if (subRes && subRes.ok) {
+              const subRes = await fetch(enTrack.baseUrl, { headers: HEADERS });
+              if (subRes.ok) {
                 const xmlText = await subRes.text();
-                transcriptText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim().slice(0, 3500);
+                const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+                if (cleanText.length > 50) {
+                  transcriptText = cleanText.slice(0, 3500);
+                }
               }
             }
           }
         }
       } catch(e) {}
+    }
+
+    // LAYER 3: Song Lyrics Search API Fallback
+    if (!transcriptText && title) {
+      const songLyrics = await fetchLyricsForSong(title);
+      if (songLyrics) {
+        transcriptText = songLyrics;
+      }
     }
 
     return { title, transcript: transcriptText, videoId };
