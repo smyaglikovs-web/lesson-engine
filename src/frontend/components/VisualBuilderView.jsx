@@ -73,7 +73,6 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  // IMAGE BLOCK WITH FREE IMAGE HOSTING UPLOAD (ImgBB)
   if (block.type === 'image') {
     const images = block.images || (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
@@ -100,7 +99,6 @@ const EditableBlockCard = ({ block, onChange }) => {
         const formData = new FormData();
         formData.append('image', file);
 
-        // Upload to Free Public Image CDN (ImgBB)
         const res = await fetch('https://api.imgbb.com/1/upload?key=6d257f6977d01d2d0260f32b001a702f', {
           method: 'POST',
           body: formData
@@ -836,60 +834,40 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             <p className="text-xs text-slate-500">Отметьте, какие именно задания сгенерировать из этого блока:</p>
 
             <div className="space-y-2.5 text-sm font-medium">
-              {aiModalTarget.block.type === 'video' ? (
-                <>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('listening')} onChange={() => toggleTaskSelection('listening')} className="w-4 h-4 accent-indigo-600" />
-                    <span>🎧 Задания на аудирование / Вопросы к видео</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
-                    <span>🎴 Словарный запас из видео (Флешкарты)</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
-                    <span>💬 Разговорные вопросы по теме видео</span>
-                  </label>
-                </>
-              ) : aiModalTarget.block.type === 'image' ? (
-                <>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
-                    <span>💬 Вопросы для обсуждения картинок (Speaking)</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
-                    <span>🎴 Лексика к изображениям (Flashcards)</span>
-                  </label>
-                </>
-              ) : (
-                <>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
-                    <span>🎴 Только Флешкарты (Слова с переводом)</span>
-                  </label>
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('listening')} onChange={() => toggleTaskSelection('listening')} className="w-4 h-4 accent-indigo-600" />
+                <span>🎧 Задания на аудирование / Тестовые вопросы</span>
+              </label>
 
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600" />
-                    <span>❓ Только Тест True / False (Правда или Ложь)</span>
-                  </label>
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
+                <span>🎴 Флешкарты (Ключевая лексика с переводом)</span>
+              </label>
 
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600" />
-                    <span>✏️ Только Заполнение пропусков (Gap Fill)</span>
-                  </label>
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600" />
+                <span>❓ Тест True / False (Правда или Ложь)</span>
+              </label>
 
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600" />
-                    <span>🔗 Только Сопоставление пар (Синонимы / Перевод)</span>
-                  </label>
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600" />
+                <span>✏️ Заполнение пропусков (Ввод с клавиатуры)</span>
+              </label>
 
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
-                    <span>💬 Только Вопросы для разговорной практики</span>
-                  </label>
-                </>
-              )}
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('gap_fill_bank')} onChange={() => toggleTaskSelection('gap_fill_bank')} className="w-4 h-4 accent-indigo-600" />
+                <span>🧩 Пропуски с Банком Слов (Word Bank)</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600" />
+                <span>🔗 Сопоставление пар (Синонимы / Перевод)</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
+                <span>💬 Разговорные вопросы по теме материала</span>
+              </label>
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
