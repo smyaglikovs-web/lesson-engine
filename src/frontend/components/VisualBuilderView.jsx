@@ -8,10 +8,24 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
+// MULTI-ENDPOINT TRANSCRIPT EXTRACTOR
 const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   const videoId = getYouTubeId(videoUrl);
   if (!videoId) return null;
 
+  // 1. YouTube TimedText Direct API
+  try {
+    const res = await fetch(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`);
+    if (res.ok) {
+      const xml = await res.text();
+      if (xml && xml.includes('<text')) {
+        const cleanText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+        if (cleanText.length > 50) return cleanText.slice(0, 3500);
+      }
+    }
+  } catch(e) {}
+
+  // 2. Vercel Captions API
   try {
     const res1 = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
     if (res1.ok) {
@@ -197,7 +211,7 @@ const EditableBlockCard = ({ block, onChange }) => {
       let transcript = null;
       let source = '';
 
-      // 1. Backend InnerTube API
+      // 1. Backend TimedText Direct API
       try {
         const res = await fetch('/api/youtube/transcript', {
           method: 'POST',
@@ -208,7 +222,7 @@ const EditableBlockCard = ({ block, onChange }) => {
           const data = await res.json();
           if (data.success && data.transcript) {
             transcript = data.transcript;
-            source = 'YouTube InnerTube API';
+            source = 'YouTube Direct API';
             if (data.title && !block.title) {
               onChange({ ...block, title: data.title, transcript });
             }
@@ -232,7 +246,7 @@ const EditableBlockCard = ({ block, onChange }) => {
       } else {
         const fallbackText = `Видео на тему: "${block.title || 'Educational Video'}"`;
         onChange({ ...block, transcript: fallbackText });
-        setSubtitleStatus(`ℹ️ Субтитры не найдены. AI сгенерирует задания по научному содержанию темы "${block.title || 'Видео'}"!`);
+        setSubtitleStatus(`ℹ️ Субтитры не найдены. AI сгенерирует задания по теме "${block.title || 'Видео'}"!`);
       }
     };
 
