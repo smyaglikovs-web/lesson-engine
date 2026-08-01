@@ -9,7 +9,6 @@ const BROWSER_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9'
 };
 
-// Clean WebVTT / Subtitle text into plain sentences
 function parseVttToText(vttText = '') {
   return vttText
     .replace(/^WEBVTT.*/gi, '')
@@ -26,7 +25,6 @@ function parseVttToText(vttText = '') {
     .trim();
 }
 
-// Resilient JSON extractor for Cloudflare Workers AI LLM outputs
 function parseAIJson(responseText) {
   if (!responseText) return null;
   let clean = responseText.trim();
@@ -86,7 +84,7 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// MULTI-PROVIDER HIGH-AVAILABILITY SUBTITLE EXTRACTOR
+// AUTHENTICATED YOUTUBE CAPTION EXTRACTOR (Extracts INNERTUBE_API_KEY)
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
@@ -104,76 +102,30 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     } catch(e) {}
 
-    // Step 2: Open Edge Subtitle Engine (youtube-transcript.ai)
+    // Step 2: Extract Captions or INNERTUBE_API_KEY from Watch Page
     try {
-      const edgeRes = await fetch(`https://youtube-transcript.ai/transcript/${videoId}.txt`, { headers: BROWSER_HEADERS });
-      if (edgeRes.ok) {
-        const text = await edgeRes.text();
-        if (text && text.length > 50 && !text.includes('Error') && !text.includes('not found')) {
-          const cleanText = text.replace(/\[\d+:\d+\]/g, '').replace(/\s+/g, ' ').trim();
-          if (cleanText.length > 50) {
-            transcriptText = cleanText.slice(0, 3500);
-          }
-        }
-      }
-    } catch(e) {}
+      const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: BROWSER_HEADERS });
+      if (pageRes.ok) {
+        const html = await pageRes.text();
 
-    // Step 3: InnerTube API with fmt=json3 Parameter Fix
-    if (!transcriptText) {
-      try {
-        const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 12; en_US)'
-          },
-          body: JSON.stringify({
-            context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38', hl: 'en', gl: 'US' } },
-            videoId: videoId
-          })
-        });
-
-        if (innertubeRes.ok) {
-          const playerResponse = await innertubeRes.json();
-          if (!title && playerResponse.videoDetails?.title) {
-            title = playerResponse.videoDetails.title;
-          }
-
-          const captionTracks = playerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-          const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.vssId?.includes('en')) || captionTracks[0];
-
-          if (track && track.baseUrl) {
-            let targetUrl = track.baseUrl;
-            if (targetUrl.includes('fmt=srv3')) {
-              targetUrl = targetUrl.replace('fmt=srv3', 'fmt=json3');
-            } else if (!targetUrl.includes('fmt=')) {
-              targetUrl += '&fmt=json3';
+        // 2a. Direct extraction from ytInitialPlayerResponse if embedded in page
+        const splitted = html.split('ytInitialPlayerResponse = ');
+        if (splitted.length > 1) {
+          const jsonStr = splitted[1].split(';\n')[0].split(';var ')[0].split(';</script>')[0];
+          try {
+            const playerData = JSON.parse(jsonStr);
+            if (!title && playerData.videoDetails?.title) {
+              title = playerData.videoDetails.title;
             }
 
-            const subRes = await fetch(targetUrl, { headers: BROWSER_HEADERS });
+            const captionTracks = playerData.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+            const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.vssId?.includes('en')) || captionTracks[0];
 
-            if (subRes.ok) {
-              const rawContent = await subRes.text();
-              try {
-                const jsonData = JSON.parse(rawContent);
-                if (jsonData.events) {
-                  const textSegments = [];
-                  for (const ev of jsonData.events) {
-                    if (ev.segs) {
-                      for (const seg of ev.segs) {
-                        if (seg.utf8 && seg.utf8 !== '\n') {
-                          textSegments.push(seg.utf8);
-                        }
-                      }
-                    }
-                  }
-                  const fullText = textSegments.join(' ').replace(/\s+/g, ' ').trim();
-                  if (fullText.length > 50) {
-                    transcriptText = fullText.slice(0, 3500);
-                  }
-                }
-              } catch(e) {
-                const cleanText = rawContent
+            if (track && track.baseUrl) {
+              const xmlRes = await fetch(track.baseUrl, { headers: BROWSER_HEADERS });
+              if (xmlRes.ok) {
+                const xml = await xmlRes.text();
+                const cleanText = xml
                   .replace(/<text[^>]*>/g, ' ')
                   .replace(/<\/text>/g, ' ')
                   .replace(/<[^>]+>/g, '')
@@ -188,12 +140,63 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
                 }
               }
             }
+          } catch(e) {}
+        }
+
+        // 2b. Authenticated InnerTube API call using page's INNERTUBE_API_KEY
+        if (!transcriptText) {
+          const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
+          if (apiKeyMatch && apiKeyMatch[1]) {
+            const apiKey = apiKeyMatch[1];
+            const innertubeRes = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${apiKey}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': BROWSER_HEADERS['User-Agent']
+              },
+              body: JSON.stringify({
+                videoId: videoId,
+                context: {
+                  client: {
+                    clientName: 'ANDROID',
+                    clientVersion: '17.31.35',
+                    androidSdkVersion: 30
+                  }
+                }
+              })
+            });
+
+            if (innertubeRes.ok) {
+              const pData = await innertubeRes.json();
+              const captionTracks = pData.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+              const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.vssId?.includes('en')) || captionTracks[0];
+
+              if (track && track.baseUrl) {
+                const subRes = await fetch(track.baseUrl, { headers: BROWSER_HEADERS });
+                if (subRes.ok) {
+                  const xml = await subRes.text();
+                  const cleanText = xml
+                    .replace(/<text[^>]*>/g, ' ')
+                    .replace(/<\/text>/g, ' ')
+                    .replace(/<[^>]+>/g, '')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&#39;/g, "'")
+                    .replace(/&quot;/g, '"')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                  if (cleanText.length > 50) {
+                    transcriptText = cleanText.slice(0, 3500);
+                  }
+                }
+              }
+            }
           }
         }
-      } catch(e) {}
-    }
+      }
+    } catch(e) {}
 
-    // Step 4: Open Piped Mirror Instances Fallback
+    // Step 3: Open Piped Instances Fallback
     if (!transcriptText) {
       const pipedInstances = [
         'https://pipedapi.kavin.rocks',
@@ -227,7 +230,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     }
 
-    // Step 5: Song Lyrics Fallback
+    // Step 4: Song Lyrics Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) transcriptText = songLyrics;
