@@ -72,7 +72,6 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  // IMAGE & PHOTO GALLERY BLOCK (URL + FILE UPLOAD)
   if (block.type === 'image') {
     const images = block.images || (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
@@ -353,6 +352,34 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
+  if (block.type === 'gap_fill_bank') {
+    return (
+      <div className="space-y-3">
+        <input
+          type="text"
+          value={block.instruction || ''}
+          onChange={e => onChange({ ...block, instruction: e.target.value })}
+          placeholder="Инструкция..."
+          className="p-2 border rounded-xl text-xs w-full"
+        />
+        <textarea
+          rows="2"
+          value={block.text || ''}
+          onChange={e => onChange({ ...block, text: e.target.value })}
+          placeholder="Текст с правильными ответами в скобках [слово]..."
+          className="p-2.5 border rounded-xl text-sm font-medium w-full"
+        ></textarea>
+        <input
+          type="text"
+          value={(block.distractors || []).join(', ')}
+          onChange={e => onChange({ ...block, distractors: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+          placeholder="Фальшивые доп. слова в банк (через запятую): was, Paris, tomorrow..."
+          className="p-2 border rounded-xl text-xs w-full text-amber-700 bg-amber-50/50"
+        />
+      </div>
+    );
+  }
+
   if (block.type === 'matching') {
     const pairs = block.pairs || [];
     const updatePair = (idx, field, val) => {
@@ -464,6 +491,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     else if (type === 'flashcards') newBlock = { ...newBlock, title: 'Ключевые слова', cards: [{ front: 'Word', back: 'Перевод', example: 'Sentence' }] };
     else if (type === 'multiple_choice') newBlock = { ...newBlock, question: 'Вопрос теста?', options: ['Вариант A', 'Вариант B'], correct: 0 };
     else if (type === 'gap_fill') newBlock = { ...newBlock, instruction: 'Заполните пропуск:', text: 'She [is working] today.', answers: ['is working'] };
+    else if (type === 'gap_fill_bank') newBlock = { ...newBlock, instruction: '🧩 Заполните пропуски словами из банка:', text: 'She [is flying] to London. They [are meeting] at [night].', distractors: ['was', 'yesterday'] };
     else if (type === 'matching') newBlock = { ...newBlock, instruction: 'Соедините пары:', pairs: [{ left: 'Word', right: 'Match' }] };
     else if (type === 'open_input') newBlock = { ...newBlock, prompt: 'Вопрос для обсуждения?' };
 
@@ -688,7 +716,8 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             <p className="text-slate-400 text-[10px] uppercase font-bold pt-3">Интерактив</p>
             <button onClick={() => handleAddBlock('flashcards')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🎴 Флешкарты</button>
             <button onClick={() => handleAddBlock('multiple_choice')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">❓ Тест Multiple Choice</button>
-            <button onClick={() => handleAddBlock('gap_fill')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">✏️ Пропуски (Gap Fill)</button>
+            <button onClick={() => handleAddBlock('gap_fill')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">✏️ Пропуски (Ввод)</button>
+            <button onClick={() => handleAddBlock('gap_fill_bank')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🧩 Пропуски с Банком Слов</button>
             <button onClick={() => handleAddBlock('matching')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🔗 Сопоставление пар</button>
             <button onClick={() => handleAddBlock('open_input')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">💬 Вопрос для ответа</button>
           </div>
@@ -751,3 +780,111 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
                       </button>
                       <button onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-30">⬆️</button>
                       <button onClick={() => handleMoveBlock(idx, 1)} disabled={idx === activePage.blocks.length - 1} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-30">⬇️</button>
+                      <button onClick={() => handleDuplicateBlock(idx)} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50">📋 Клон</button>
+                      <button onClick={() => handleDeleteBlock(idx)} className="p-1 px-2 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100">🗑️</button>
+
+                      {/* ✨ AI BUTTON */}
+                      <button
+                        onClick={() => setAiModalTarget({ block: b, blockIdx: idx })}
+                        className="ml-2 px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-lg shadow-xs hover:opacity-95 transition flex items-center gap-1"
+                      >
+                        ✨ AI Помощник
+                      </button>
+                    </div>
+                  </div>
+
+                  {isPreview ? <BlockRenderer block={b} /> : <EditableBlockCard block={b} onChange={(updated) => handleUpdateBlock(idx, updated)} />}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* SELECTIVE AI MODAL */}
+      {aiModalTarget && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-6 shadow-2xl">
+            <div className="flex justify-between items-center pb-3 border-b">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">✨</span>
+                <h3 className="font-bold text-slate-900 text-lg">AI Помощник для блока #{aiModalTarget.blockIdx + 1} ({aiModalTarget.block.type})</h3>
+              </div>
+              <button onClick={() => setAiModalTarget(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
+            </div>
+
+            <p className="text-xs text-slate-500">Отметьте, какие именно задания сгенерировать из этого блока:</p>
+
+            <div className="space-y-2.5 text-sm font-medium">
+              {aiModalTarget.block.type === 'video' ? (
+                <>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('listening')} onChange={() => toggleTaskSelection('listening')} className="w-4 h-4 accent-indigo-600" />
+                    <span>🎧 Задания на аудирование / Вопросы к видео</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
+                    <span>🎴 Словарный запас из видео (Флешкарты)</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
+                    <span>💬 Разговорные вопросы по теме видео</span>
+                  </label>
+                </>
+              ) : aiModalTarget.block.type === 'image' ? (
+                <>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
+                    <span>💬 Вопросы для обсуждения картинок (Speaking)</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
+                    <span>🎴 Лексика к изображениям (Flashcards)</span>
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
+                    <span>🎴 Только Флешкарты (Слова с переводом)</span>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600" />
+                    <span>❓ Только Тест True / False (Правда или Ложь)</span>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600" />
+                    <span>✏️ Только Заполнение пропусков (Gap Fill)</span>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600" />
+                    <span>🔗 Только Сопоставление пар (Синонимы / Перевод)</span>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
+                    <span>💬 Только Вопросы для разговорной практики</span>
+                  </label>
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setAiModalTarget(null)} className="px-4 py-2.5 border rounded-xl text-xs font-bold">Отмена</button>
+              <button
+                onClick={handleExecuteAiTasks}
+                disabled={selectedTasks.length === 0 || aiGenerating}
+                className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl text-xs shadow-md disabled:opacity-40"
+              >
+                {aiGenerating ? '⌛ AI создаёт...' : `🚀 Сгенерировать (${selectedTasks.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
