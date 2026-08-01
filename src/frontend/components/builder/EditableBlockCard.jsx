@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
-
+import { fetchYouTubeTranscriptAuto, compressAndUploadImage } from '../../utils/youtube.js';
 // Inline Helpers (Zero External Import Dependencies)
 function getYouTubeId(url = '') {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
