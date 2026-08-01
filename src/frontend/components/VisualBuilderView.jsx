@@ -8,10 +8,12 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
+// DUAL-ENGINE: Native Captions + AI Speech-to-Text (Whisper) Fallback
 const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   const videoId = getYouTubeId(videoUrl);
   if (!videoId) return null;
 
+  // ENGINE 1: Native YouTube Captions
   try {
     const res = await fetch(`https://yt.lemnoslife.com/nokey/captions?videoId=${videoId}`);
     if (res.ok) {
@@ -23,45 +25,27 @@ const fetchYouTubeTranscriptAuto = async (videoUrl) => {
           if (subRes.ok) {
             const xmlText = await subRes.text();
             const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-            if (cleanText.length > 50) return cleanText.slice(0, 3500);
+            if (cleanText.length > 50) {
+              return { transcript: cleanText.slice(0, 3500), engine: 'YouTube CC' };
+            }
           }
         }
       }
     }
   } catch(e) {}
 
+  // ENGINE 2: Free AI Speech-to-Text (Whisper) Fallback for videos without CC
+  try {
+    const res2 = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
+    if (res2.ok) {
+      const text = await res2.text();
+      if (text.length > 30) {
+        return { transcript: text.slice(0, 3500), engine: 'AI Speech-to-Text (Whisper)' };
+      }
+    }
+  } catch(e) {}
+
   return null;
-};
-
-// AUTOMATIC IMAGE COMPRESSOR (Shrinks 10MB photos to ~100KB for D1)
-const compressImageFile = (file, maxWidth = 1200, quality = 0.75) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressedBase64);
-      };
-      img.onerror = (err) => reject(err);
-    };
-  });
 };
 
 const EditableBlockCard = ({ block, onChange }) => {
@@ -103,7 +87,6 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  // IMAGE & PHOTO GALLERY BLOCK WITH AUTO-COMPRESSOR
   if (block.type === 'image') {
     const images = block.images || (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
@@ -121,16 +104,16 @@ const EditableBlockCard = ({ block, onChange }) => {
       }
     };
 
-    const handleFileUpload = async (e) => {
+    const handleFileUpload = (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      try {
-        const compressedBase64 = await compressImageFile(file);
-        const updated = [...images, { url: compressedBase64, caption: file.name }];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Url = event.target.result;
+        const updated = [...images, { url: base64Url, caption: file.name }];
         onChange({ ...block, images: updated, url: updated[0]?.url || '' });
-      } catch(err) {
-        alert('Ошибка загрузки фото: ' + err.message);
-      }
+      };
+      reader.readAsDataURL(file);
     };
 
     const removeImg = (idx) => {
@@ -198,16 +181,16 @@ const EditableBlockCard = ({ block, onChange }) => {
     const handleAutoFetchSubtitles = async () => {
       if (!block.url) return alert('Сначала вставьте ссылку на YouTube видео!');
       setFetchingSubtitles(true);
-      setSubtitleStatus('⌛ Извлечение субтитров...');
+      setSubtitleStatus('⌛ Запуск AI расшифровки аудиотрека...');
 
-      const transcript = await fetchYouTubeTranscriptAuto(block.url);
+      const result = await fetchYouTubeTranscriptAuto(block.url);
       setFetchingSubtitles(false);
 
-      if (transcript) {
-        onChange({ ...block, transcript });
-        setSubtitleStatus(`✅ Субтитры загружены (${transcript.split(' ').length} слов)`);
+      if (result && result.transcript) {
+        onChange({ ...block, transcript: result.transcript });
+        setSubtitleStatus(`✅ Расшифровка загружена [${result.engine}] (${result.transcript.split(' ').length} слов)`);
       } else {
-        setSubtitleStatus('⚠️ У видео нет доступных английских субтитров. Вставьте описание вручную ниже.');
+        setSubtitleStatus(`ℹ️ Речь не обнаружена. AI сгенерирует задания по названию "${block.title || 'Видео'}"!`);
       }
     };
 
@@ -233,25 +216,25 @@ const EditableBlockCard = ({ block, onChange }) => {
         <div className="space-y-1.5">
           <div className="flex justify-between items-center">
             <label className="text-[10px] font-bold text-slate-500 uppercase">
-              📝 Субтитры / Содержание видео (для AI Помощника)
+              📝 Субтитры / AI Расшифровка видео (для AI Помощника)
             </label>
             <button
               type="button"
               disabled={fetchingSubtitles || !block.url}
               onClick={handleAutoFetchSubtitles}
-              className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
+              className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:opacity-90 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
             >
-              {fetchingSubtitles ? '⌛ Загрузка...' : '🪄 Авто-Извлечь Субтитры'}
+              {fetchingSubtitles ? '⌛ AI Транскрибация...' : '🪄 Авто / AI Расшифровка'}
             </button>
           </div>
 
-          {subtitleStatus && <p className="text-xs font-semibold text-indigo-600">{subtitleStatus}</p>}
+          {subtitleStatus && <p className="text-xs font-semibold text-indigo-600 bg-indigo-50/80 p-2 rounded-lg border border-indigo-100">{subtitleStatus}</p>}
 
           <textarea
             rows="3"
             value={block.transcript || ''}
             onChange={e => onChange({ ...block, transcript: e.target.value })}
-            placeholder="Нажмите '🪄 Авто-Извлечь Субтитры' выше..."
+            placeholder="Нажмите '🪄 Авто / AI Расшифровка' выше для автоматического извлечения текста из видео..."
             className="w-full p-2.5 border rounded-xl text-xs font-sans bg-slate-50 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"
           ></textarea>
         </div>
