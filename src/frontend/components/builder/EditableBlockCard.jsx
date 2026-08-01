@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
 import { compressAndUploadImage, getYouTubeId } from '@utils/youtube.js';
 
+// Auto-cleaner for raw VTT/SRT subtitle files and timestamped text
 function cleanVttToSentences(vttText = '') {
   if (!vttText) return '';
   return vttText
@@ -160,6 +161,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
 
     const handleTranscriptInput = (e) => {
       let textVal = e.target.value;
+      // Auto-clean WebVTT or SRT timestamps if pasted
       if (textVal.includes('-->') || textVal.includes('WEBVTT')) {
         textVal = cleanVttToSentences(textVal);
       }
@@ -175,61 +177,55 @@ export const EditableBlockCard = ({ block, onChange }) => {
       let transcript = null;
       let title = block.title || '';
 
-      // Step 1: Server API Fetch (HTML Regex Parsing)
-      try {
-        const res = await fetch('/api/youtube/transcript', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: block.url })
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          if (data.transcript && data.transcript.length > 50) {
-            transcript = cleanVttToSentences(data.transcript);
-            if (data.title) title = data.title;
-          }
-        }
-      } catch(e) {}
-
-      // Step 2: Direct Client Fetch with CORS Proxy Fallback
-      if (!transcript && videoId) {
-        const targetTimedTextUrls = [
-          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
-          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`
+      // Step 1: Invidious Open CORS Subtitle API (<500ms)
+      if (videoId) {
+        const invidiousEndpoints = [
+          `https://inv.tux.pizza/api/v1/captions/${videoId}?lang=en`,
+          `https://invidious.drgns.space/api/v1/captions/${videoId}?lang=en`,
+          `https://vid.puffyan.us/api/v1/captions/${videoId}?lang=en`
         ];
 
-        const corsProxies = [
-          (target) => `https://corsproxy.io/?${encodeURIComponent(target)}`,
-          (target) => `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`
-        ];
-
-        for (const targetUrl of targetTimedTextUrls) {
+        for (const endpoint of invidiousEndpoints) {
           if (transcript) break;
-          for (const proxyFn of corsProxies) {
-            if (transcript) break;
-            try {
-              const res = await fetch(proxyFn(targetUrl));
-              if (res.ok) {
-                const text = await res.text();
-                if (text && text.includes('<text') && text.length > 100) {
-                  const clean = cleanVttToSentences(text);
-                  if (clean.length > 50) {
-                    transcript = clean.slice(0, 3500);
-                  }
+          try {
+            const invRes = await fetch(endpoint);
+            if (invRes.ok) {
+              const vtt = await invRes.text();
+              if (vtt && vtt.length > 100) {
+                const clean = cleanVttToSentences(vtt);
+                if (clean.length > 50) {
+                  transcript = clean.slice(0, 3500);
                 }
               }
-            } catch(e) {}
-          }
+            }
+          } catch(e) {}
         }
+      }
+
+      // Step 2: Server API Fallback
+      if (!transcript) {
+        try {
+          const res = await fetch('/api/youtube/transcript', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: block.url })
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (data.transcript && data.transcript.length > 50) {
+              transcript = cleanVttToSentences(data.transcript);
+              if (data.title) title = data.title;
+            }
+          }
+        } catch(e) {}
       }
 
       setFetchingSubtitles(false);
 
       if (transcript) {
         onChange({ ...block, title: title || block.title, transcript });
-        setSubtitleStatus(`✅ Речевой транскрипт успешно загружен! (${transcript.split(' ').length} слов)`);
+        setSubtitleStatus(`✅ Речевой транскрипт загружен! (${transcript.split(' ').length} слов)`);
       } else {
         setSubtitleStatus(`ℹ️ Скопируйте текст из TubeTranscript/YouTube и вставьте в поле ниже — оно автоматически очистит таймкоды!`);
       }
