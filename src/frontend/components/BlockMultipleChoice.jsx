@@ -1,4 +1,5 @@
 import React from 'react';
+import { playCorrectSound, playWrongSound } from '../utils/sounds.js';
 
 export const BlockMultipleChoice = ({ block, value, onChange }) => {
   const selected = value?.selected !== undefined && value?.selected !== null ? Number(value.selected) : null;
@@ -12,6 +13,12 @@ export const BlockMultipleChoice = ({ block, value, onChange }) => {
 
   const handleSubmit = () => {
     if (selected === null) return;
+    const correct = Number(selected) === Number(block.correct);
+    if (correct) {
+      playCorrectSound();
+    } else {
+      playWrongSound();
+    }
     onChange({ selected: Number(selected), submitted: true });
   };
 
