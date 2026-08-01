@@ -8,58 +8,22 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// 3-LAYER CORS-PROXY YOUTUBE TRANSCRIPT EXTRACTOR
 const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   const videoId = getYouTubeId(videoUrl);
   if (!videoId) return null;
 
-  // LAYER 1: Vercel Subtitles Proxy
   try {
-    const res1 = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
-    if (res1.ok) {
-      const text1 = await res1.text();
-      if (text1.length > 50) return { transcript: text1.slice(0, 3500), source: 'YouTube CC' };
-    }
-  } catch(e) {}
-
-  // LAYER 2: AllOrigins CORS Proxy directly parsing YouTube's official captionTracks XML
-  try {
-    const targetUrl = encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`);
-    const res2 = await fetch(`https://api.allorigins.win/get?url=${targetUrl}`);
-    if (res2.ok) {
-      const data2 = await res2.json();
-      const html = data2.contents || '';
-      const captionMatch = html.match(/"captionTracks":\s*(\[.*?\])/);
-      if (captionMatch) {
-        const tracks = JSON.parse(captionMatch[1]);
-        const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || tracks[0];
-        if (enTrack && enTrack.baseUrl) {
-          const subUrl = encodeURIComponent(enTrack.baseUrl);
-          const subRes = await fetch(`https://api.allorigins.win/get?url=${subUrl}`);
-          if (subRes.ok) {
-            const subData = await subRes.json();
-            const xmlText = subData.contents || '';
-            const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-            if (cleanText.length > 50) return { transcript: cleanText.slice(0, 3500), source: 'YouTube Official CC' };
-          }
-        }
-      }
-    }
-  } catch(e) {}
-
-  // LAYER 3: LemnosLife API Fallback
-  try {
-    const res3 = await fetch(`https://yt.lemnoslife.com/nokey/captions?videoId=${videoId}`);
-    if (res3.ok) {
-      const data3 = await res3.json();
-      if (data3.captionTracks && data3.captionTracks.length > 0) {
-        const track = data3.captionTracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || data3.captionTracks[0];
+    const res = await fetch(`https://yt.lemnoslife.com/nokey/captions?videoId=${videoId}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.captionTracks && data.captionTracks.length > 0) {
+        const track = data.captionTracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || data.captionTracks[0];
         if (track && track.baseUrl) {
           const subRes = await fetch(track.baseUrl);
           if (subRes.ok) {
             const xmlText = await subRes.text();
             const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-            if (cleanText.length > 50) return { transcript: cleanText.slice(0, 3500), source: 'YouTube CC' };
+            if (cleanText.length > 50) return cleanText.slice(0, 3500);
           }
         }
       }
@@ -69,24 +33,36 @@ const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   return null;
 };
 
-// Free Song Lyrics Search API
-const fetchLyricsForSong = async (title = '') => {
-  try {
-    const clean = title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').replace(/official video/gi, '').replace(/music video/gi, '').replace(/official/gi, '').trim();
-    const parts = clean.split('-');
-    if (parts.length >= 2) {
-      const artist = parts[0].trim();
-      const song = parts[1].trim();
-      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.lyrics && data.lyrics.length > 50) {
-          return data.lyrics.slice(0, 3500);
+// ZERO-DEPENDENCY IN-BROWSER IMAGE COMPRESSOR (Shrinks photos to ~90KB for instant D1 save)
+const compressAndUploadImage = (file, maxWidth = 1000, quality = 0.72) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
         }
-      }
-    }
-  } catch(e) {}
-  return null;
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedBase64);
+      };
+      img.onerror = () => reject(new Error('Ошибка чтения изображения'));
+    };
+    reader.onerror = () => reject(new Error('Ошибка файла'));
+  });
 };
 
 const EditableBlockCard = ({ block, onChange }) => {
@@ -129,6 +105,7 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
+  // IMAGE & GALLERY BLOCK WITH IN-BROWSER COMPRESSOR
   if (block.type === 'image') {
     const images = block.images || (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
@@ -152,24 +129,11 @@ const EditableBlockCard = ({ block, onChange }) => {
 
       setUploadingImage(true);
       try {
-        const formData = new FormData();
-        formData.append('image', file);
-
-        const res = await fetch('https://api.imgbb.com/1/upload?key=6d257f6977d01d2d0260f32b001a702f', {
-          method: 'POST',
-          body: formData
-        });
-        const data = await res.json();
-
-        if (data.success && data.data.url) {
-          const imageUrl = data.data.url;
-          const updated = [...images, { url: imageUrl, caption: file.name }];
-          onChange({ ...block, images: updated, url: updated[0]?.url || '' });
-        } else {
-          alert('Ошибка загрузки фото');
-        }
+        const compressedBase64 = await compressAndUploadImage(file);
+        const updated = [...images, { url: compressedBase64, caption: file.name }];
+        onChange({ ...block, images: updated, url: updated[0]?.url || '' });
       } catch(err) {
-        alert('Ошибка сети при загрузке: ' + err.message);
+        alert('Ошибка загрузки фото: ' + err.message);
       } finally {
         setUploadingImage(false);
       }
@@ -213,7 +177,7 @@ const EditableBlockCard = ({ block, onChange }) => {
             🔗 Добавить картинку по ссылке
           </button>
           <label className="px-3.5 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 cursor-pointer flex items-center gap-1">
-            {uploadingImage ? '⌛ Загрузка фото...' : '📁 Загрузить с ПК / телефона'}
+            {uploadingImage ? '⌛ Обработка фото...' : '📁 Загрузить с ПК / телефона'}
             <input type="file" accept="image/*" onChange={handleFileUploadCDN} disabled={uploadingImage} className="hidden" />
           </label>
         </div>
@@ -242,27 +206,14 @@ const EditableBlockCard = ({ block, onChange }) => {
       setFetchingSubtitles(true);
       setSubtitleStatus('⌛ Извлечение субтитров...');
 
-      // 1. Try 3-Layer YouTube CC Extractor
-      let result = await fetchYouTubeTranscriptAuto(block.url);
-      let transcript = result?.transcript || null;
-      let source = result?.source || 'YouTube CC';
-
-      // 2. If CC missing, search Lyrics API if it's a song
-      if (!transcript && block.title) {
-        const lyrics = await fetchLyricsForSong(block.title);
-        if (lyrics) {
-          transcript = lyrics;
-          source = 'Текст песни (Lyrics API)';
-        }
-      }
-
+      const transcript = await fetchYouTubeTranscriptAuto(block.url);
       setFetchingSubtitles(false);
 
       if (transcript) {
         onChange({ ...block, transcript });
-        setSubtitleStatus(`✅ Субтитры загружены [${source}] (${transcript.split(' ').length} слов)`);
+        setSubtitleStatus(`✅ Субтитры загружены (${transcript.split(' ').length} слов)`);
       } else {
-        setSubtitleStatus(`🎵 Субтитры не найдены. AI Llama 3.1 использует тему "${block.title || 'Видео'}"!`);
+        setSubtitleStatus('⚠️ У видео нет доступных английских субтитров. Вставьте описание вручную ниже.');
       }
     };
 
@@ -288,19 +239,19 @@ const EditableBlockCard = ({ block, onChange }) => {
         <div className="space-y-1.5">
           <div className="flex justify-between items-center">
             <label className="text-[10px] font-bold text-slate-500 uppercase">
-              📝 Субтитры / Текст видео (для AI Помощника)
+              📝 Субтитры / Содержание видео (для AI Помощника)
             </label>
             <button
               type="button"
               disabled={fetchingSubtitles || !block.url}
               onClick={handleAutoFetchSubtitles}
-              className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:opacity-90 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
+              className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
             >
-              {fetchingSubtitles ? '⌛ Извлечение субтитров...' : '🪄 Авто-Извлечь Субтитры'}
+              {fetchingSubtitles ? '⌛ Загрузка...' : '🪄 Авто-Извлечь Субтитры'}
             </button>
           </div>
 
-          {subtitleStatus && <p className="text-xs font-semibold text-indigo-600 bg-indigo-50/80 p-2 rounded-lg border border-indigo-100">{subtitleStatus}</p>}
+          {subtitleStatus && <p className="text-xs font-semibold text-indigo-600">{subtitleStatus}</p>}
 
           <textarea
             rows="3"
