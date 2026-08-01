@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
-import { fetchYouTubeTranscriptAuto } from '@utils/youtube.js';
+import { compressAndUploadImage } from '@utils/youtube.js';
 
 export const EditableBlockCard = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
@@ -140,10 +140,10 @@ export const EditableBlockCard = ({ block, onChange }) => {
     const handleAutoFetchSubtitles = async () => {
       if (!block.url) return alert('Сначала вставьте ссылку на YouTube видео!');
       setFetchingSubtitles(true);
-      setSubtitleStatus('⌛ Извлечение субтитров...');
+      setSubtitleStatus('⌛ Извлечение субтитров из YouTube...');
 
       let transcript = null;
-      let source = '';
+      let title = block.title || '';
 
       try {
         const res = await fetch('/api/youtube/transcript', {
@@ -151,30 +151,21 @@ export const EditableBlockCard = ({ block, onChange }) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: block.url })
         });
+        
         if (res.ok) {
           const data = await res.json();
-          if (data.success && data.transcript) {
+          if (data.transcript && data.transcript.length > 50) {
             transcript = data.transcript;
-            source = 'YouTube Direct API';
-            if (data.title && !block.title) {
-              onChange({ ...block, title: data.title, transcript });
-            }
+            if (data.title) title = data.title;
           }
         }
       } catch(e) {}
 
-      if (!transcript) {
-        try {
-          transcript = await fetchYouTubeTranscriptAuto(block.url);
-          if (transcript) source = 'Backup Subtitle Proxy';
-        } catch(e) {}
-      }
-
       setFetchingSubtitles(false);
 
       if (transcript) {
-        onChange({ ...block, transcript });
-        setSubtitleStatus(`✅ Субтитры загружены [${source}] (${transcript.split(' ').length} слов)`);
+        onChange({ ...block, title: title || block.title, transcript });
+        setSubtitleStatus(`✅ Субтитры успешно загружены! (${transcript.split(' ').length} слов)`);
       } else {
         const fallbackText = `Видео на тему: "${block.title || 'Educational Video'}"`;
         onChange({ ...block, transcript: fallbackText });
@@ -210,7 +201,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
               type="button"
               disabled={fetchingSubtitles || !block.url}
               onClick={handleAutoFetchSubtitles}
-              className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
+              className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40 cursor-pointer"
             >
               {fetchingSubtitles ? '⌛ Извлечение...' : '🪄 Авто-Извлечь Субтитры'}
             </button>
@@ -219,7 +210,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
           {subtitleStatus && <p className="text-xs font-semibold text-indigo-600 bg-indigo-50/80 p-2 rounded-lg border border-indigo-100">{subtitleStatus}</p>}
 
           <textarea
-            rows="3"
+            rows="5"
             value={block.transcript || ''}
             onChange={e => onChange({ ...block, transcript: e.target.value })}
             placeholder="Нажмите '🪄 Авто-Извлечь Субтитры' выше..."
