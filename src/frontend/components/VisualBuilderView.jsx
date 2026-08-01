@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { BlockRenderer } from './BlockRenderer.jsx';
 import { BlockVideo } from './BlockMedia.jsx';
 
-// LIVE EDITABLE BLOCK COMPONENT FOR TEACHER CANVAS
 const EditableBlockCard = ({ block, onChange }) => {
   if (block.type === 'heading') {
     return (
@@ -63,30 +62,6 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  if (block.type === 'image') {
-    return (
-      <div className="space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input
-            type="text"
-            value={block.url || ''}
-            onChange={e => onChange({ ...block, url: e.target.value })}
-            placeholder="Ссылка на изображение (URL)..."
-            className="p-2.5 border rounded-xl text-xs font-mono"
-          />
-          <input
-            type="text"
-            value={block.caption || ''}
-            onChange={e => onChange({ ...block, caption: e.target.value })}
-            placeholder="Подпись к картинке..."
-            className="p-2.5 border rounded-xl text-xs font-medium"
-          />
-        </div>
-        {block.url && <img src={block.url} alt="Preview" className="max-h-60 rounded-xl object-cover border" />}
-      </div>
-    );
-  }
-
   if (block.type === 'flashcards') {
     const cards = block.cards || [];
     const updateCard = (idx, field, val) => {
@@ -94,7 +69,7 @@ const EditableBlockCard = ({ block, onChange }) => {
       updated[idx] = { ...updated[idx], [field]: val };
       onChange({ ...block, cards: updated });
     };
-    const addCard = () => onChange({ ...block, cards: [...cards, { front: 'New Word', back: 'Перевод', example: '' }] });
+    const addCard = () => onChange({ ...block, cards: [...cards, { front: 'Word', back: 'Перевод', example: '' }] });
     const removeCard = (idx) => onChange({ ...block, cards: cards.filter((_, i) => i !== idx) });
 
     return (
@@ -103,7 +78,7 @@ const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.title || ''}
           onChange={e => onChange({ ...block, title: e.target.value })}
-          placeholder="Заголовок карточек (напр. Target Vocabulary)..."
+          placeholder="Заголовок карточек..."
           className="p-2 border rounded-xl text-xs font-bold w-full"
         />
         <div className="space-y-2">
@@ -113,28 +88,28 @@ const EditableBlockCard = ({ block, onChange }) => {
                 type="text"
                 value={c.front || ''}
                 onChange={e => updateCard(i, 'front', e.target.value)}
-                placeholder="Слово (Английский)..."
+                placeholder="Слово..."
                 className="p-2 border rounded-lg text-xs w-1/3 font-bold bg-white"
               />
               <input
                 type="text"
                 value={c.back || ''}
                 onChange={e => updateCard(i, 'back', e.target.value)}
-                placeholder="Перевод (Русский)..."
+                placeholder="Перевод..."
                 className="p-2 border rounded-lg text-xs w-1/3 bg-white"
               />
               <input
                 type="text"
                 value={c.example || ''}
                 onChange={e => updateCard(i, 'example', e.target.value)}
-                placeholder="Пример (Example)..."
+                placeholder="Пример..."
                 className="p-2 border rounded-lg text-xs w-1/3 italic bg-white"
               />
-              <button onClick={() => removeCard(i)} className="text-red-500 font-bold px-2 hover:bg-red-50 rounded-lg">✕</button>
+              <button onClick={() => removeCard(i)} className="text-red-500 font-bold px-2">✕</button>
             </div>
           ))}
         </div>
-        <button onClick={addCard} className="px-3.5 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-100">+ Добавить флешкарту</button>
+        <button onClick={addCard} className="px-3.5 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold">+ Добавить флешкарту</button>
       </div>
     );
   }
@@ -159,7 +134,7 @@ const EditableBlockCard = ({ block, onChange }) => {
           className="p-2.5 border rounded-xl text-sm font-bold w-full"
         />
         <div className="space-y-2">
-          <label className="text-[10px] font-bold text-slate-400 uppercase">Варианты ответов (отметьте правильный):</label>
+          <label className="text-[10px] font-bold text-slate-400 uppercase">Варианты ответов (отметьте верный):</label>
           {options.map((opt, i) => (
             <div key={i} className="flex gap-2 items-center">
               <input
@@ -167,7 +142,7 @@ const EditableBlockCard = ({ block, onChange }) => {
                 name={`correct-${block.id}`}
                 checked={Number(block.correct) === i}
                 onChange={() => onChange({ ...block, correct: i })}
-                className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                className="w-4 h-4 accent-indigo-600"
               />
               <input
                 type="text"
@@ -180,13 +155,6 @@ const EditableBlockCard = ({ block, onChange }) => {
           ))}
         </div>
         <button onClick={addOpt} className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold">+ Добавить вариант</button>
-        <input
-          type="text"
-          value={block.explanation || ''}
-          onChange={e => onChange({ ...block, explanation: e.target.value })}
-          placeholder="Пояснение к правильному ответу..."
-          className="p-2 border rounded-xl text-xs w-full text-slate-500"
-        />
       </div>
     );
   }
@@ -198,7 +166,7 @@ const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.instruction || ''}
           onChange={e => onChange({ ...block, instruction: e.target.value })}
-          placeholder="Инструкция (напр. Заполните пропуск:)..."
+          placeholder="Инструкция..."
           className="p-2 border rounded-xl text-xs w-full"
         />
         <input
@@ -210,10 +178,9 @@ const EditableBlockCard = ({ block, onChange }) => {
             const extractedAns = match ? [match[1]] : (block.answers || []);
             onChange({ ...block, text: textVal, answers: extractedAns });
           }}
-          placeholder="Предложение с пропуском в скобках [правильный_ответ]..."
+          placeholder="Предложение с пропуском [ответ]..."
           className="p-2.5 border rounded-xl text-sm font-medium w-full"
         />
-        <p className="text-[11px] text-slate-400">💡 Пример: She <strong className="text-indigo-600">[is working]</strong> today. Ответ автоматически извлекается из скобок!</p>
       </div>
     );
   }
@@ -234,7 +201,7 @@ const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.instruction || ''}
           onChange={e => onChange({ ...block, instruction: e.target.value })}
-          placeholder="Инструкция (напр. Соедините слова:)..."
+          placeholder="Инструкция..."
           className="p-2 border rounded-xl text-xs w-full"
         />
         <div className="space-y-2">
@@ -259,7 +226,7 @@ const EditableBlockCard = ({ block, onChange }) => {
             </div>
           ))}
         </div>
-        <button onClick={addPair} className="px-3.5 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-100">+ Добавить пару</button>
+        <button onClick={addPair} className="px-3.5 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold">+ Добавить пару</button>
       </div>
     );
   }
@@ -271,28 +238,21 @@ const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.prompt || ''}
           onChange={e => onChange({ ...block, prompt: e.target.value })}
-          placeholder="Вопрос для обсуждения / ответа..."
+          placeholder="Вопрос..."
           className="p-2.5 border rounded-xl text-sm font-bold w-full"
-        />
-        <input
-          type="text"
-          value={block.placeholder || ''}
-          onChange={e => onChange({ ...block, placeholder: e.target.value })}
-          placeholder="Подсказка в поле (Placeholder)..."
-          className="p-2 border rounded-xl text-xs w-full text-slate-400"
         />
       </div>
     );
   }
 
-  return <p className="text-xs text-slate-500">Редактирование этого блока выполняется через меню или JSON.</p>;
+  return <p className="text-xs text-slate-500">Настройте этот блок при необходимости.</p>;
 };
 
 export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
   const [title, setTitle] = useState('Новый урок');
   const [level, setLevel] = useState('B1');
   const [topic, setTopic] = useState('Общая тема');
-  const [description, setDescription] = useState('Урок создан в визуальном конструкторе');
+  const [description, setDescription] = useState('Интерактивный урок');
 
   const [pages, setPages] = useState([
     {
@@ -300,14 +260,16 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
       title: 'Часть 1: Материалы урока',
       blocks: [
         { id: 'b1', type: 'heading', level: 1, text: 'Добро пожаловать на урок' },
-        { id: 'b2', type: 'text', text: 'Введите или вставьте сюда текст вашего урока. Затем нажмите ✨ AI Помощник, чтобы сгенерировать флешкарты или тесты прямо из этого текста!' }
+        { id: 'b2', type: 'text', text: 'Введите сюда текст урока. Нажмите ✨ AI Помощник, чтобы выбрать и сгенерировать точные упражнения к этому тексту!' }
       ]
     }
   ]);
 
   const [activePageIndex, setActivePageIndex] = useState(0);
-  const [aiGeneratingBlockId, setAiGeneratingBlockId] = useState(null);
-  const [previewBlockIds, setPreviewBlockIds] = useState({}); // { blockId: boolean }
+  const [aiModalTarget, setAiModalTarget] = useState(null); // { block, blockIdx }
+  const [selectedTasks, setSelectedTasks] = useState(['flashcards']);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [previewBlockIds, setPreviewBlockIds] = useState({});
   const [saving, setSaving] = useState(false);
 
   const activePage = pages[activePageIndex] || pages[0];
@@ -324,16 +286,14 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
 
   const handleAddBlock = (type) => {
     let newBlock = { id: 'b-' + Date.now(), type };
-
     if (type === 'heading') newBlock = { ...newBlock, level: 2, text: 'Новый заголовок' };
-    else if (type === 'text') newBlock = { ...newBlock, text: 'Введите текст материала...' };
+    else if (type === 'text') newBlock = { ...newBlock, text: 'Введите текст...' };
     else if (type === 'video') newBlock = { ...newBlock, title: 'Посмотрите видео:', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' };
-    else if (type === 'image') newBlock = { ...newBlock, caption: 'Картинка', url: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d' };
-    else if (type === 'flashcards') newBlock = { ...newBlock, title: 'Ключевые слова', cards: [{ front: 'Word', back: 'Перевод', example: 'Example sentence' }] };
-    else if (type === 'multiple_choice') newBlock = { ...newBlock, question: 'Вопрос теста?', options: ['Вариант A', 'Вариант B', 'Вариант C'], correct: 0, explanation: 'Пояснение' };
+    else if (type === 'flashcards') newBlock = { ...newBlock, title: 'Ключевые слова', cards: [{ front: 'Word', back: 'Перевод', example: 'Sentence' }] };
+    else if (type === 'multiple_choice') newBlock = { ...newBlock, question: 'Вопрос теста?', options: ['Вариант A', 'Вариант B'], correct: 0 };
     else if (type === 'gap_fill') newBlock = { ...newBlock, instruction: 'Заполните пропуск:', text: 'She [is working] today.', answers: ['is working'] };
     else if (type === 'matching') newBlock = { ...newBlock, instruction: 'Соедините пары:', pairs: [{ left: 'Word', right: 'Match' }] };
-    else if (type === 'open_input') newBlock = { ...newBlock, prompt: 'Вопрос для обсуждения?', placeholder: 'Введите ответ...' };
+    else if (type === 'open_input') newBlock = { ...newBlock, prompt: 'Вопрос для обсуждения?' };
 
     const updatedPages = [...pages];
     updatedPages[activePageIndex].blocks.push(newBlock);
@@ -365,47 +325,46 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     setPages(updatedPages);
   };
 
-  const handleAiTransformBlock = async (sourceBlock, blockIdx, action) => {
-    setAiGeneratingBlockId(sourceBlock.id);
+  const toggleTaskSelection = (taskKey) => {
+    if (selectedTasks.includes(taskKey)) {
+      setSelectedTasks(selectedTasks.filter(t => t !== taskKey));
+    } else {
+      setSelectedTasks([...selectedTasks, taskKey]);
+    }
+  };
+
+  const handleExecuteAiTasks = async () => {
+    if (!aiModalTarget || selectedTasks.length === 0) return;
+    setAiGenerating(true);
+
     try {
       const res = await fetch('/api/ai/transform-block', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, sourceBlock, level })
+        body: JSON.stringify({
+          actions: selectedTasks,
+          sourceBlock: aiModalTarget.block,
+          level
+        })
       });
       const data = await res.json();
 
-      if (data.success && data.newBlock) {
+      if (data.success && Array.isArray(data.newBlocks)) {
         const updatedPages = [...pages];
         const blocks = updatedPages[activePageIndex].blocks;
-
-        if (data.newBlock.type?.endsWith('_group') && Array.isArray(data.newBlock.blocks)) {
-          const formattedBlocks = data.newBlock.blocks.map((b, i) => ({ ...b, id: `ai-b-${Date.now()}-${i}` }));
-          blocks.splice(blockIdx + 1, 0, ...formattedBlocks);
-        } else {
-          const formattedBlock = { ...data.newBlock, id: 'ai-b-' + Date.now() };
-          blocks.splice(blockIdx + 1, 0, formattedBlock);
-        }
-
+        const formattedBlocks = data.newBlocks.map((b, i) => ({ ...b, id: `ai-b-${Date.now()}-${i}` }));
+        
+        blocks.splice(aiModalTarget.blockIdx + 1, 0, ...formattedBlocks);
         setPages(updatedPages);
+        setAiModalTarget(null);
       } else {
         alert('AI ошибка: ' + (data.error || 'Не удалось сгенерировать'));
       }
     } catch (e) {
       alert('Ошибка: ' + e.message);
     } finally {
-      setAiGeneratingBlockId(null);
+      setAiGenerating(false);
     }
-  };
-
-  const handleAddPage = () => {
-    const newPage = {
-      id: 'p-' + Date.now(),
-      title: `Часть ${pages.length + 1}: Новый раздел`,
-      blocks: []
-    };
-    setPages([...pages, newPage]);
-    setActivePageIndex(pages.length);
   };
 
   const handleSave = async () => {
@@ -424,7 +383,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
 
   return (
     <div className="space-y-6">
-      {/* Top Header Bar */}
+      {/* Top Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="space-y-2 w-full max-w-xl">
           <input
@@ -450,23 +409,9 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
         </div>
       </div>
 
-      {/* Pages Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        {pages.map((p, idx) => (
-          <button
-            key={p.id}
-            onClick={() => setActivePageIndex(idx)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex-shrink-0 ${activePageIndex === idx ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}
-          >
-            {p.title || `Страница ${idx + 1}`}
-          </button>
-        ))}
-        <button onClick={handleAddPage} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">+ Добавить страницу</button>
-      </div>
-
-      {/* Main Builder Grid */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left Toolbar (Lego Tools) */}
+        {/* Left Palette */}
         <div className="lg:col-span-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 h-fit sticky top-20">
           <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">🛠️ Палитра блоков</h3>
           
@@ -475,14 +420,13 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             <button onClick={() => handleAddBlock('heading')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">📝 Заголовок</button>
             <button onClick={() => handleAddBlock('text')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">📄 Текст / Статья</button>
             <button onClick={() => handleAddBlock('video')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🎥 Видео YouTube</button>
-            <button onClick={() => handleAddBlock('image')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🖼️ Картинка</button>
 
             <p className="text-slate-400 text-[10px] uppercase font-bold pt-3">Интерактив</p>
             <button onClick={() => handleAddBlock('flashcards')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🎴 Флешкарты</button>
-            <button onClick={() => handleAddBlock('multiple_choice')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">❓ Тест (Multiple Choice)</button>
-            <button onClick={() => handleAddBlock('gap_fill')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">✏️ Пропуски в тексте</button>
+            <button onClick={() => handleAddBlock('multiple_choice')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">❓ Тест Multiple Choice</button>
+            <button onClick={() => handleAddBlock('gap_fill')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">✏️ Пропуски (Gap Fill)</button>
             <button onClick={() => handleAddBlock('matching')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">🔗 Сопоставление пар</button>
-            <button onClick={() => handleAddBlock('open_input')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">💬 Разговорный вопрос</button>
+            <button onClick={() => handleAddBlock('open_input')} className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border rounded-xl transition flex items-center gap-2">💬 Вопрос для ответа</button>
           </div>
         </div>
 
@@ -492,14 +436,14 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             <div className="bg-white p-12 rounded-2xl border-2 border-dashed border-slate-200 text-center space-y-3">
               <span className="text-4xl">🧩</span>
               <h3 className="font-bold text-slate-800 text-lg">Страница пуста</h3>
-              <p className="text-slate-400 text-xs max-w-sm mx-auto">Нажмите на любой инструмент слева, чтобы добавить первый блок!</p>
+              <p className="text-slate-400 text-xs">Нажмите на инструмент слева, чтобы добавить блок!</p>
             </div>
           ) : (
             activePage.blocks.map((b, idx) => {
               const isPreview = previewBlockIds[b.id];
               return (
                 <div key={b.id || idx} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative group hover:border-indigo-300 transition">
-                  {/* Floating Block Actions Toolbar */}
+                  {/* Floating Toolbar */}
                   <div className="flex justify-between items-center bg-slate-100 p-2 rounded-xl mb-4 text-xs font-bold border border-slate-200">
                     <span className="text-slate-500 uppercase px-2">Блок #{idx + 1}: {b.type}</span>
 
@@ -512,56 +456,78 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
                       <button onClick={() => handleDuplicateBlock(idx)} className="p-1 px-2 bg-white rounded-lg border hover:bg-slate-50">📋 Клон</button>
                       <button onClick={() => handleDeleteBlock(idx)} className="p-1 px-2 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100">🗑️</button>
 
-                      {/* EMBEDDED BLOCK-LEVEL ✨ AI BUTTON */}
-                      <div className="relative group/ai ml-2">
-                        <button
-                          disabled={aiGeneratingBlockId === b.id}
-                          className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-lg shadow-xs hover:opacity-95 transition flex items-center gap-1"
-                        >
-                          {aiGeneratingBlockId === b.id ? '⌛ AI создаёт...' : '✨ AI Помощник'}
-                        </button>
-
-                        {/* Contextual AI Dropdown Options */}
-                        <div className="absolute right-0 top-full mt-1 hidden group-hover/ai:block bg-slate-900 text-white rounded-xl p-2 shadow-2xl z-30 w-56 text-xs space-y-1">
-                          <p className="text-[10px] text-emerald-400 font-bold px-2 py-1 uppercase">Создать из этого блока:</p>
-                          
-                          {b.type === 'text' && (
-                            <>
-                              <button onClick={() => handleAiTransformBlock(b, idx, 'flashcards')} className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg">🎴 Сгенерировать Флешкарты</button>
-                              <button onClick={() => handleAiTransformBlock(b, idx, 'quiz')} className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg">❓ Создать Тест по тексту</button>
-                              <button onClick={() => handleAiTransformBlock(b, idx, 'gap_fill')} className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg">✏️ Создать Пропуски (Gap Fill)</button>
-                              <button onClick={() => handleAiTransformBlock(b, idx, 'matching')} className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg">🔗 Сопоставление синонимов</button>
-                              <button onClick={() => handleAiTransformBlock(b, idx, 'discussion')} className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg">💬 Вопросы для обсуждения</button>
-                            </>
-                          )}
-
-                          {b.type === 'flashcards' && (
-                            <>
-                              <button onClick={() => handleAiTransformBlock(b, idx, 'matching')} className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg">🔗 Превратить в Сопоставление</button>
-                              <button onClick={() => handleAiTransformBlock(b, idx, 'quiz')} className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg">❓ Создать Тест по словам</button>
-                            </>
-                          )}
-
-                          {b.type !== 'text' && b.type !== 'flashcards' && (
-                            <button onClick={() => handleAiTransformBlock(b, idx, 'general')} className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg">💡 Создать упражнение к этому блоку</button>
-                          )}
-                        </div>
-                      </div>
+                      {/* ✨ AI BUTTON -> OPENS SELECTIVE MODAL */}
+                      <button
+                        onClick={() => setAiModalTarget({ block: b, blockIdx: idx })}
+                        className="ml-2 px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-lg shadow-xs hover:opacity-95 transition flex items-center gap-1"
+                      >
+                        ✨ AI Помощник
+                      </button>
                     </div>
                   </div>
 
-                  {/* Render Editable Inputs or Student Preview */}
-                  {isPreview ? (
-                    <BlockRenderer block={b} />
-                  ) : (
-                    <EditableBlockCard block={b} onChange={(updated) => handleUpdateBlock(idx, updated)} />
-                  )}
+                  {isPreview ? <BlockRenderer block={b} /> : <EditableBlockCard block={b} onChange={(updated) => handleUpdateBlock(idx, updated)} />}
                 </div>
               );
             })
           )}
         </div>
       </div>
+
+      {/* SELECTIVE AI MODAL */}
+      {aiModalTarget && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-6 shadow-2xl">
+            <div className="flex justify-between items-center pb-3 border-b">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">✨</span>
+                <h3 className="font-bold text-slate-900 text-lg">AI Помощник для блока #{aiModalTarget.blockIdx + 1}</h3>
+              </div>
+              <button onClick={() => setAiModalTarget(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
+            </div>
+
+            <p className="text-xs text-slate-500">Отметьте, какие именно задания сгенерировать из этого блока:</p>
+
+            <div className="space-y-2.5 text-sm font-medium">
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
+                <span>🎴 Только Флешкарты (Слова с переводом)</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600" />
+                <span>❓ Только Тест True / False (Правда или Ложь)</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600" />
+                <span>✏️ Только Заполнение пропусков (Gap Fill)</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600" />
+                <span>🔗 Только Сопоставление пар (Синонимы / Перевод)</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
+                <span>💬 Только Вопросы для разговорной практики</span>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setAiModalTarget(null)} className="px-4 py-2.5 border rounded-xl text-xs font-bold">Отмена</button>
+              <button
+                onClick={handleExecuteAiTasks}
+                disabled={selectedTasks.length === 0 || aiGenerating}
+                className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl text-xs shadow-md disabled:opacity-40"
+              >
+                {aiGenerating ? '⌛ AI создаёт...' : `🚀 Сгенерировать (${selectedTasks.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
