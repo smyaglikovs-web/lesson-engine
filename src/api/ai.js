@@ -97,7 +97,6 @@ export async function transformBlockWithAI(env, payload) {
 
   const taskInstructions = [];
 
-  // FULL INTERACTIVE TASK GENERATION FOR ANY BLOCK TYPE
   if (actions.includes('listening')) {
     taskInstructions.push(`- COMPREHENSION QUIZ: 4-5 quiz questions based on content. Format: { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
   }
@@ -126,6 +125,7 @@ export async function transformBlockWithAI(env, payload) {
 
   const systemPrompt = `Ты — ведущий методист английского языка.
 Создай СТРОГО УКАЗАННЫЕ ИНТЕРАКТИВНЫЕ БЛОКИ на основе предоставленного материала.
+Если материал является песней, используй её официальный текст (lyrics) для упражнений.
 Уровень языка: ${level}.
 
 ТРЕБУЕМЫЕ БЛОКИ ДЛЯ СОЗДАНИЯ:
