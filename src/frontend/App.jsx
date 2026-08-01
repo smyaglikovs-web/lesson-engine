@@ -164,7 +164,9 @@ export default function App() {
           />
         )}
 
-        {view === 'create' && isTeacher && isAuthenticated && <CreateLessonView onSaveLesson={handleSaveLesson} onCancel={() => setView('library')} />}
+        {view === 'create' && isTeacher && isAuthenticated && (
+          <CreateLessonView onSaveLesson={handleSaveLesson} onCancel={() => setView('library')} />
+        )}
 
         {view === 'prompts' && isTeacher && isAuthenticated && <AIPromptsView />}
 
@@ -177,7 +179,9 @@ export default function App() {
           />
         )}
 
-        {viewSubmissionsLesson && isTeacher && isAuthenticated && <SubmissionsModal lesson={viewSubmissionsLesson} onClose={() => setViewSubmissionsLesson(null)} />}
+        {viewSubmissionsLesson && isTeacher && isAuthenticated && (
+          <SubmissionsModal lesson={viewSubmissionsLesson} onClose={() => setViewSubmissionsLesson(null)} />
+        )}
       </main>
     </div>
   );
