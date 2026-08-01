@@ -1,13 +1,59 @@
 function getYouTubeId(url = '') {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
+  const match = String(url).match(regExp);
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
 const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+  'User-Agent': 'com.google.android.youtube/17.36.37 (Linux; U; Android 11; en_US)',
   'Accept-Language': 'en-US,en;q=0.9'
 };
+
+// Resilient JSON extractor for AI LLM outputs
+function parseAIJson(responseText) {
+  if (!responseText) return null;
+  
+  let clean = responseText.trim();
+  
+  // Extract content inside ```json ... ``` code blocks
+  const codeBlockMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch) {
+    clean = codeBlockMatch[1].trim();
+  } else {
+    // Extract JSON object or array bounds
+    const firstBrace = clean.search(/[{\[]/);
+    const lastBrace = Math.max(clean.lastIndexOf('}'), clean.lastIndexOf(']'));
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      clean = clean.substring(firstBrace, lastBrace + 1);
+    }
+  }
+
+  try {
+    return JSON.parse(clean);
+  } catch (err) {
+    // Fallback parser for unescaped newlines inside strings
+    try {
+      let fixed = '';
+      let inString = false;
+      for (let i = 0; i < clean.length; i++) {
+        const c = clean.charAt(i);
+        const code = clean.charCodeAt(i);
+        if (c === '"' && (i === 0 || clean.charAt(i - 1) !== '\\')) {
+          inString = !inString;
+          fixed += c;
+        } else if (inString && (code === 10 || code === 13)) {
+          fixed += '\\n';
+        } else {
+          fixed += c;
+        }
+      }
+      return JSON.parse(fixed);
+    } catch (e) {
+      console.error("JSON Parse Error:", e, "Raw text:", responseText);
+      return null;
+    }
+  }
+}
 
 async function fetchLyricsForSong(title = '') {
   try {
@@ -28,7 +74,7 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// RELIABLE YOUTUBE WATCH-PAGE CAPTION TRACK EXTRACTOR
+// RELIABLE YOUTUBE INNERTUBE CAPTION EXTRACTOR (Cloudflare Worker Compatible)
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
@@ -37,58 +83,72 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
     let title = '';
     let transcriptText = '';
 
-    // Step 1: Fetch Video Title via oEmbed
+    // Step 1: Fetch Video Title via oEmbed (No Cloudflare Block)
     try {
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: HEADERS });
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
       if (oembedRes.ok) {
         const odata = await oembedRes.json();
         title = odata.title || '';
       }
     } catch(e) {}
 
-    // Step 2: Fetch Watch Page & Extract Caption Track BaseURL
+    // Step 2: Fetch Captions via YouTube InnerTube API (Android Client)
     try {
-      const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: HEADERS });
-      if (pageRes.ok) {
-        const html = await pageRes.text();
-        const splitted = html.split('ytInitialPlayerResponse = ');
-        if (splitted.length > 1) {
-          const jsonStr = splitted[1].split(';\n')[0].split(';var ')[0].split(';</script>')[0];
-          const playerData = JSON.parse(jsonStr);
+      const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'com.google.android.youtube/17.36.37 (Linux; U; Android 11; en_US)'
+        },
+        body: JSON.stringify({
+          context: {
+            client: {
+              clientName: 'ANDROID',
+              clientVersion: '17.36.37',
+              hl: 'en',
+              gl: 'US'
+            }
+          },
+          videoId: videoId
+        })
+      });
 
-          if (!title && playerData.videoDetails?.title) {
-            title = playerData.videoDetails.title;
-          }
+      if (innertubeRes.ok) {
+        const playerResponse = await innertubeRes.json();
+        if (!title && playerResponse.videoDetails?.title) {
+          title = playerResponse.videoDetails.title;
+        }
 
-          const captionTracks = playerData.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-          
-          // Find English track first, or fallback to first track
-          let track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US') || captionTracks[0];
+        const captionTracks = playerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+        
+        // Prioritize English track or fallback to first available
+        const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US') || captionTracks[0];
 
-          if (track && track.baseUrl) {
-            const xmlRes = await fetch(track.baseUrl, { headers: HEADERS });
-            if (xmlRes.ok) {
-              const xml = await xmlRes.text();
-              const cleanText = xml
-                .replace(/<text[^>]*>/g, ' ')
-                .replace(/<\/text>/g, ' ')
-                .replace(/<[^>]+>/g, '')
-                .replace(/&amp;/g, '&')
-                .replace(/&#39;/g, "'")
-                .replace(/&quot;/g, '"')
-                .replace(/\s+/g, ' ')
-                .trim();
+        if (track && track.baseUrl) {
+          const xmlRes = await fetch(track.baseUrl, { headers: HEADERS });
+          if (xmlRes.ok) {
+            const xml = await xmlRes.text();
+            const cleanText = xml
+              .replace(/<text[^>]*>/g, ' ')
+              .replace(/<\/text>/g, ' ')
+              .replace(/<[^>]+>/g, '')
+              .replace(/&amp;/g, '&')
+              .replace(/&#39;/g, "'")
+              .replace(/&quot;/g, '"')
+              .replace(/\s+/g, ' ')
+              .trim();
 
-              if (cleanText.length > 50) {
-                transcriptText = cleanText.slice(0, 3500);
-              }
+            if (cleanText.length > 50) {
+              transcriptText = cleanText.slice(0, 3500);
             }
           }
         }
       }
-    } catch(e) {}
+    } catch(e) {
+      console.error("InnerTube API Error:", e);
+    }
 
-    // Step 3: Direct timedtext Fallbacks
+    // Step 3: Direct TimedText API Fallback
     if (!transcriptText) {
       const ttUrls = [
         `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
@@ -114,7 +174,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     }
 
-    // Step 4: Song Lyrics Fallback
+    // Step 4: Song Lyrics Fallback for Music Videos
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) transcriptText = songLyrics;
@@ -122,6 +182,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
 
     return { title, transcript: transcriptText, videoId };
   } catch (e) {
+    console.error("YouTube Fetch Exception:", e);
     return null;
   }
 }
@@ -220,10 +281,10 @@ ${taskInstructions.join('\n')}
       temperature: 0.3
     });
 
-    const generatedText = aiResponse.response || "";
-    var tb = String.fromCharCode(96, 96, 96);
-    var cleanJsonText = generatedText.split(tb + 'json').join('').split(tb).join('').trim();
-    const parsedData = JSON.parse(cleanJsonText);
+    const parsedData = parseAIJson(aiResponse.response || "");
+    if (!parsedData) {
+      return { error: 'AI generated invalid response format.' };
+    }
 
     const newBlocks = Array.isArray(parsedData.blocks) ? parsedData.blocks : [parsedData];
     return { success: true, newBlocks };
@@ -274,11 +335,12 @@ export async function generateFullLessonWithAI(env, payload) {
       temperature: 0.3
     });
 
-    const generatedText = aiResponse.response || "";
-    var tb = String.fromCharCode(96, 96, 96);
-    var cleanJsonText = generatedText.split(tb + 'json').join('').split(tb).join('').trim();
+    const parsedLesson = parseAIJson(aiResponse.response || "");
+    if (!parsedLesson) {
+      return { error: 'AI generation failed to produce valid JSON.' };
+    }
 
-    return { success: true, jsonText: cleanJsonText };
+    return { success: true, jsonText: JSON.stringify(parsedLesson, null, 2) };
   } catch (err) {
     return { error: 'AI generation error: ' + err.message };
   }
