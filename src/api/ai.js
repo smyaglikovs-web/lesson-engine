@@ -82,63 +82,75 @@ export async function transformBlockWithAI(env, payload) {
     return { error: 'Выберите хотя бы одно задание.' };
   }
 
-  let videoDetailsText = '';
-  if (sourceBlock.type === 'video' && sourceBlock.url) {
-    const ytData = await fetchYouTubeTranscriptAndMetadata(sourceBlock.url);
-    if (ytData) {
-      if (ytData.title) sourceBlock.title = ytData.title;
-      if (ytData.transcript) {
-        videoDetailsText = `SPOKEN VIDEO TRANSCRIPT / LYRICS:\n"${ytData.transcript}"`;
-      } else if (ytData.title) {
-        videoDetailsText = `VIDEO TITLE & SONG TOPIC:\n"${ytData.title}"`;
-      }
+  // Extract clean text content (Never send raw JSON technical IDs to AI!)
+  let sourceTextContent = '';
+
+  if (sourceBlock.type === 'video') {
+    let ytData = null;
+    if (sourceBlock.url) {
+      ytData = await fetchYouTubeTranscriptAndMetadata(sourceBlock.url);
     }
+
+    const videoTitle = sourceBlock.title || ytData?.title || 'Educational Video';
+    const transcript = sourceBlock.transcript || ytData?.transcript || '';
+
+    if (transcript.length > 50) {
+      sourceTextContent = `VIDEO TITLE: "${videoTitle}"\n\nSPOKEN VIDEO TRANSCRIPT:\n"${transcript}"`;
+    } else {
+      sourceTextContent = `VIDEO TITLE & TOPIC: "${videoTitle}"\n\nNOTE: Create educational comprehension and vocabulary questions based on the topic "${videoTitle}".`;
+    }
+  } else if (sourceBlock.type === 'text') {
+    sourceTextContent = sourceBlock.text || '';
+  } else if (sourceBlock.type === 'flashcards') {
+    sourceTextContent = (sourceBlock.cards || []).map(c => `${c.front} = ${c.back}`).join('\n');
+  } else {
+    sourceTextContent = sourceBlock.text || sourceBlock.prompt || sourceBlock.title || '';
   }
 
   const taskInstructions = [];
 
-  if (actions.includes('listening')) {
-    taskInstructions.push(`- COMPREHENSION QUIZ: 4-5 quiz questions based on content. Format: { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
+  if (actions.includes('listening') || actions.includes('true_false') || actions.includes('quiz')) {
+    taskInstructions.push(`- COMPREHENSION QUIZ: 4-5 multiple-choice questions testing educational understanding of the topic/content (e.g. key concepts, facts, ideas). Format: { "type": "multiple_choice", "question": "Educational Question about the topic?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
   }
   if (actions.includes('flashcards')) {
-    taskInstructions.push(`- FLASHCARDS: 6-8 key vocabulary words with Russian translation and example sentence. Format: { "type": "flashcards", "title": "Target Vocabulary", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
-  }
-  if (actions.includes('true_false')) {
-    taskInstructions.push(`- TRUE/FALSE QUIZ: 4 true/false questions based on content. Format: { "type": "multiple_choice", "question": "Statement...", "options": ["True", "False"], "correct": 0, "explanation": "Why" }`);
+    taskInstructions.push(`- FLASHCARDS: 6-8 key vocabulary words related to this topic with Russian translation and example sentence. Format: { "type": "flashcards", "title": "Key Vocabulary", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
   }
   if (actions.includes('gap_fill')) {
-    taskInstructions.push(`- GAP FILL (KEYBOARD): 5 sentences testing key words in format 'Sentence [answer] here.': { "type": "gap_fill", "instruction": "Fill the gaps:", "text": "Sentence [answer] here.", "answers": ["answer"] }`);
+    taskInstructions.push(`- GAP FILL: 5 sentences testing key vocabulary in format 'Sentence [answer] here.': { "type": "gap_fill", "instruction": "Fill the gaps:", "text": "Sentence [answer] here.", "answers": ["answer"] }`);
   }
   if (actions.includes('gap_fill_bank')) {
-    taskInstructions.push(`- WORD BANK GAP FILL: Sentences with 4-5 key words in [brackets] plus 2-3 distractor words: { "type": "gap_fill_bank", "instruction": "🧩 Заполните пропуски словами из банка:", "text": "Sentence [word1] and [word2].", "distractors": ["fake1", "fake2"] }`);
+    taskInstructions.push(`- WORD BANK GAP FILL: Sentences with key words in [brackets] plus 2 distractor words: { "type": "gap_fill_bank", "instruction": "🧩 Заполните пропуски словами из банка:", "text": "Sentence [word1] and [word2].", "distractors": ["fake1", "fake2"] }`);
   }
   if (actions.includes('matching')) {
-    taskInstructions.push(`- MATCHING: 6 pairs of synonyms or translations: { "type": "matching", "instruction": "Match the pairs:", "pairs": [{ "left": "Word", "right": "Match" }] }`);
+    taskInstructions.push(`- MATCHING: 6 pairs of vocabulary words and definitions/translations: { "type": "matching", "instruction": "Match the pairs:", "pairs": [{ "left": "Word", "right": "Match" }] }`);
   }
   if (actions.includes('discussion')) {
-    taskInstructions.push(`- DISCUSSION: 3 speaking discussion questions: { "type": "open_input", "prompt": "Discussion question?", "placeholder": "Your answer..." }`);
+    taskInstructions.push(`- DISCUSSION: 3 deep speaking discussion questions on the topic: { "type": "open_input", "prompt": "Discussion question?", "placeholder": "Your answer..." }`);
   }
 
   if (taskInstructions.length === 0) {
     taskInstructions.push(`- PRACTICE TASK: 3 discussion questions: { "type": "open_input", "prompt": "Practice question?" }`);
   }
 
-  const systemPrompt = `Ты — ведущий методист английского языка.
-Создай СТРОГО УКАЗАННЫЕ ИНТЕРАКТИВНЫЕ БЛОКИ на основе предоставленного материала.
-Если материал является песней, используй её официальный текст (lyrics) для упражнений.
+  const systemPrompt = `Ты — ведущий методист английского языка высшей квалификации.
+Твоя задача — создать СТРОГО УКАЗАННЫЕ ИНТЕРАКТИВНЫЕ БЛОКИ ДЛЯ ОБУЧЕНИЯ АНГЛИЙСКОМУ ЯЗЫКУ.
 Уровень языка: ${level}.
 
-ТРЕБУЕМЫЕ БЛОКИ ДЛЯ СОЗДАНИЯ:
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+1. Задавай вопросы ИСКЛЮЧИТЕЛЬНО по учебному содержанию темы/видео/текста (например, про мозг, память, науку, лексику).
+2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО задавать мета-вопросы о программном коде, ID видео, названии файлов, наличии субтитров или системных данных!
+
+ТРЕБУЕМЫЕ БЛОКИ:
 ${taskInstructions.join('\n')}
 
 ВЕРНИ СТРОГО ЧИСТЫЙ JSON МАССИВ БЛОКОВ (без \`\`\`json):
 {
   "blocks": [
-    /* созданные блоки */
+    /* созданные учебные блоки */
   ]
 }`;
 
-  const userPrompt = `СОДЕРЖАНИЕ ИСХОДНОГО БЛОКА:\n${JSON.stringify(sourceBlock)}\n\n${videoDetailsText}`;
+  const userPrompt = `ИСХОДНЫЙ УЧЕБНЫЙ МАТЕРИАЛ:\n${sourceTextContent}`;
 
   try {
     const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
