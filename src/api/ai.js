@@ -37,11 +37,13 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
+// OFFICIAL YOUTUBE ANDROID INNERTUBE TRANSCRIPT EXTRACTOR
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
     if (!videoId) return null;
 
+    // 1. Fetch Title via oEmbed
     let title = '';
     try {
       const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, {}, 3000);
@@ -51,6 +53,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     } catch(e) {}
 
+    // 2. Fetch Transcript via Android InnerTube API
     let transcriptText = '';
     try {
       const innerRes = await fetchWithTimeout('https://www.youtube.com/youtubei/v1/player', {
@@ -83,6 +86,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     } catch(e) {}
 
+    // 3. Fallback to Song Lyrics API
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) {
@@ -161,7 +165,7 @@ export async function transformBlockWithAI(env, payload) {
   }
 
   const systemPrompt = `Ты — ведущий методист английского языка высшей квалификации.
-Создай СТРОГО УКАЗАННЫЕ ИНТЕРАКТИВНЫЕ БЛОКИ ДЛЯ ОБУЧЕНИЯ АНГЛИЙСКОМУ ЯЗЫКУ.
+Твоя задача — создать СТРОГО УКАЗАННЫЕ ИНТЕРАКТИВНЫЕ БЛОКИ ДЛЯ ОБУЧЕНИЯ АНГЛИЙСКОМУ ЯЗЫКУ.
 Уровень языка: ${level}.
 
 КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
