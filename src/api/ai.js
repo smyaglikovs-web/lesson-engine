@@ -4,12 +4,12 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-const HEADERS = {
-  'User-Agent': 'com.google.android.youtube/17.36.37 (Linux; U; Android 11; en_US)',
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
   'Accept-Language': 'en-US,en;q=0.9'
 };
 
-// Resilient JSON extractor for AI LLM outputs
+// Resilient JSON extractor for Cloudflare Workers AI LLM outputs
 function parseAIJson(responseText) {
   if (!responseText) return null;
   
@@ -49,7 +49,7 @@ function parseAIJson(responseText) {
       }
       return JSON.parse(fixed);
     } catch (e) {
-      console.error("JSON Parse Error:", e, "Raw text:", responseText);
+      console.error("JSON Parse Error:", e);
       return null;
     }
   }
@@ -62,7 +62,7 @@ async function fetchLyricsForSong(title = '') {
     if (parts.length >= 2) {
       const artist = parts[0].trim();
       const song = parts[1].trim();
-      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`, { headers: HEADERS });
+      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`, { headers: BROWSER_HEADERS });
       if (res.ok) {
         const data = await res.json();
         if (data.lyrics && data.lyrics.length > 50) {
@@ -74,7 +74,7 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// RELIABLE YOUTUBE INNERTUBE CAPTION EXTRACTOR (Cloudflare Worker Compatible)
+// RELIABLE YOUTUBE CAPTION EXTRACTOR FOR CLOUDFLARE WORKERS
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
@@ -83,52 +83,31 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
     let title = '';
     let transcriptText = '';
 
-    // Step 1: Fetch Video Title via oEmbed (No Cloudflare Block)
+    // Step 1: Fetch Video Title via YouTube oEmbed
     try {
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: BROWSER_HEADERS });
       if (oembedRes.ok) {
         const odata = await oembedRes.json();
         title = odata.title || '';
       }
     } catch(e) {}
 
-    // Step 2: Fetch Captions via YouTube InnerTube API (Android Client)
-    try {
-      const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'com.google.android.youtube/17.36.37 (Linux; U; Android 11; en_US)'
-        },
-        body: JSON.stringify({
-          context: {
-            client: {
-              clientName: 'ANDROID',
-              clientVersion: '17.36.37',
-              hl: 'en',
-              gl: 'US'
-            }
-          },
-          videoId: videoId
-        })
-      });
+    // Step 2: Direct TimedText API Fetch (Primary Subtitle Extractor)
+    const timedTextUrls = [
+      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
+      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`,
+      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
+      `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=srv3`
+    ];
 
-      if (innertubeRes.ok) {
-        const playerResponse = await innertubeRes.json();
-        if (!title && playerResponse.videoDetails?.title) {
-          title = playerResponse.videoDetails.title;
-        }
-
-        const captionTracks = playerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-        
-        // Prioritize English track or fallback to first available
-        const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US') || captionTracks[0];
-
-        if (track && track.baseUrl) {
-          const xmlRes = await fetch(track.baseUrl, { headers: HEADERS });
-          if (xmlRes.ok) {
-            const xml = await xmlRes.text();
-            const cleanText = xml
+    for (const ttUrl of timedTextUrls) {
+      if (transcriptText) break;
+      try {
+        const res = await fetch(ttUrl, { headers: BROWSER_HEADERS });
+        if (res.ok) {
+          const text = await res.text();
+          if (text && (text.includes('<text') || text.includes('<s>') || text.length > 100)) {
+            const cleanText = text
               .replace(/<text[^>]*>/g, ' ')
               .replace(/<\/text>/g, ' ')
               .replace(/<[^>]+>/g, '')
@@ -140,41 +119,59 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
 
             if (cleanText.length > 50) {
               transcriptText = cleanText.slice(0, 3500);
+              break;
             }
           }
         }
-      }
-    } catch(e) {
-      console.error("InnerTube API Error:", e);
+      } catch(e) {}
     }
 
-    // Step 3: Direct TimedText API Fallback
+    // Step 3: InnerTube API Fallback (Mobile Client Context)
     if (!transcriptText) {
-      const ttUrls = [
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
-        `https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`
-      ];
+      try {
+        const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'com.google.android.youtube/17.36.37 (Linux; U; Android 11; en_US)'
+          },
+          body: JSON.stringify({
+            context: { client: { clientName: 'ANDROID', clientVersion: '17.36.37', hl: 'en', gl: 'US' } },
+            videoId: videoId
+          })
+        });
 
-      for (const ttUrl of ttUrls) {
-        if (transcriptText) break;
-        try {
-          const res = await fetch(ttUrl, { headers: HEADERS });
-          if (res.ok) {
-            const xml = await res.text();
-            if (xml && (xml.includes('<text') || xml.length > 100)) {
-              const cleanText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+        if (innertubeRes.ok) {
+          const playerResponse = await innertubeRes.json();
+          if (!title && playerResponse.videoDetails?.title) {
+            title = playerResponse.videoDetails.title;
+          }
+
+          const captionTracks = playerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+          const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US') || captionTracks[0];
+
+          if (track && track.baseUrl) {
+            const xmlRes = await fetch(track.baseUrl);
+            if (xmlRes.ok) {
+              const xml = await xmlRes.text();
+              const cleanText = xml
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/&amp;/g, '&')
+                .replace(/&#39;/g, "'")
+                .replace(/&quot;/g, '"')
+                .replace(/\s+/g, ' ')
+                .trim();
+
               if (cleanText.length > 50) {
                 transcriptText = cleanText.slice(0, 3500);
-                break;
               }
             }
           }
-        } catch(e) {}
-      }
+        }
+      } catch(e) {}
     }
 
-    // Step 4: Song Lyrics Fallback for Music Videos
+    // Step 4: Song Lyrics Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) transcriptText = songLyrics;
