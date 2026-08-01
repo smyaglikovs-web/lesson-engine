@@ -8,12 +8,11 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// DUAL-ENGINE: Native Captions + AI Speech-to-Text (Whisper) Fallback
+// Free YouTube Captions Fetcher
 const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   const videoId = getYouTubeId(videoUrl);
   if (!videoId) return null;
 
-  // ENGINE 1: Native YouTube Captions
   try {
     const res = await fetch(`https://yt.lemnoslife.com/nokey/captions?videoId=${videoId}`);
     if (res.ok) {
@@ -26,7 +25,7 @@ const fetchYouTubeTranscriptAuto = async (videoUrl) => {
             const xmlText = await subRes.text();
             const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
             if (cleanText.length > 50) {
-              return { transcript: cleanText.slice(0, 3500), engine: 'YouTube CC' };
+              return cleanText.slice(0, 3500);
             }
           }
         }
@@ -34,17 +33,26 @@ const fetchYouTubeTranscriptAuto = async (videoUrl) => {
     }
   } catch(e) {}
 
-  // ENGINE 2: Free AI Speech-to-Text (Whisper) Fallback for videos without CC
+  return null;
+};
+
+// Free Song Lyrics Search API
+const fetchLyricsForSong = async (title = '') => {
   try {
-    const res2 = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
-    if (res2.ok) {
-      const text = await res2.text();
-      if (text.length > 30) {
-        return { transcript: text.slice(0, 3500), engine: 'AI Speech-to-Text (Whisper)' };
+    const clean = title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').replace(/official video/gi, '').replace(/music video/gi, '').replace(/official/gi, '').trim();
+    const parts = clean.split('-');
+    if (parts.length >= 2) {
+      const artist = parts[0].trim();
+      const song = parts[1].trim();
+      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.lyrics && data.lyrics.length > 50) {
+          return data.lyrics.slice(0, 3500);
+        }
       }
     }
   } catch(e) {}
-
   return null;
 };
 
@@ -181,16 +189,28 @@ const EditableBlockCard = ({ block, onChange }) => {
     const handleAutoFetchSubtitles = async () => {
       if (!block.url) return alert('Сначала вставьте ссылку на YouTube видео!');
       setFetchingSubtitles(true);
-      setSubtitleStatus('⌛ Запуск AI расшифровки аудиотрека...');
+      setSubtitleStatus('⌛ Поиск субтитров и текста песни...');
 
-      const result = await fetchYouTubeTranscriptAuto(block.url);
+      // 1. Try YouTube CC
+      let transcript = await fetchYouTubeTranscriptAuto(block.url);
+      let source = 'YouTube CC';
+
+      // 2. If CC missing, search Lyrics API if it's a song
+      if (!transcript && block.title) {
+        const lyrics = await fetchLyricsForSong(block.title);
+        if (lyrics) {
+          transcript = lyrics;
+          source = 'Текст песни (Lyrics API)';
+        }
+      }
+
       setFetchingSubtitles(false);
 
-      if (result && result.transcript) {
-        onChange({ ...block, transcript: result.transcript });
-        setSubtitleStatus(`✅ Расшифровка загружена [${result.engine}] (${result.transcript.split(' ').length} слов)`);
+      if (transcript) {
+        onChange({ ...block, transcript });
+        setSubtitleStatus(`✅ Загружено [${source}] (${transcript.split(' ').length} слов)`);
       } else {
-        setSubtitleStatus(`ℹ️ Речь не обнаружена. AI сгенерирует задания по названию "${block.title || 'Видео'}"!`);
+        setSubtitleStatus(`🎵 Субтитры не найдены. AI Llama 3.1 использует базу знаний для песни "${block.title || 'Видео'}"!`);
       }
     };
 
@@ -216,7 +236,7 @@ const EditableBlockCard = ({ block, onChange }) => {
         <div className="space-y-1.5">
           <div className="flex justify-between items-center">
             <label className="text-[10px] font-bold text-slate-500 uppercase">
-              📝 Субтитры / AI Расшифровка видео (для AI Помощника)
+              📝 Субтитры / Текст песни (для AI Помощника)
             </label>
             <button
               type="button"
@@ -224,7 +244,7 @@ const EditableBlockCard = ({ block, onChange }) => {
               onClick={handleAutoFetchSubtitles}
               className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:opacity-90 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
             >
-              {fetchingSubtitles ? '⌛ AI Транскрибация...' : '🪄 Авто / AI Расшифровка'}
+              {fetchingSubtitles ? '⌛ Поиск текста...' : '🪄 Авто / Lyrics Расшифровка'}
             </button>
           </div>
 
@@ -234,7 +254,7 @@ const EditableBlockCard = ({ block, onChange }) => {
             rows="3"
             value={block.transcript || ''}
             onChange={e => onChange({ ...block, transcript: e.target.value })}
-            placeholder="Нажмите '🪄 Авто / AI Расшифровка' выше для автоматического извлечения текста из видео..."
+            placeholder="Нажмите '🪄 Авто / Lyrics Расшифровка' выше..."
             className="w-full p-2.5 border rounded-xl text-xs font-sans bg-slate-50 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"
           ></textarea>
         </div>
