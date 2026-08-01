@@ -8,16 +8,52 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
+// MULTI-ENDPOINT SUBTITLE EXTRACTOR (Extracts Kurzgesagt / TED transcripts)
 const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   const videoId = getYouTubeId(videoUrl);
   if (!videoId) return null;
 
+  // Endpoint 1: Vercel Captions API
   try {
-    const res = await fetch(`https://yt.lemnoslife.com/nokey/captions?videoId=${videoId}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.captionTracks && data.captionTracks.length > 0) {
-        const track = data.captionTracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || data.captionTracks[0];
+    const res1 = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
+    if (res1.ok) {
+      const text1 = await res1.text();
+      if (text1.length > 50) return text1.slice(0, 3500);
+    }
+  } catch(e) {}
+
+  // Endpoint 2: AllOrigins CORS Proxy parsing YouTube's official captionTracks XML
+  try {
+    const targetUrl = encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`);
+    const res2 = await fetch(`https://api.allorigins.win/get?url=${targetUrl}`);
+    if (res2.ok) {
+      const data2 = await res2.json();
+      const html = data2.contents || '';
+      const captionMatch = html.match(/"captionTracks":\s*(\[.*?\])/);
+      if (captionMatch) {
+        const tracks = JSON.parse(captionMatch[1]);
+        const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || tracks[0];
+        if (enTrack && enTrack.baseUrl) {
+          const subUrl = encodeURIComponent(enTrack.baseUrl);
+          const subRes = await fetch(`https://api.allorigins.win/get?url=${subUrl}`);
+          if (subRes.ok) {
+            const subData = await subRes.json();
+            const xmlText = subData.contents || '';
+            const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+            if (cleanText.length > 50) return cleanText.slice(0, 3500);
+          }
+        }
+      }
+    }
+  } catch(e) {}
+
+  // Endpoint 3: LemnosLife API
+  try {
+    const res3 = await fetch(`https://yt.lemnoslife.com/nokey/captions?videoId=${videoId}`);
+    if (res3.ok) {
+      const data3 = await res3.json();
+      if (data3.captionTracks && data3.captionTracks.length > 0) {
+        const track = data3.captionTracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || data3.captionTracks[0];
         if (track && track.baseUrl) {
           const subRes = await fetch(track.baseUrl);
           if (subRes.ok) {
@@ -33,7 +69,6 @@ const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   return null;
 };
 
-// ZERO-DEPENDENCY IN-BROWSER IMAGE COMPRESSOR (Shrinks photos to ~90KB for instant D1 save)
 const compressAndUploadImage = (file, maxWidth = 1000, quality = 0.72) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -105,7 +140,6 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  // IMAGE & GALLERY BLOCK WITH IN-BROWSER COMPRESSOR
   if (block.type === 'image') {
     const images = block.images || (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
@@ -213,7 +247,7 @@ const EditableBlockCard = ({ block, onChange }) => {
         onChange({ ...block, transcript });
         setSubtitleStatus(`✅ Субтитры загружены (${transcript.split(' ').length} слов)`);
       } else {
-        setSubtitleStatus('⚠️ У видео нет доступных английских субтитров. Вставьте описание вручную ниже.');
+        setSubtitleStatus(`ℹ️ Субтитры не найдены. AI Llama 3.1 сгенерирует задания по научному содержанию темы "${block.title || 'Видео'}"!`);
       }
     };
 
