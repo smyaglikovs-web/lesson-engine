@@ -1,7 +1,5 @@
 import { ensureTables } from '../db/schema.js';
 
-const TEACHER_PASSWORD = 'teacher123';
-
 export async function submitHomework(env, payload) {
   await ensureTables(env);
   const { lessonId, studentName, answers = {} } = payload;
@@ -9,7 +7,6 @@ export async function submitHomework(env, payload) {
   let score = 0;
   let totalQuestions = 0;
 
-  // Grade homework on server by comparing with D1 lesson answer keys
   try {
     const row = await env.DB.prepare("SELECT data FROM lessons WHERE id = ?").bind(lessonId).first();
     if (row && row.data) {
@@ -47,7 +44,9 @@ export async function submitHomework(env, payload) {
 }
 
 export async function getHomeworkSubmissions(env, lessonId, password) {
-  if (password !== TEACHER_PASSWORD) return [];
+  const clean = (password || '').trim();
+  const expectedPass = env.TEACHER_PASSWORD || 'teacher123';
+  if (clean !== expectedPass) return [];
   const { results } = await env.DB.prepare("SELECT id, student_name, score, total_questions, answers, created_at FROM homework_submissions WHERE lesson_id = ? ORDER BY created_at DESC").bind(lessonId).all();
   return results || [];
 }
