@@ -4,8 +4,8 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// Fetch helper with strict 5-second timeout
-async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
+// Fetch helper with strict 4-second timeout
+async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -37,7 +37,7 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// OFFICIAL YOUTUBE ANDROID INNERTUBE TRANSCRIPT EXTRACTOR
+// DIRECT YOUTUBE TIMEDTEXT + INNERTUBE SUBTITLE EXTRACTOR
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
@@ -53,40 +53,62 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     } catch(e) {}
 
-    // 2. Fetch Transcript via Android InnerTube API
     let transcriptText = '';
-    try {
-      const innerRes = await fetchWithTimeout('https://www.youtube.com/youtubei/v1/player', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          context: {
-            client: {
-              clientName: 'ANDROID',
-              clientVersion: '19.08.35'
-            }
-          },
-          videoId: videoId
-        })
-      }, 5000);
 
-      if (innerRes && innerRes.ok) {
-        const data = await innerRes.json();
-        const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-        if (tracks && tracks.length > 0) {
-          const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || tracks[0];
-          if (enTrack && enTrack.baseUrl) {
-            const subRes = await fetchWithTimeout(enTrack.baseUrl, {}, 4000);
-            if (subRes && subRes.ok) {
-              const xmlText = await subRes.text();
-              transcriptText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim().slice(0, 3500);
-            }
-          }
+    // LAYER 1: YouTube Direct TimedText API (lang=en)
+    try {
+      const ttRes = await fetchWithTimeout(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`, {}, 4000);
+      if (ttRes && ttRes.ok) {
+        const xml = await ttRes.text();
+        if (xml && xml.includes('<text')) {
+          transcriptText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim().slice(0, 3500);
         }
       }
     } catch(e) {}
 
-    // 3. Fallback to Song Lyrics API
+    // LAYER 2: YouTube Direct TimedText ASR Auto-Captions (lang=en&kind=asr)
+    if (!transcriptText) {
+      try {
+        const ttAsrRes = await fetchWithTimeout(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`, {}, 4000);
+        if (ttAsrRes && ttAsrRes.ok) {
+          const xml = await ttAsrRes.text();
+          if (xml && xml.includes('<text')) {
+            transcriptText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim().slice(0, 3500);
+          }
+        }
+      } catch(e) {}
+    }
+
+    // LAYER 3: Android InnerTube Player API
+    if (!transcriptText) {
+      try {
+        const innerRes = await fetchWithTimeout('https://www.youtube.com/youtubei/v1/player', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            context: { client: { clientName: 'ANDROID', clientVersion: '19.08.35' } },
+            videoId: videoId
+          })
+        }, 4000);
+
+        if (innerRes && innerRes.ok) {
+          const data = await innerRes.json();
+          const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+          if (tracks && tracks.length > 0) {
+            const enTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en')) || tracks[0];
+            if (enTrack && enTrack.baseUrl) {
+              const subRes = await fetchWithTimeout(enTrack.baseUrl, {}, 3000);
+              if (subRes && subRes.ok) {
+                const xmlText = await subRes.text();
+                transcriptText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim().slice(0, 3500);
+              }
+            }
+          }
+        }
+      } catch(e) {}
+    }
+
+    // LAYER 4: Song Lyrics Search API Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) {
