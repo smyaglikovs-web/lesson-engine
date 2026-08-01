@@ -7,21 +7,20 @@ import { AIPromptsView } from './components/AIPromptsView.jsx';
 import { RoomView } from './components/RoomView.jsx';
 import { SubmissionsModal } from './components/SubmissionsModal.jsx';
 
-const TEACHER_PASSWORD = 'teacher123';
-
 export default function App() {
   const [view, setView] = useState('library');
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeLesson, setActiveLesson] = useState(null);
 
-  // Authentication & Role
   const [isTeacher, setIsTeacher] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState(false);
 
   const [roomId, setRoomId] = useState('');
   const [viewSubmissionsLesson, setViewSubmissionsLesson] = useState(null);
+
+  const getAuthPassword = () => sessionStorage.getItem('teacher_pass') || '';
 
   const fetchLessons = async () => {
     setLoading(true);
@@ -62,20 +61,31 @@ export default function App() {
     if (authSaved) fetchLessons();
   }, []);
 
-  const handleTeacherLogin = (passwordInput) => {
-    if (passwordInput === TEACHER_PASSWORD) {
-      sessionStorage.setItem('teacher_auth', 'true');
-      setIsAuthenticated(true);
-      setIsTeacher(true);
-      setLoginError(false);
-      fetchLessons();
-    } else {
+  const handleTeacherLogin = async (passwordInput) => {
+    try {
+      const res = await fetch('/api/teacher/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordInput })
+      });
+      if (res.ok) {
+        sessionStorage.setItem('teacher_auth', 'true');
+        sessionStorage.setItem('teacher_pass', passwordInput);
+        setIsAuthenticated(true);
+        setIsTeacher(true);
+        setLoginError(false);
+        fetchLessons();
+      } else {
+        setLoginError(true);
+      }
+    } catch(e) {
       setLoginError(true);
     }
   };
 
   const handleTeacherLogout = () => {
     sessionStorage.removeItem('teacher_auth');
+    sessionStorage.removeItem('teacher_pass');
     setIsAuthenticated(false);
   };
 
@@ -101,13 +111,19 @@ export default function App() {
     try {
       const res = await fetch('/api/lessons', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-teacher-password': getAuthPassword()
+        },
         body: JSON.stringify(newLesson)
       });
-      if ((await res.json()).success) {
+      const data = await res.json();
+      if (res.ok && data.success) {
         alert('🎉 Урок сохранен в D1!');
         fetchLessons();
         setView('library');
+      } else {
+        alert('Ошибка: ' + (data.error || 'Доступ запрещен'));
       }
     } catch (e) {
       alert('Ошибка сохранения');
@@ -118,8 +134,13 @@ export default function App() {
     e.stopPropagation();
     if (!confirm('Вы уверены, что хотите удалить этот урок из базы данных?')) return;
     try {
-      const res = await fetch('/api/lessons/' + id, { method: 'DELETE' });
-      if ((await res.json()).success) fetchLessons();
+      const res = await fetch('/api/lessons/' + id, { 
+        method: 'DELETE',
+        headers: { 'x-teacher-password': getAuthPassword() }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) fetchLessons();
+      else alert('Ошибка: ' + (data.error || 'Доступ запрещен'));
     } catch (err) {
       alert('Ошибка удаления');
     }
