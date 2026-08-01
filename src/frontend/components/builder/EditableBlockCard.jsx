@@ -146,38 +146,46 @@ export const EditableBlockCard = ({ block, onChange }) => {
       let transcript = null;
       let title = block.title || '';
 
-      // Step 1: Direct Browser Fetch (Executes on user's internet connection - 0 Cloudflare blocks!)
+      // Step 1: Direct Client Fetch with CORS Proxy (Bypasses Browser CORS Policy)
       if (videoId) {
-        const clientUrls = [
+        const targetTimedTextUrls = [
           `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
           `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
           `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`,
           `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`
         ];
 
-        for (const url of clientUrls) {
-          if (transcript) break;
-          try {
-            const res = await fetch(url);
-            if (res.ok) {
-              const text = await res.text();
-              if (text && text.includes('<text') && text.length > 200) {
-                const clean = text
-                  .replace(/<text[^>]*>/g, ' ')
-                  .replace(/<\/text>/g, ' ')
-                  .replace(/<[^>]+>/g, '')
-                  .replace(/&amp;/g, '&')
-                  .replace(/&#39;/g, "'")
-                  .replace(/&quot;/g, '"')
-                  .replace(/\s+/g, ' ')
-                  .trim();
+        const corsProxies = [
+          (target) => `https://corsproxy.io/?${encodeURIComponent(target)}`,
+          (target) => `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`
+        ];
 
-                if (clean.length > 100) {
-                  transcript = clean.slice(0, 3500);
+        for (const targetUrl of targetTimedTextUrls) {
+          if (transcript) break;
+          for (const proxyFn of corsProxies) {
+            if (transcript) break;
+            try {
+              const res = await fetch(proxyFn(targetUrl));
+              if (res.ok) {
+                const text = await res.text();
+                if (text && text.includes('<text') && text.length > 200) {
+                  const clean = text
+                    .replace(/<text[^>]*>/g, ' ')
+                    .replace(/<\/text>/g, ' ')
+                    .replace(/<[^>]+>/g, '')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&#39;/g, "'")
+                    .replace(/&quot;/g, '"')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                  if (clean.length > 100) {
+                    transcript = clean.slice(0, 3500);
+                  }
                 }
               }
-            }
-          } catch(e) {}
+            } catch(e) {}
+          }
         }
       }
 
@@ -192,7 +200,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
           
           if (res.ok) {
             const data = await res.json();
-            if (data.transcript && data.transcript.length > 100 && !data.transcript.includes('VIDEO DESCRIPTION')) {
+            if (data.transcript && data.transcript.length > 100) {
               transcript = data.transcript;
               if (data.title) title = data.title;
             }
