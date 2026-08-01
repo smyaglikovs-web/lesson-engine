@@ -86,7 +86,7 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// MULTI-PROVIDER HIGH-AVAILABILITY SUBTITLE EXTRACTOR
+// HIGH-ACCURACY INNERTUBE TRANSCRIPT EXTRACTOR FOR CLOUDFLARE WORKERS
 export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
@@ -95,7 +95,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
     let title = '';
     let transcriptText = '';
 
-    // Step 1: Fetch Title via oEmbed
+    // Step 1: Fetch Video Title via oEmbed
     try {
       const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: BROWSER_HEADERS });
       if (oembedRes.ok) {
@@ -104,92 +104,93 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     } catch(e) {}
 
-    // Step 2: Query YouTube Track List to find exact lang & kind (ASR vs Manual)
+    // Step 2: InnerTube API as ANDROID Client (Version 20.10.38)
     try {
-      const listRes = await fetch(`https://www.youtube.com/api/timedtext?type=list&v=${videoId}`, { headers: BROWSER_HEADERS });
-      if (listRes.ok) {
-        const listXml = await listRes.text();
-        const trackMatches = listXml.match(/<track[^>]+>/gi) || [];
-        const tracks = [];
-
-        for (const tTag of trackMatches) {
-          const langMatch = tTag.match(/lang_code="([^"]+)"/);
-          const kindMatch = tTag.match(/kind="([^"]+)"/);
-          const nameMatch = tTag.match(/name="([^"]+)"/);
-          if (langMatch) {
-            tracks.push({
-              lang: langMatch[1],
-              kind: kindMatch ? kindMatch[1] : '',
-              name: nameMatch ? nameMatch[1] : ''
-            });
-          }
-        }
-
-        const englishTrack = tracks.find(t => t.lang.startsWith('en') && !t.kind) || 
-                             tracks.find(t => t.lang.startsWith('en')) || 
-                             tracks[0];
-
-        if (englishTrack) {
-          let trackUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${englishTrack.lang}`;
-          if (englishTrack.kind) trackUrl += `&kind=${englishTrack.kind}`;
-          if (englishTrack.name) trackUrl += `&name=${encodeURIComponent(englishTrack.name)}`;
-
-          const subRes = await fetch(trackUrl, { headers: BROWSER_HEADERS });
-          if (subRes.ok) {
-            const xml = await subRes.text();
-            const clean = xml
-              .replace(/<text[^>]*>/g, ' ')
-              .replace(/<\/text>/g, ' ')
-              .replace(/<[^>]+>/g, '')
-              .replace(/&amp;/g, '&')
-              .replace(/&#39;/g, "'")
-              .replace(/&quot;/g, '"')
-              .replace(/\s+/g, ' ')
-              .trim();
-
-            if (clean.length > 50) {
-              transcriptText = clean.slice(0, 3500);
+      const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 12; en_US)'
+        },
+        body: JSON.stringify({
+          context: {
+            client: {
+              clientName: 'ANDROID',
+              clientVersion: '20.10.38',
+              hl: 'en',
+              gl: 'US'
             }
-          }
+          },
+          videoId: videoId
+        })
+      });
+
+      if (innertubeRes.ok) {
+        const playerResponse = await innertubeRes.json();
+        if (!title && playerResponse.videoDetails?.title) {
+          title = playerResponse.videoDetails.title;
         }
-      }
-    } catch(e) {}
 
-    // Step 3: Direct Fallbacks (Testing auto-generated kind=asr specifically)
-    if (!transcriptText) {
-      const fallbackUrls = [
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=srv3`
-      ];
+        const captionTracks = playerResponse.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+        const track = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.vssId?.includes('en')) || captionTracks[0];
 
-      for (const ttUrl of fallbackUrls) {
-        if (transcriptText) break;
-        try {
-          const res = await fetch(ttUrl, { headers: BROWSER_HEADERS });
-          if (res.ok) {
-            const text = await res.text();
-            if (text && text.length > 100) {
-              const clean = text
-                .replace(/<[^>]+>/g, ' ')
+        if (track && track.baseUrl) {
+          // FIX: Replace fmt=srv3 with fmt=json3 to receive clean JSON timedtext
+          let targetUrl = track.baseUrl;
+          if (targetUrl.includes('fmt=srv3')) {
+            targetUrl = targetUrl.replace('fmt=srv3', 'fmt=json3');
+          } else if (!targetUrl.includes('fmt=')) {
+            targetUrl += '&fmt=json3';
+          }
+
+          const subRes = await fetch(targetUrl, { headers: BROWSER_HEADERS });
+
+          if (subRes.ok) {
+            const rawContent = await subRes.text();
+            
+            // Attempt 1: Parse JSON3 format
+            try {
+              const jsonData = JSON.parse(rawContent);
+              if (jsonData.events) {
+                const textSegments = [];
+                for (const ev of jsonData.events) {
+                  if (ev.segs) {
+                    for (const seg of ev.segs) {
+                      if (seg.utf8 && seg.utf8 !== '\n') {
+                        textSegments.push(seg.utf8);
+                      }
+                    }
+                  }
+                }
+                const fullText = textSegments.join(' ').replace(/\s+/g, ' ').trim();
+                if (fullText.length > 50) {
+                  transcriptText = fullText.slice(0, 3500);
+                }
+              }
+            } catch(e) {
+              // Attempt 2: Fallback XML parser
+              const cleanText = rawContent
+                .replace(/<text[^>]*>/g, ' ')
+                .replace(/<\/text>/g, ' ')
+                .replace(/<[^>]+>/g, '')
                 .replace(/&amp;/g, '&')
                 .replace(/&#39;/g, "'")
                 .replace(/&quot;/g, '"')
                 .replace(/\s+/g, ' ')
                 .trim();
 
-              if (clean.length > 50) {
-                transcriptText = clean.slice(0, 3500);
-                break;
+              if (cleanText.length > 50) {
+                transcriptText = cleanText.slice(0, 3500);
               }
             }
           }
-        } catch(e) {}
+        }
       }
+    } catch(e) {
+      console.error("InnerTube API Error:", e);
     }
 
-    // Step 4: Open Piped Mirror Fallbacks
+    // Step 3: Piped Mirror Instances Fallback
     if (!transcriptText) {
       const pipedInstances = [
         'https://pipedapi.kavin.rocks',
@@ -223,7 +224,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
       }
     }
 
-    // Step 5: Song Lyrics Fallback
+    // Step 4: Song Lyrics Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) transcriptText = songLyrics;
