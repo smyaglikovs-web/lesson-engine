@@ -9,21 +9,10 @@ export const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   if (!videoId) return null;
 
   try {
-    const res = await fetch(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`);
+    const res = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
     if (res.ok) {
-      const xml = await res.text();
-      if (xml && xml.includes('<text')) {
-        const cleanText = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-        if (cleanText.length > 50) return cleanText.slice(0, 3500);
-      }
-    }
-  } catch(e) {}
-
-  try {
-    const res1 = await fetch(`https://subtitles-youtube.vercel.app/api/tr?v=${videoId}`);
-    if (res1.ok) {
-      const text1 = await res1.text();
-      if (text1.length > 50) return text1.slice(0, 3500);
+      const text = await res.text();
+      if (text.length > 50) return text.slice(0, 3500);
     }
   } catch(e) {}
 
