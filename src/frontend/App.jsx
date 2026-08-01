@@ -20,7 +20,19 @@ export default function App() {
   const [roomId, setRoomId] = useState('');
   const [viewSubmissionsLesson, setViewSubmissionsLesson] = useState(null);
 
-  const getAuthPassword = () => sessionStorage.getItem('teacher_pass') || '';
+  // SMART PASSWORD FALLBACK: Asks for password if session ever drops
+  const getAuthPassword = () => {
+    let pass = sessionStorage.getItem('teacher_pass');
+    if (!pass) {
+      pass = prompt('Введите пароль учителя (teacher123):');
+      if (pass) {
+        sessionStorage.setItem('teacher_pass', pass);
+        sessionStorage.setItem('teacher_auth', 'true');
+        setIsAuthenticated(true);
+      }
+    }
+    return pass || '';
+  };
 
   const fetchLessons = async () => {
     setLoading(true);
@@ -108,18 +120,21 @@ export default function App() {
   };
 
   const handleSaveLesson = async (newLesson) => {
+    const pass = getAuthPassword();
+    if (!pass) return alert('Пароль учителя обязателен для сохранения');
+
     try {
       const res = await fetch('/api/lessons', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-teacher-password': getAuthPassword()
+          'x-teacher-password': pass
         },
         body: JSON.stringify(newLesson)
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        alert('🎉 Урок сохранен в D1!');
+        alert('🎉 Урок успешно сохранен в D1!');
         fetchLessons();
         setView('library');
       } else {
@@ -133,10 +148,13 @@ export default function App() {
   const handleDeleteLesson = async (id, e) => {
     e.stopPropagation();
     if (!confirm('Вы уверены, что хотите удалить этот урок из базы данных?')) return;
+    const pass = getAuthPassword();
+    if (!pass) return;
+
     try {
       const res = await fetch('/api/lessons/' + id, { 
         method: 'DELETE',
-        headers: { 'x-teacher-password': getAuthPassword() }
+        headers: { 'x-teacher-password': pass }
       });
       const data = await res.json();
       if (res.ok && data.success) fetchLessons();
