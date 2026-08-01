@@ -2,6 +2,27 @@ import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
 import { compressAndUploadImage, getYouTubeId } from '@utils/youtube.js';
 
+function cleanVttToSentences(vttText = '') {
+  if (!vttText) return '';
+  return vttText
+    .replace(/^WEBVTT.*/gi, '')
+    .replace(/Kind:.*/gi, '')
+    .replace(/Language:.*/gi, '')
+    .replace(/\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}.*/g, '')
+    .replace(/\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}\.\d{3}.*/g, '')
+    .replace(/\d{2}:\d{2}\s*-->\s*\d{2}:\d{2}.*/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\[music\]/gi, '')
+    .replace(/\[applause\]/gi, '')
+    .replace(/\[\w+\]/gi, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export const EditableBlockCard = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
   const [subtitleStatus, setSubtitleStatus] = useState('');
@@ -137,6 +158,14 @@ export const EditableBlockCard = ({ block, onChange }) => {
       }
     };
 
+    const handleTranscriptInput = (e) => {
+      let textVal = e.target.value;
+      if (textVal.includes('-->') || textVal.includes('WEBVTT')) {
+        textVal = cleanVttToSentences(textVal);
+      }
+      onChange({ ...block, transcript: textVal });
+    };
+
     const handleAutoFetchSubtitles = async () => {
       if (!block.url) return alert('Сначала вставьте ссылку на YouTube видео!');
       setFetchingSubtitles(true);
@@ -146,13 +175,29 @@ export const EditableBlockCard = ({ block, onChange }) => {
       let transcript = null;
       let title = block.title || '';
 
-      // Step 1: Direct Client Fetch with CORS Proxy (Bypasses Browser CORS Policy)
-      if (videoId) {
+      // Step 1: Server API Fetch (HTML Regex Parsing)
+      try {
+        const res = await fetch('/api/youtube/transcript', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: block.url })
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.transcript && data.transcript.length > 50) {
+            transcript = cleanVttToSentences(data.transcript);
+            if (data.title) title = data.title;
+          }
+        }
+      } catch(e) {}
+
+      // Step 2: Direct Client Fetch with CORS Proxy Fallback
+      if (!transcript && videoId) {
         const targetTimedTextUrls = [
           `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
           `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`,
-          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`
+          `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&kind=asr`
         ];
 
         const corsProxies = [
@@ -168,18 +213,9 @@ export const EditableBlockCard = ({ block, onChange }) => {
               const res = await fetch(proxyFn(targetUrl));
               if (res.ok) {
                 const text = await res.text();
-                if (text && text.includes('<text') && text.length > 200) {
-                  const clean = text
-                    .replace(/<text[^>]*>/g, ' ')
-                    .replace(/<\/text>/g, ' ')
-                    .replace(/<[^>]+>/g, '')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&#39;/g, "'")
-                    .replace(/&quot;/g, '"')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-
-                  if (clean.length > 100) {
+                if (text && text.includes('<text') && text.length > 100) {
+                  const clean = cleanVttToSentences(text);
+                  if (clean.length > 50) {
                     transcript = clean.slice(0, 3500);
                   }
                 }
@@ -189,32 +225,13 @@ export const EditableBlockCard = ({ block, onChange }) => {
         }
       }
 
-      // Step 2: Server API Fallback
-      if (!transcript) {
-        try {
-          const res = await fetch('/api/youtube/transcript', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: block.url })
-          });
-          
-          if (res.ok) {
-            const data = await res.json();
-            if (data.transcript && data.transcript.length > 100) {
-              transcript = data.transcript;
-              if (data.title) title = data.title;
-            }
-          }
-        } catch(e) {}
-      }
-
       setFetchingSubtitles(false);
 
       if (transcript) {
         onChange({ ...block, title: title || block.title, transcript });
-        setSubtitleStatus(`✅ Речевой транскрипт загружен! (${transcript.split(' ').length} слов)`);
+        setSubtitleStatus(`✅ Речевой транскрипт успешно загружен! (${transcript.split(' ').length} слов)`);
       } else {
-        setSubtitleStatus(`ℹ️ Субтитры не найдены на YouTube. Вы можете вставить текст вручную.`);
+        setSubtitleStatus(`ℹ️ Скопируйте текст из TubeTranscript/YouTube и вставьте в поле ниже — оно автоматически очистит таймкоды!`);
       }
     };
 
@@ -255,11 +272,11 @@ export const EditableBlockCard = ({ block, onChange }) => {
           {subtitleStatus && <p className="text-xs font-semibold text-indigo-600 bg-indigo-50/80 p-2 rounded-lg border border-indigo-100">{subtitleStatus}</p>}
 
           <textarea
-            rows="5"
+            rows="6"
             value={block.transcript || ''}
-            onChange={e => onChange({ ...block, transcript: e.target.value })}
-            placeholder="Нажмите '🪄 Авто-Извлечь Субтитры' выше..."
-            className="w-full p-2.5 border rounded-xl text-xs font-sans bg-slate-50 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"
+            onChange={handleTranscriptInput}
+            placeholder="Вставьте сюда текст из TubeTranscript/YouTube — таймкоды очистятся автоматически..."
+            className="w-full p-2.5 border rounded-xl text-xs font-sans bg-slate-50 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 leading-relaxed"
           ></textarea>
         </div>
 
