@@ -1,7 +1,7 @@
 import { getLessons, saveLesson, getSingleLesson, deleteLesson, verifyTeacherLogin } from './api/lessons.js';
 import { updateRoomState, getRoomState } from './api/rooms.js';
 import { submitHomework, getHomeworkSubmissions } from './api/homework.js';
-import { transformBlockWithAI, fetchYouTubeTranscriptNative } from './api/ai.js';
+import { transformBlockWithAI, fetchYouTubeTranscriptNative, generateFullLessonWithAI } from './api/ai.js';
 
 export default {
   async fetch(request, env) {
@@ -28,14 +28,20 @@ export default {
         return json(await transformBlockWithAI(env, payload));
       }
 
-      // 3. Teacher Auth API
+      // 3. Full Lesson AI Generation API
+      if (path === '/api/ai/generate' && method === 'POST') {
+        const payload = await request.json();
+        return json(await generateFullLessonWithAI(env, payload));
+      }
+
+      // 4. Teacher Auth API
       if (path === '/api/teacher/login' && method === 'POST') {
         const { password } = await request.json();
         const res = await verifyTeacherLogin(env, password);
         return json(res, res.success ? 200 : 401);
       }
 
-      // 4. Lessons API
+      // 5. Lessons API
       if (path === '/api/lessons' && method === 'GET') return json(await getLessons(env));
       if (path === '/api/lessons' && method === 'POST') {
         const res = await saveLesson(env, await request.json(), getTeacherPassword());
@@ -50,7 +56,7 @@ export default {
         return json(res, res.error ? 401 : 200);
       }
 
-      // 5. Realtime Rooms API
+      // 6. Realtime Rooms API
       if (path.startsWith('/api/rooms/') && path.endsWith('/state') && method === 'POST') {
         const roomId = path.split('/api/rooms/')[1].replace('/state', '');
         const body = await request.json();
@@ -61,7 +67,7 @@ export default {
         return json(await getRoomState(env, roomId));
       }
 
-      // 6. Homework API
+      // 7. Homework API
       if (path === '/api/homework/submit' && method === 'POST') return json(await submitHomework(env, await request.json()));
       if (path.startsWith('/api/homework/') && method === 'GET') return json(await getHomeworkSubmissions(env, path.split('/api/homework/')[1], getTeacherPassword()));
 
