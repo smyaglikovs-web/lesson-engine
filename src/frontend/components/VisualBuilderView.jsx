@@ -8,7 +8,6 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// Free YouTube Captions Fetcher
 const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   const videoId = getYouTubeId(videoUrl);
   if (!videoId) return null;
@@ -24,9 +23,7 @@ const fetchYouTubeTranscriptAuto = async (videoUrl) => {
           if (subRes.ok) {
             const xmlText = await subRes.text();
             const cleanText = xmlText.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
-            if (cleanText.length > 50) {
-              return cleanText.slice(0, 3500);
-            }
+            if (cleanText.length > 50) return cleanText.slice(0, 3500);
           }
         }
       }
@@ -36,29 +33,10 @@ const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   return null;
 };
 
-// Free Song Lyrics Search API
-const fetchLyricsForSong = async (title = '') => {
-  try {
-    const clean = title.replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').replace(/official video/gi, '').replace(/music video/gi, '').replace(/official/gi, '').trim();
-    const parts = clean.split('-');
-    if (parts.length >= 2) {
-      const artist = parts[0].trim();
-      const song = parts[1].trim();
-      const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.lyrics && data.lyrics.length > 50) {
-          return data.lyrics.slice(0, 3500);
-        }
-      }
-    }
-  } catch(e) {}
-  return null;
-};
-
 const EditableBlockCard = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
   const [subtitleStatus, setSubtitleStatus] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   if (block.type === 'heading') {
     return (
@@ -95,6 +73,7 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
+  // IMAGE BLOCK WITH FREE IMAGE HOSTING UPLOAD (ImgBB)
   if (block.type === 'image') {
     const images = block.images || (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
@@ -112,16 +91,34 @@ const EditableBlockCard = ({ block, onChange }) => {
       }
     };
 
-    const handleFileUpload = (e) => {
+    const handleFileUploadCDN = async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64Url = event.target.result;
-        const updated = [...images, { url: base64Url, caption: file.name }];
-        onChange({ ...block, images: updated, url: updated[0]?.url || '' });
-      };
-      reader.readAsDataURL(file);
+
+      setUploadingImage(true);
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        // Upload to Free Public Image CDN (ImgBB)
+        const res = await fetch('https://api.imgbb.com/1/upload?key=6d257f6977d01d2d0260f32b001a702f', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+
+        if (data.success && data.data.url) {
+          const imageUrl = data.data.url;
+          const updated = [...images, { url: imageUrl, caption: file.name }];
+          onChange({ ...block, images: updated, url: updated[0]?.url || '' });
+        } else {
+          alert('Ошибка загрузки фото');
+        }
+      } catch(err) {
+        alert('Ошибка сети при загрузке: ' + err.message);
+      } finally {
+        setUploadingImage(false);
+      }
     };
 
     const removeImg = (idx) => {
@@ -157,13 +154,13 @@ const EditableBlockCard = ({ block, onChange }) => {
           </div>
         )}
 
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           <button onClick={handleAddUrl} className="px-3.5 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-100 flex items-center gap-1">
             🔗 Добавить картинку по ссылке
           </button>
           <label className="px-3.5 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 cursor-pointer flex items-center gap-1">
-            📁 Загрузить с компьютера / телефона
-            <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+            {uploadingImage ? '⌛ Загрузка фото...' : '📁 Загрузить с ПК / телефона'}
+            <input type="file" accept="image/*" onChange={handleFileUploadCDN} disabled={uploadingImage} className="hidden" />
           </label>
         </div>
       </div>
@@ -189,28 +186,16 @@ const EditableBlockCard = ({ block, onChange }) => {
     const handleAutoFetchSubtitles = async () => {
       if (!block.url) return alert('Сначала вставьте ссылку на YouTube видео!');
       setFetchingSubtitles(true);
-      setSubtitleStatus('⌛ Поиск субтитров и текста песни...');
+      setSubtitleStatus('⌛ Извлечение субтитров...');
 
-      // 1. Try YouTube CC
-      let transcript = await fetchYouTubeTranscriptAuto(block.url);
-      let source = 'YouTube CC';
-
-      // 2. If CC missing, search Lyrics API if it's a song
-      if (!transcript && block.title) {
-        const lyrics = await fetchLyricsForSong(block.title);
-        if (lyrics) {
-          transcript = lyrics;
-          source = 'Текст песни (Lyrics API)';
-        }
-      }
-
+      const transcript = await fetchYouTubeTranscriptAuto(block.url);
       setFetchingSubtitles(false);
 
       if (transcript) {
         onChange({ ...block, transcript });
-        setSubtitleStatus(`✅ Загружено [${source}] (${transcript.split(' ').length} слов)`);
+        setSubtitleStatus(`✅ Субтитры загружены (${transcript.split(' ').length} слов)`);
       } else {
-        setSubtitleStatus(`🎵 Субтитры не найдены. AI Llama 3.1 использует базу знаний для песни "${block.title || 'Видео'}"!`);
+        setSubtitleStatus('⚠️ У видео нет доступных английских субтитров. Вставьте описание вручную ниже.');
       }
     };
 
@@ -236,25 +221,25 @@ const EditableBlockCard = ({ block, onChange }) => {
         <div className="space-y-1.5">
           <div className="flex justify-between items-center">
             <label className="text-[10px] font-bold text-slate-500 uppercase">
-              📝 Субтитры / Текст песни (для AI Помощника)
+              📝 Субтитры / Содержание видео (для AI Помощника)
             </label>
             <button
               type="button"
               disabled={fetchingSubtitles || !block.url}
               onClick={handleAutoFetchSubtitles}
-              className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:opacity-90 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
+              className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40"
             >
-              {fetchingSubtitles ? '⌛ Поиск текста...' : '🪄 Авто / Lyrics Расшифровка'}
+              {fetchingSubtitles ? '⌛ Загрузка...' : '🪄 Авто-Извлечь Субтитры'}
             </button>
           </div>
 
-          {subtitleStatus && <p className="text-xs font-semibold text-indigo-600 bg-indigo-50/80 p-2 rounded-lg border border-indigo-100">{subtitleStatus}</p>}
+          {subtitleStatus && <p className="text-xs font-semibold text-indigo-600">{subtitleStatus}</p>}
 
           <textarea
             rows="3"
             value={block.transcript || ''}
             onChange={e => onChange({ ...block, transcript: e.target.value })}
-            placeholder="Нажмите '🪄 Авто / Lyrics Расшифровка' выше..."
+            placeholder="Нажмите '🪄 Авто-Извлечь Субтитры' выше..."
             className="w-full p-2.5 border rounded-xl text-xs font-sans bg-slate-50 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"
           ></textarea>
         </div>
