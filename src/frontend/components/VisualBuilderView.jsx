@@ -25,20 +25,14 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
   const [lesson, setLesson] = useState(DEFAULT_LESSON);
   const [activePageIndex, setActivePageIndex] = useState(0);
 
-  // AI Modal state
-  const [aiModalTarget, setAiModalTarget] = useState(null); // { block, blockIdx }
+  const [aiModalTarget, setAiModalTarget] = useState(null);
   const [selectedTasks, setSelectedTasks] = useState(['listening', 'flashcards', 'quiz']);
   const [aiGenerating, setAiGenerating] = useState(false);
 
   const activePage = lesson.pages[activePageIndex] || lesson.pages[0];
 
-  // Page Operations
   const handleAddPage = () => {
-    const newPage = {
-      id: 'page-' + Date.now(),
-      title: `Part ${lesson.pages.length + 1}`,
-      blocks: []
-    };
+    const newPage = { id: 'page-' + Date.now(), title: `Part ${lesson.pages.length + 1}`, blocks: [] };
     setLesson(prev => ({ ...prev, pages: [...prev.pages, newPage] }));
     setActivePageIndex(lesson.pages.length);
   };
@@ -56,7 +50,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     setLesson(prev => ({ ...prev, pages: updatedPages }));
   };
 
-  // Block Operations
   const handleAddBlock = (type) => {
     const newBlock = { id: 'b-' + Date.now(), type };
     if (type === 'heading') { newBlock.level = 2; newBlock.text = 'New Section'; }
@@ -101,15 +94,12 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     setLesson(prev => ({ ...prev, pages: updatedPages }));
   };
 
-  // AI Block Transformation
   const handleOpenAiModal = (block, blockIdx) => {
     setAiModalTarget({ block, blockIdx });
   };
 
   const toggleTaskSelection = (taskKey) => {
-    setSelectedTasks(prev => 
-      prev.includes(taskKey) ? prev.filter(t => t !== taskKey) : [...prev, taskKey]
-    );
+    setSelectedTasks(prev => prev.includes(taskKey) ? prev.filter(t => t !== taskKey) : [...prev, taskKey]);
   };
 
   const handleExecuteBlockAi = async () => {
@@ -130,7 +120,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
       const data = await res.json();
       if (res.ok && data.success && Array.isArray(data.newBlocks)) {
         const blocksWithIds = data.newBlocks.map((b, i) => ({ ...b, id: `ai-b-${Date.now()}-${i}` }));
-        
         const updatedPages = [...lesson.pages];
         const currentBlocks = updatedPages[activePageIndex].blocks;
         const insertIdx = aiModalTarget.blockIdx + 1;
@@ -150,7 +139,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
 
   return (
     <div className="space-y-6">
-      {/* Lesson Meta Header */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex justify-between items-center pb-3 border-b border-slate-100">
           <h2 className="text-xl font-extrabold text-slate-900">🧩 Visual Lego Lesson Builder</h2>
@@ -195,7 +183,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
         </div>
       </div>
 
-      {/* Pages Navigation Bar */}
       <BuilderPagesBar
         pages={lesson.pages}
         activePageIndex={activePageIndex}
@@ -205,11 +192,9 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
         onUpdatePageTitle={handleUpdatePageTitle}
       />
 
-      {/* Canvas and Palette Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <BuilderPalette onAddBlock={handleAddBlock} />
 
-        {/* Blocks Canvas */}
         <div className="lg:col-span-3 space-y-4">
           {activePage.blocks.length === 0 ? (
             <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center space-y-3">
@@ -220,7 +205,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
           ) : (
             activePage.blocks.map((block, idx) => (
               <div key={block.id || idx} className="card-editable group">
-                {/* Block Control Header */}
                 <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">
@@ -243,7 +227,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
                   </div>
                 </div>
 
-                {/* Editable Content Component */}
                 <EditableBlockCard block={block} onChange={(updated) => handleUpdateBlock(idx, updated)} />
               </div>
             ))
@@ -251,7 +234,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
         </div>
       </div>
 
-      {/* AI Block Generator Modal */}
       <BuilderAiModal
         aiModalTarget={aiModalTarget}
         selectedTasks={selectedTasks}
