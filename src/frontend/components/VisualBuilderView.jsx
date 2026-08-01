@@ -38,7 +38,23 @@ const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
+  // VIDEO BLOCK WITH AUTO OEMBED TITLE FETCH
   if (block.type === 'video') {
+    const handleUrlChange = async (newUrl) => {
+      onChange({ ...block, url: newUrl });
+      if (newUrl.includes('youtube.com') || newUrl.includes('youtu.be')) {
+        try {
+          const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(newUrl)}&format=json`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.title) {
+              onChange({ ...block, url: newUrl, title: data.title });
+            }
+          }
+        } catch(e) {}
+      }
+    };
+
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -52,11 +68,26 @@ const EditableBlockCard = ({ block, onChange }) => {
           <input
             type="text"
             value={block.url || ''}
-            onChange={e => onChange({ ...block, url: e.target.value })}
+            onChange={e => handleUrlChange(e.target.value)}
             placeholder="Ссылка YouTube (https://www.youtube.com/watch?v=...)"
             className="p-2.5 border rounded-xl text-xs font-mono"
           />
         </div>
+
+        {/* TRANSCRIPT / SUBTITLES FOR AI ASSISTANT */}
+        <div>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+            📝 Субтитры / Транскрипт / Содержание видео (Опционально)
+          </label>
+          <textarea
+            rows="3"
+            value={block.transcript || ''}
+            onChange={e => onChange({ ...block, transcript: e.target.value })}
+            placeholder="AI автоматически извлечет субтитры из YouTube! Но если у видео нет субтитров, вставьте текст здесь..."
+            className="w-full p-2.5 border rounded-xl text-xs font-sans bg-slate-50 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500"
+          ></textarea>
+        </div>
+
         {block.url && <BlockVideo block={block} />}
       </div>
     );
@@ -292,7 +323,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     let newBlock = { id: 'b-' + Date.now(), type };
     if (type === 'heading') newBlock = { ...newBlock, level: 2, text: 'Новый заголовок' };
     else if (type === 'text') newBlock = { ...newBlock, text: 'Введите текст...' };
-    else if (type === 'video') newBlock = { ...newBlock, title: 'Посмотрите видео:', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' };
+    else if (type === 'video') newBlock = { ...newBlock, title: 'Посмотрите видео:', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', transcript: '' };
     else if (type === 'flashcards') newBlock = { ...newBlock, title: 'Ключевые слова', cards: [{ front: 'Word', back: 'Перевод', example: 'Sentence' }] };
     else if (type === 'multiple_choice') newBlock = { ...newBlock, question: 'Вопрос теста?', options: ['Вариант A', 'Вариант B'], correct: 0 };
     else if (type === 'gap_fill') newBlock = { ...newBlock, instruction: 'Заполните пропуск:', text: 'She [is working] today.', answers: ['is working'] };
@@ -304,7 +335,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     setPages(updatedPages);
   };
 
-  // DRAG AND DROP REORDERING
   const handleDragStart = (e, idx) => {
     setDraggedBlockIdx(idx);
     e.dataTransfer.effectAllowed = 'move';
@@ -550,7 +580,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
                   {/* Floating Toolbar */}
                   <div className="flex justify-between items-center bg-slate-100 p-2 rounded-xl mb-4 text-xs font-bold border border-slate-200">
                     <div className="flex items-center gap-2">
-                      {/* DRAG HANDLE */}
                       <span
                         draggable
                         onDragStart={(e) => handleDragStart(e, idx)}
@@ -564,7 +593,6 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
                     </div>
 
                     <div className="flex items-center gap-1">
-                      {/* MOVE TO ANOTHER PAGE SELECTOR */}
                       {pages.length > 1 && (
                         <select
                           value={activePageIndex}
@@ -613,7 +641,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             <div className="flex justify-between items-center pb-3 border-b">
               <div className="flex items-center gap-2">
                 <span className="text-xl">✨</span>
-                <h3 className="font-bold text-slate-900 text-lg">AI Помощник для блока #{aiModalTarget.blockIdx + 1}</h3>
+                <h3 className="font-bold text-slate-900 text-lg">AI Помощник для блока #{aiModalTarget.blockIdx + 1} ({aiModalTarget.block.type})</h3>
               </div>
               <button onClick={() => setAiModalTarget(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
             </div>
@@ -621,30 +649,49 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             <p className="text-xs text-slate-500">Отметьте, какие именно задания сгенерировать из этого блока:</p>
 
             <div className="space-y-2.5 text-sm font-medium">
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
-                <span>🎴 Только Флешкарты (Слова с переводом)</span>
-              </label>
+              {aiModalTarget.block.type === 'video' ? (
+                <>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('listening')} onChange={() => toggleTaskSelection('listening')} className="w-4 h-4 accent-indigo-600" />
+                    <span>🎧 Задания на аудирование / Вопросы к видео</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
+                    <span>🎴 Словарный запас из видео (Флешкарты)</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
+                    <span>💬 Разговорные вопросы по теме видео</span>
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600" />
+                    <span>🎴 Только Флешкарты (Слова с переводом)</span>
+                  </label>
 
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600" />
-                <span>❓ Только Тест True / False (Правда или Ложь)</span>
-              </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600" />
+                    <span>❓ Только Тест True / False (Правда или Ложь)</span>
+                  </label>
 
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600" />
-                <span>✏️ Только Заполнение пропусков (Gap Fill)</span>
-              </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600" />
+                    <span>✏️ Только Заполнение пропусков (Gap Fill)</span>
+                  </label>
 
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600" />
-                <span>🔗 Только Сопоставление пар (Синонимы / Перевод)</span>
-              </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600" />
+                    <span>🔗 Только Сопоставление пар (Синонимы / Перевод)</span>
+                  </label>
 
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
-                <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
-                <span>💬 Только Вопросы для разговорной практики</span>
-              </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600" />
+                    <span>💬 Только Вопросы для разговорной практики</span>
+                  </label>
+                </>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
