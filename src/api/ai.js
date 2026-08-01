@@ -90,12 +90,11 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
     if (!videoId) return null;
 
     let title = '';
-    let description = '';
     let transcriptText = '';
 
     const apiKey = env.YOUTUBE_API_KEY || '';
 
-    // Step 1: Query Official YouTube Data API v3 for Metadata
+    // Step 1: Query YouTube Data API for Title
     if (apiKey) {
       try {
         const apiRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`);
@@ -103,7 +102,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
           const apiData = await apiRes.json();
           if (apiData.items && apiData.items.length > 0) {
             title = apiData.items[0].snippet?.title || '';
-            description = apiData.items[0].snippet?.description || '';
           }
         }
       } catch(e) {}
@@ -119,7 +117,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
       } catch(e) {}
     }
 
-    // Step 2: InnerTube API with fmt=json3 Parameter Fix
+    // Step 2: InnerTube API Captions
     try {
       const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
         method: 'POST',
@@ -205,12 +203,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
       }
     }
 
-    // Step 4: Description Fallback
-    if (!transcriptText && description.length > 80) {
-      transcriptText = `VIDEO DESCRIPTION & SUMMARY:\n${description.slice(0, 2000)}`;
-    }
-
-    // Step 5: Song Lyrics Fallback
+    // Step 4: Song Lyrics Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) transcriptText = songLyrics;
