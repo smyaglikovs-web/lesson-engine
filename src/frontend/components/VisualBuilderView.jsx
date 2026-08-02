@@ -56,11 +56,13 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
   const availableSourceBlocks = React.useMemo(() => {
     const list = [];
     lesson.pages?.forEach(p => {
-      p.blocks?.forEach(b => {
-        if (b.type === 'text' || b.type === 'video' || b.type === 'audio' || b.type === 'grammar_card') {
-          list.push(b);
-        }
-      });
+      if (p && Array.isArray(p.blocks)) {
+        p.blocks.forEach(b => {
+          if (b && (b.type === 'text' || b.type === 'video' || b.type === 'audio' || b.type === 'grammar_card')) {
+            list.push(b);
+          }
+        });
+      }
     });
     return list;
   }, [lesson]);
@@ -72,11 +74,13 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
     }
     let contextText = '';
     lesson.pages?.forEach(page => {
-      page.blocks?.forEach(b => {
-        if (b.type === 'text' && b.text) contextText += b.text + '\n';
-        if (b.type === 'video' && b.transcript) contextText += b.transcript + '\n';
-        if (b.type === 'grammar_card' && b.explanation) contextText += `Grammar Rule (${b.title}): ${b.formula} - ${b.explanation}\n`;
-      });
+      if (page && Array.isArray(page.blocks)) {
+        page.blocks.forEach(b => {
+          if (b && b.type === 'text' && b.text) contextText += b.text + '\n';
+          if (b && b.type === 'video' && b.transcript) contextText += b.transcript + '\n';
+          if (b && b.type === 'grammar_card' && b.explanation) contextText += `Grammar Rule (${b.title}): ${b.formula} - ${b.explanation}\n`;
+        });
+      }
     });
     return contextText || lesson.title || 'General English Practice';
   };
@@ -202,10 +206,8 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         const currentBlocks = updatedPages[activePageIndex].blocks;
 
         if ((actionsToRun.includes('fill_this_block') || actionsToRun.includes('expand_text') || actionsToRun.includes('shorten_text') || actionsToRun.includes('refine_level')) && blocksWithIds.length > 0) {
-          // Replace current block in-place
           currentBlocks[aiModalTarget.blockIdx] = { ...currentBlocks[aiModalTarget.blockIdx], ...blocksWithIds[0], id: aiModalTarget.block.id };
         } else {
-          // Insert new blocks below
           const insertIdx = aiModalTarget.blockIdx + 1;
           currentBlocks.splice(insertIdx, 0, ...blocksWithIds);
         }
@@ -327,7 +329,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
                       #{idx + 1}
                     </span>
                     <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">
-                      {block.type.replace(/_/g, ' ')}
+                      {block?.type?.replace(/_/g, ' ') || 'block'}
                     </span>
                   </div>
 
