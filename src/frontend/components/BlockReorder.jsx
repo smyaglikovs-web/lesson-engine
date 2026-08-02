@@ -1,37 +1,49 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 export const BlockReorder = ({ block, value, onChange }) => {
   const targetSentence = block.sentence || '';
-  const initialWords = React.useMemo(() => {
-    return (block.words || targetSentence.split(' ')).sort(() => Math.random() - 0.5);
-  }, [block.id]);
+  
+  // Create word pool with unique IDs to handle duplicate words
+  const poolWords = React.useMemo(() => {
+    const rawList = block.words && block.words.length > 0 ? block.words : targetSentence.split(' ');
+    const list = rawList.map((word, idx) => ({ id: `word-${idx}-${word}`, text: word }));
+    
+    // Fisher-Yates shuffle algorithm
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list;
+  }, [block.id, block.sentence, JSON.stringify(block.words)]);
 
-  const selectedWords = value?.selectedWords || [];
+  const selectedWordObjects = value?.selectedWordObjects || [];
   const submitted = value?.submitted || false;
 
-  const userSentence = selectedWords.join(' ');
+  const userSentence = selectedWordObjects.map(w => w.text).join(' ');
   const isCorrect = userSentence.trim().toLowerCase() === targetSentence.trim().toLowerCase();
 
-  const handleWordClick = (word, idx) => {
+  const handleWordClick = (wordObj) => {
     if (submitted) return;
-    const newSelected = [...selectedWords, word];
-    onChange({ selectedWords: newSelected, submitted: false });
+    const newSelected = [...selectedWordObjects, wordObj];
+    onChange({ selectedWordObjects: newSelected, submitted: false });
   };
 
-  const handleRemoveWord = (idx) => {
+  const handleRemoveWord = (wordObjId) => {
     if (submitted) return;
-    const newSelected = selectedWords.filter((_, i) => i !== idx);
-    onChange({ selectedWords: newSelected, submitted: false });
+    const newSelected = selectedWordObjects.filter(w => w.id !== wordObjId);
+    onChange({ selectedWordObjects: newSelected, submitted: false });
   };
 
   const handleReset = () => {
-    onChange({ selectedWords: [], submitted: false });
+    onChange({ selectedWordObjects: [], submitted: false });
   };
 
   const handleSubmit = () => {
-    if (selectedWords.length === 0) return;
-    onChange({ selectedWords, submitted: true });
+    if (selectedWordObjects.length === 0) return;
+    onChange({ selectedWordObjects, submitted: true });
   };
+
+  const usedIds = selectedWordObjects.map(w => w.id);
 
   return (
     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
@@ -39,17 +51,17 @@ export const BlockReorder = ({ block, value, onChange }) => {
 
       {/* Selected Sentence Box */}
       <div className="min-h-16 p-4 bg-slate-50 border-2 border-dashed border-indigo-200 rounded-xl flex flex-wrap gap-2 items-center mb-4">
-        {selectedWords.length === 0 ? (
+        {selectedWordObjects.length === 0 ? (
           <span className="text-slate-400 text-sm italic">Нажимайте на слова ниже, чтобы собрать предложение...</span>
         ) : (
-          selectedWords.map((word, idx) => (
+          selectedWordObjects.map((wObj) => (
             <button
-              key={`sel-${idx}`}
+              key={`sel-${wObj.id}`}
               disabled={submitted}
-              onClick={() => handleRemoveWord(idx)}
-              className="px-3 py-1.5 bg-indigo-600 text-white font-semibold rounded-lg text-sm shadow-xs hover:bg-indigo-700 transition"
+              onClick={() => handleRemoveWord(wObj.id)}
+              className="px-3 py-1.5 bg-indigo-600 text-white font-semibold rounded-lg text-sm shadow-xs hover:bg-indigo-700 transition cursor-pointer"
             >
-              {word} ✕
+              {wObj.text} ✕
             </button>
           ))
         )}
@@ -57,19 +69,21 @@ export const BlockReorder = ({ block, value, onChange }) => {
 
       {/* Available Words Pool */}
       <div className="flex flex-wrap gap-2 mb-4">
-        {initialWords.map((word, idx) => {
-          const usedCount = selectedWords.filter(w => w === word).length;
-          const totalInInitial = initialWords.filter(w => w === word).length;
-          const isUsed = usedCount >= totalInInitial;
+        {poolWords.map((wObj) => {
+          const isUsed = usedIds.includes(wObj.id);
 
           return (
             <button
-              key={`pool-${idx}`}
+              key={`pool-${wObj.id}`}
               disabled={isUsed || submitted}
-              onClick={() => handleWordClick(word, idx)}
-              className={`px-3 py-1.5 border rounded-lg text-sm font-medium transition ${isUsed ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-white text-slate-700 border-slate-300 hover:border-indigo-500 shadow-2xs'}`}
+              onClick={() => handleWordClick(wObj)}
+              className={`px-3 py-1.5 border rounded-lg text-sm font-medium transition cursor-pointer ${
+                isUsed 
+                  ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' 
+                  : 'bg-white text-slate-700 border-slate-300 hover:border-indigo-500 shadow-2xs'
+              }`}
             >
-              {word}
+              {wObj.text}
             </button>
           );
         })}
@@ -78,8 +92,8 @@ export const BlockReorder = ({ block, value, onChange }) => {
       {/* Action Buttons & Feedback */}
       {!submitted ? (
         <div className="flex gap-2">
-          <button disabled={selectedWords.length === 0} onClick={handleSubmit} className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg disabled:opacity-50">Проверить</button>
-          <button onClick={handleReset} className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-lg text-sm">Сбросить</button>
+          <button disabled={selectedWordObjects.length === 0} onClick={handleSubmit} className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg disabled:opacity-50 cursor-pointer">Проверить</button>
+          <button onClick={handleReset} className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-lg text-sm cursor-pointer">Сбросить</button>
         </div>
       ) : (
         <div className={isCorrect ? 'p-3 bg-green-100 text-green-800 rounded-lg text-sm font-bold' : 'p-3 bg-red-100 text-red-800 rounded-lg text-sm'}>
