@@ -1,4 +1,4 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH STATEMENT UNPACKER
+// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH STRICT BLOCK TYPE LOCKING
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, articles. Target Vocabulary: Everyday basics. Sentences: Short (5-10 words).',
@@ -19,7 +19,7 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// SANITIZES & UNPACKS STATEMENT-PACKED BLOCKS INTO INDIVIDUAL QUESTION BLOCKS
+// SANITIZES & ENFORCES PRIMITIVES (PREVENTS [object Object])
 export function sanitizeBlockStructure(b) {
   if (!b || typeof b !== 'object') return [b];
 
@@ -32,7 +32,6 @@ export function sanitizeBlockStructure(b) {
 
   b.type = type;
 
-  // Unpack statement objects inside multiple_choice options
   if (b.type === 'multiple_choice' && Array.isArray(b.options)) {
     let statementObjects = [];
 
@@ -48,7 +47,6 @@ export function sanitizeBlockStructure(b) {
       }
     });
 
-    // If AI packed 4 True/False statement objects into options, UNPACK THEM into 4 separate blocks!
     if (statementObjects.length > 0) {
       return statementObjects.map((sObj, idx) => ({
         type: 'multiple_choice',
@@ -60,7 +58,6 @@ export function sanitizeBlockStructure(b) {
       }));
     }
 
-    // Standard multiple_choice options cleanup
     let cleanOptions = [];
     let detectedCorrect = typeof b.correct === 'number' ? b.correct : 0;
 
@@ -82,7 +79,6 @@ export function sanitizeBlockStructure(b) {
     b.correct = detectedCorrect;
   }
 
-  // Fix matching pairs
   if (b.type === 'matching') {
     let rawPairs = Array.isArray(b.pairs) ? b.pairs : [];
     b.pairs = rawPairs.map(p => {
@@ -95,7 +91,6 @@ export function sanitizeBlockStructure(b) {
     });
   }
 
-  // Fix flashcards
   if (b.type === 'flashcards') {
     let rawCards = Array.isArray(b.cards) ? b.cards : [];
     b.cards = rawCards.map(c => {
@@ -544,9 +539,24 @@ RETURN ONLY VALID JSON MATCHING THIS TEMPLATE:
   }
 }
 
+// CONTEXTUAL SINGLE BLOCK ASSISTANT WITH STRICT TARGET BLOCK TYPE LOCKING
 export async function transformBlockWithAI(env, payload) {
-  const { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
+  let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (actions.length === 0) return { error: 'Выберите задание.' };
+
+  const targetBlockType = String(sourceBlock.type || '').toLowerCase().trim();
+
+  // STRICT TARGET TYPE LOCK: If "fill_this_block" is requested, lock the task to the exact block type!
+  if (actions.includes('fill_this_block') && targetBlockType) {
+    if (targetBlockType === 'flashcards') actions.push('flashcards');
+    else if (targetBlockType === 'multiple_choice') actions.push('listening');
+    else if (targetBlockType === 'gap_fill') actions.push('gap_fill');
+    else if (targetBlockType === 'gap_fill_bank') actions.push('gap_fill_bank');
+    else if (targetBlockType === 'matching') actions.push('matching');
+    else if (targetBlockType === 'open_input') actions.push('discussion');
+    else if (targetBlockType === 'grammar_card') actions.push('generate_grammar_card');
+    else if (targetBlockType === 'text') actions.push('generate_text_passage');
+  }
 
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
@@ -602,22 +612,22 @@ export async function transformBlockWithAI(env, payload) {
   if (actions.includes('true_false')) {
     taskInstructions += `- Generate 4-5 separate "multiple_choice" blocks for True/False questions based on context. Each block must have "question" as a statement, and "options": ["True", "False", "Not Stated"].\n`;
   }
-  if (actions.includes('listening')) {
+  if (actions.includes('listening') || (actions.includes('fill_this_block') && targetBlockType === 'multiple_choice')) {
     taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. "options" MUST be an array of simple text strings like ["Option A", "Option B", "Option C"].\n`;
   }
-  if (actions.includes('flashcards')) {
+  if (actions.includes('flashcards') || (actions.includes('fill_this_block') && targetBlockType === 'flashcards')) {
     taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words from context.\n`;
   }
-  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform') || (actions.includes('fill_this_block') && targetBlockType === 'gap_fill')) {
     taskInstructions += `- Generate 1 "gap_fill" block with 4 sentences separated by newlines \\n, putting target grammar/words in brackets [word]. Example: "1. Yesterday she [went] to the store.\\n2. They [bought] a car."\n`;
   }
-  if (actions.includes('gap_fill_bank')) {
+  if (actions.includes('gap_fill_bank') || (actions.includes('fill_this_block') && targetBlockType === 'gap_fill_bank')) {
     taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] in brackets and 3 distractors.\n`;
   }
-  if (actions.includes('matching')) {
+  if (actions.includes('matching') || (actions.includes('fill_this_block') && targetBlockType === 'matching')) {
     taskInstructions += `- Generate 1 "matching" block with 6 pairs [{ left, right }] configured as "${matchingType}".\n`;
   }
-  if (actions.includes('discussion')) {
+  if (actions.includes('discussion') || (actions.includes('fill_this_block') && targetBlockType === 'open_input')) {
     taskInstructions += `- Generate 1 "open_input" block with 3 speaking discussion prompts.\n`;
   }
   if (actions.includes('grammar_quiz')) {
@@ -639,7 +649,7 @@ STRICT RULE FOR MULTIPLE CHOICE OPTIONS:
 - "options" MUST be an array of plain text strings like ["True", "False"] or ["Option A", "Option B", "Option C"]. DO NOT output objects inside "options"!
 
 RETURN VALID JSON ARRAY OF REQUESTED BLOCK OBJECTS:
-[ { "type": "multiple_choice", "question": "Statement text...", "options": ["True", "False"], "correct": 0, "explanation": "Reason..." } ]\n${taskInstructions}`;
+[ { "type": "${targetBlockType || 'multiple_choice'}", "question": "Statement text...", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason..." } ]\n${taskInstructions}`;
 
   try {
     const parsedBlocks = await runAiPipeline(env, systemPrompt, `Source Context:\n${safeContextData}`, 2500);
