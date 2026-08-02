@@ -12,10 +12,10 @@ const DEFAULT_LESSON = {
   pages: [
     {
       id: 'page-1',
-      title: 'Part 1: Introduction & Practice',
+      title: 'Part 1: Introduction & Reading',
       blocks: [
         { id: 'b-1', type: 'heading', level: 1, text: 'Welcome to the Lesson' },
-        { id: 'b-2', type: 'text', text: 'Read the following instructions carefully and complete all tasks.' }
+        { id: 'b-2', type: 'text', text: 'Read the following story carefully and complete all interactive tasks below.' }
       ]
     }
   ]
@@ -39,6 +39,18 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
   const activePage = lesson.pages?.[activePageIndex] || lesson.pages?.[0] || { blocks: [] };
 
+  // Helper to extract main lesson text context for AI
+  const extractLessonContext = () => {
+    let contextText = '';
+    lesson.pages?.forEach(page => {
+      page.blocks?.forEach(b => {
+        if (b.type === 'text' && b.text) contextText += b.text + '\n';
+        if (b.type === 'video' && b.transcript) contextText += b.transcript + '\n';
+      });
+    });
+    return contextText || lesson.title || 'General English Practice';
+  };
+
   const handleAddPage = () => {
     const newPage = { id: 'page-' + Date.now(), title: `Part ${(lesson.pages?.length || 0) + 1}`, blocks: [] };
     setLesson(prev => ({ ...prev, pages: [...(prev.pages || []), newPage] }));
@@ -61,9 +73,10 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
   const handleAddBlock = (type) => {
     const newBlock = { id: 'b-' + Date.now(), type };
     if (type === 'heading') { newBlock.level = 2; newBlock.text = 'New Section'; }
-    else if (type === 'text') { newBlock.text = 'Enter paragraph text here...'; }
+    else if (type === 'text') { newBlock.text = 'Enter paragraph or story text here...'; }
     else if (type === 'video') { newBlock.title = 'Watch Video'; newBlock.url = ''; }
     else if (type === 'image') { newBlock.caption = ''; newBlock.images = []; }
+    else if (type === 'grammar_card') { newBlock.title = 'Target Grammar Rule'; newBlock.formula = 'Formula'; newBlock.explanation = 'Rule explanation...'; newBlock.examples = ['Example sentence']; }
     else if (type === 'flashcards') { newBlock.title = 'Vocabulary'; newBlock.cards = [{ front: 'Word', back: 'Translation', example: 'Sample sentence' }]; }
     else if (type === 'multiple_choice') { newBlock.question = 'Question?'; newBlock.options = ['Option A', 'Option B']; newBlock.correct = 0; }
     else if (type === 'gap_fill') { newBlock.instruction = 'Fill the gap:'; newBlock.text = 'Sentence [answer] here.'; newBlock.answers = ['answer']; }
@@ -142,7 +155,8 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         body: JSON.stringify({
           actions: selectedTasks,
           sourceBlock: aiModalTarget.block,
-          level: lesson.level
+          lessonContext: extractLessonContext(),
+          level: lesson.level || 'B1'
         })
       });
 
@@ -272,14 +286,12 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {(block.type === 'video' || block.type === 'text' || block.type === 'flashcards') && (
-                      <button
-                        onClick={() => handleOpenAiModal(block, idx)}
-                        className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl shadow-xs transition text-xs flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <span>✨ Generate Exercises with AI</span>
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleOpenAiModal(block, idx)}
+                      className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl shadow-xs transition text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>✨ Generate / Fill with AI</span>
+                    </button>
                     <button onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▲</button>
                     <button onClick={() => handleMoveBlock(idx, 1)} disabled={idx === (activePage.blocks?.length || 1) - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
                     <button onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Delete block">🗑️</button>
