@@ -28,6 +28,10 @@ export const EditableBlockCard = ({ block, onChange }) => {
   const [subtitleStatus, setSubtitleStatus] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  if (!block || typeof block !== 'object') {
+    return <p className="text-xs text-slate-400 font-medium">Invalid block data.</p>;
+  }
+
   if (block.type === 'heading') {
     return (
       <div className="flex gap-2 items-center">
@@ -66,7 +70,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
   }
 
   if (block.type === 'grammar_card') {
-    const examples = block.examples || [];
+    const examples = Array.isArray(block.examples) ? block.examples : [];
     const updateExample = (idx, val) => {
       const updated = [...examples];
       updated[idx] = val;
@@ -118,7 +122,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
   }
 
   if (block.type === 'image') {
-    const images = block.images || (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
+    const images = Array.isArray(block.images) ? block.images : (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
     const updateImg = (idx, field, val) => {
       const updated = [...images];
@@ -302,7 +306,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
   }
 
   if (block.type === 'flashcards') {
-    const cards = block.cards || [];
+    const cards = Array.isArray(block.cards) ? block.cards : [];
     const updateCard = (idx, field, val) => {
       const updated = [...cards];
       updated[idx] = { ...updated[idx], [field]: val };
@@ -354,7 +358,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
   }
 
   if (block.type === 'multiple_choice') {
-    const options = block.options || ['Option A', 'Option B'];
+    const options = Array.isArray(block.options) ? block.options : ['Option A', 'Option B'];
     const updateOpt = (idx, val) => {
       const updated = [...options];
       updated[idx] = val;
@@ -425,6 +429,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
   }
 
   if (block.type === 'gap_fill_bank') {
+    const distractors = Array.isArray(block.distractors) ? block.distractors : [];
     return (
       <div className="space-y-3">
         <input
@@ -443,7 +448,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
         ></textarea>
         <input
           type="text"
-          value={(block.distractors || []).join(', ')}
+          value={distractors.join(', ')}
           onChange={e => onChange({ ...block, distractors: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
           placeholder="Distractor words for word bank (comma separated): was, Paris, tomorrow..."
           className="p-2 border rounded-xl text-xs w-full text-amber-800 bg-amber-50/50"
@@ -453,7 +458,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
   }
 
   if (block.type === 'matching') {
-    const pairs = block.pairs || [];
+    const pairs = Array.isArray(block.pairs) ? block.pairs : [];
     const updatePair = (idx, field, val) => {
       const updated = [...pairs];
       updated[idx] = { ...updated[idx], [field]: val };
