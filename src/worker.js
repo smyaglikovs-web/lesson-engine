@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - SAFE CONTEXT PROMPT SANITIZATION & CASCADE AI
+// CLOUDFLARE WORKER BACKEND - PROMPT TYPE CONTRADICTION FIX & AI CASCADE
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -363,7 +363,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
 
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-        // SANITIZE CONTEXT DATA TO STRIP UNESCAPED NEWLINES AND DOUBLE QUOTES
+        // SANITIZE CONTEXT DATA
         let rawContext = '';
         if (sourceBlock.type === 'grammar_card') {
           rawContext = `Grammar Topic: ${sourceBlock.title || ''} | Formula: ${sourceBlock.formula || ''} | Explanation: ${sourceBlock.explanation || ''} | Examples: ${(sourceBlock.examples || []).join('; ')}`;
@@ -432,7 +432,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
-        // DYNAMIC TASK PROMPT CONSTRUCTION (WITH FEW-SHOT TEMPLATES FOR ZERO ERRORS)
+        // DYNAMIC TASK PROMPT CONSTRUCTION (FEW-SHOT TEMPLATES FOR ZERO ERRORS)
         let taskInstructions = '';
         if (actions.includes('listening')) {
           taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
@@ -475,8 +475,8 @@ STRICT RULES:
 REQUESTED EXERCISE TASK(S) TO GENERATE:
 ${taskInstructions}
 
-RETURN ONLY A VALID JSON ARRAY OF THE REQUESTED BLOCK OBJECT(S):
-[ { "type": "${sourceBlock.type || 'multiple_choice'}", ... } ]`;
+RETURN ONLY A VALID JSON ARRAY OF THE REQUESTED BLOCK OBJECT(S) (e.g. gap_fill, multiple_choice, flashcards, matching, open_input):
+[ { "type": "gap_fill", "instruction": "...", "text": "...", "answers": [...] } ]`;
 
         const userContent = `CEFR Level: ${level}\nSource Context:\n${safeContextData}`;
 
