@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 export const BuilderAiModal = ({
   aiModalTarget,
@@ -29,8 +29,7 @@ export const BuilderAiModal = ({
   const taskCount = selectedTasks.length;
 
   const handleFillSingleBlock = () => {
-    toggleTaskSelection('fill_this_block');
-    onExecute();
+    onExecute(['fill_this_block']);
   };
 
   return (
@@ -159,6 +158,7 @@ export const BuilderAiModal = ({
           <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-2xl border border-indigo-100 space-y-2">
             <p className="text-xs font-bold text-indigo-900">🪄 Populate THIS empty block from chosen source context?</p>
             <button
+              type="button"
               onClick={handleFillSingleBlock}
               disabled={aiGenerating}
               className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-xs transition cursor-pointer"
@@ -174,23 +174,26 @@ export const BuilderAiModal = ({
             <p className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">📜 Text Refinement Tools:</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
-                onClick={() => { toggleTaskSelection('expand_text'); onExecute(); }}
+                type="button"
+                onClick={() => onExecute(['expand_text'])}
                 disabled={aiGenerating}
-                className="p-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-bold text-slate-800 transition cursor-pointer text-left"
+                className="p-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-bold text-slate-800 transition cursor-pointer text-left hover:bg-indigo-50/50"
               >
                 📖 Expand Text (~400 words)
               </button>
               <button
-                onClick={() => { toggleTaskSelection('shorten_text'); onExecute(); }}
+                type="button"
+                onClick={() => onExecute(['shorten_text'])}
                 disabled={aiGenerating}
-                className="p-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-bold text-slate-800 transition cursor-pointer text-left"
+                className="p-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-bold text-slate-800 transition cursor-pointer text-left hover:bg-indigo-50/50"
               >
                 ✂️ Shorten Text (~150 words)
               </button>
               <button
-                onClick={() => { toggleTaskSelection('refine_level'); onExecute(); }}
+                type="button"
+                onClick={() => onExecute(['refine_level'])}
                 disabled={aiGenerating}
-                className="p-2.5 bg-indigo-50 border border-indigo-200 hover:border-indigo-500 rounded-xl text-xs font-bold text-indigo-900 transition cursor-pointer text-left"
+                className="p-2.5 bg-indigo-50 border border-indigo-200 hover:border-indigo-500 rounded-xl text-xs font-bold text-indigo-900 transition cursor-pointer text-left hover:bg-indigo-100"
               >
                 🎚️ Rewrite for Level [{modalLevel}]
               </button>
@@ -253,7 +256,7 @@ export const BuilderAiModal = ({
             Cancel
           </button>
           <button
-            onClick={onExecute}
+            onClick={() => onExecute()}
             disabled={taskCount === 0 || aiGenerating}
             className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-extrabold rounded-2xl text-xs shadow-md disabled:opacity-40 cursor-pointer transition"
           >
