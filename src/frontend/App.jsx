@@ -12,6 +12,7 @@ export default function App() {
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeLesson, setActiveLesson] = useState(null);
+  const [editingLesson, setEditingLesson] = useState(null);
 
   const [isTeacher, setIsTeacher] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -20,7 +21,6 @@ export default function App() {
   const [roomId, setRoomId] = useState('');
   const [viewSubmissionsLesson, setViewSubmissionsLesson] = useState(null);
 
-  // ALWAYS REMEMBERS TEACHER PASSWORD FROM LOCALSTORAGE
   const getAuthPassword = () => {
     return localStorage.getItem('teacher_pass') || 'teacher123';
   };
@@ -113,6 +113,16 @@ export default function App() {
     }
   };
 
+  const handleEditLesson = (lesson) => {
+    setEditingLesson(lesson);
+    setView('create');
+  };
+
+  const handleCreateNew = () => {
+    setEditingLesson(null);
+    setView('create');
+  };
+
   const handleSaveLesson = async (newLesson) => {
     try {
       const res = await fetch('/api/lessons', {
@@ -126,6 +136,7 @@ export default function App() {
       const data = await res.json();
       if (res.ok && data.success) {
         alert('🎉 Урок успешно сохранен в D1!');
+        setEditingLesson(null);
         fetchLessons();
         setView('library');
       } else {
@@ -164,14 +175,15 @@ export default function App() {
             lessons={lessons}
             loading={loading}
             onOpenLesson={openLesson}
-            onCreateNew={() => setView('create')}
+            onCreateNew={handleCreateNew}
+            onEditLesson={handleEditLesson}
             onDeleteLesson={handleDeleteLesson}
             onViewSubmissions={(l) => setViewSubmissionsLesson(l)}
           />
         )}
 
         {view === 'create' && isTeacher && isAuthenticated && (
-          <CreateLessonView onSaveLesson={handleSaveLesson} onCancel={() => setView('library')} />
+          <CreateLessonView initialLesson={editingLesson} onSaveLesson={handleSaveLesson} onCancel={() => { setEditingLesson(null); setView('library'); }} />
         )}
 
         {view === 'prompts' && isTeacher && isAuthenticated && <AIPromptsView />}
