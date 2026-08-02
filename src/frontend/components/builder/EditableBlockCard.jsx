@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
-import { compressAndUploadImage } from '@utils/youtube.js';
+import { compressAndUploadImage } from '../../utils/youtube.js';
 
-// Instant VTT / SRT / YouTube transcript timestamp cleaner
 function cleanVttToSentences(vttText = '') {
   if (!vttText) return '';
   return vttText
@@ -35,18 +34,18 @@ export const EditableBlockCard = ({ block, onChange }) => {
         <select
           value={block.level || 2}
           onChange={e => onChange({ ...block, level: Number(e.target.value) })}
-          className="p-2 border rounded-xl text-xs font-bold bg-slate-50"
+          className="p-2 border rounded-xl text-xs font-bold bg-slate-50 cursor-pointer"
         >
-          <option value={1}>H1 (Заголовок 1)</option>
-          <option value={2}>H2 (Заголовок 2)</option>
-          <option value={3}>H3 (Заголовок 3)</option>
+          <option value={1}>H1 (Heading 1)</option>
+          <option value={2}>H2 (Heading 2)</option>
+          <option value={3}>H3 (Heading 3)</option>
         </select>
         <input
           type="text"
           value={block.text || ''}
           onChange={e => onChange({ ...block, text: e.target.value })}
-          placeholder="Введите заголовок..."
-          className="w-full p-2.5 border border-slate-200 rounded-xl font-bold text-slate-800 text-lg outline-none focus:ring-2 focus:ring-indigo-500"
+          placeholder="Enter section heading..."
+          className="w-full p-2.5 border border-slate-200 rounded-xl font-bold text-slate-800 text-base outline-none focus:ring-2 focus:ring-indigo-500"
         />
       </div>
     );
@@ -55,12 +54,64 @@ export const EditableBlockCard = ({ block, onChange }) => {
   if (block.type === 'text') {
     return (
       <textarea
-        rows="5"
+        rows="6"
         value={block.text || ''}
         onChange={e => onChange({ ...block, text: e.target.value })}
-        placeholder="Введите или вставьте текст статьи / рассказа..."
+        placeholder="Enter or paste reading passage / story text..."
         className="w-full p-3.5 border border-slate-200 rounded-xl text-slate-700 text-sm outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed font-sans"
       ></textarea>
+    );
+  }
+
+  if (block.type === 'grammar_card') {
+    const examples = block.examples || [];
+    const updateExample = (idx, val) => {
+      const updated = [...examples];
+      updated[idx] = val;
+      onChange({ ...block, examples: updated });
+    };
+    const addExample = () => onChange({ ...block, examples: [...examples, 'Example sentence'] });
+    const removeExample = (idx) => onChange({ ...block, examples: examples.filter((_, i) => i !== idx) });
+
+    return (
+      <div className="space-y-3 bg-gradient-to-r from-indigo-50/50 to-blue-50/50 p-4 rounded-2xl border border-indigo-100">
+        <input
+          type="text"
+          value={block.title || ''}
+          onChange={e => onChange({ ...block, title: e.target.value })}
+          placeholder="Grammar Rule Title (e.g., Third Conditional)..."
+          className="p-2.5 border rounded-xl text-sm font-bold w-full bg-white"
+        />
+        <input
+          type="text"
+          value={block.formula || ''}
+          onChange={e => onChange({ ...block, formula: e.target.value })}
+          placeholder="Formula (e.g., Subject + had + V3 + would have + V3)..."
+          className="p-2.5 border rounded-xl text-xs font-mono w-full bg-white text-indigo-900 font-bold"
+        />
+        <textarea
+          rows="2"
+          value={block.explanation || ''}
+          onChange={e => onChange({ ...block, explanation: e.target.value })}
+          placeholder="Explanation of rule usage..."
+          className="p-2.5 border rounded-xl text-xs w-full leading-relaxed bg-white"
+        ></textarea>
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-slate-500 uppercase">Examples:</label>
+          {examples.map((ex, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <input
+                type="text"
+                value={ex}
+                onChange={e => updateExample(i, e.target.value)}
+                className="p-2 border rounded-xl text-xs flex-1 bg-white font-medium"
+              />
+              {examples.length > 1 && <button onClick={() => removeExample(i)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>}
+            </div>
+          ))}
+        </div>
+        <button onClick={addExample} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold cursor-pointer">+ Add Example</button>
+      </div>
     );
   }
 
@@ -74,7 +125,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
     };
 
     const handleAddUrl = () => {
-      const url = prompt('Вставьте ссылку на изображение (Image URL):');
+      const url = prompt('Enter image URL:');
       if (url) {
         const updated = [...images, { url, caption: '' }];
         onChange({ ...block, images: updated, url: updated[0]?.url || '' });
@@ -91,7 +142,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
         const updated = [...images, { url: compressedBase64, caption: file.name }];
         onChange({ ...block, images: updated, url: updated[0]?.url || '' });
       } catch(err) {
-        alert('Ошибка загрузки фото: ' + err.message);
+        alert('Image upload error: ' + err.message);
       } finally {
         setUploadingImage(false);
       }
@@ -108,7 +159,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.caption || ''}
           onChange={e => onChange({ ...block, caption: e.target.value })}
-          placeholder="Заголовок галереи / описание (Опционально)..."
+          placeholder="Gallery caption / description..."
           className="p-2.5 border rounded-xl text-xs font-bold w-full"
         />
 
@@ -121,21 +172,21 @@ export const EditableBlockCard = ({ block, onChange }) => {
                   type="text"
                   value={img.caption || ''}
                   onChange={e => updateImg(i, 'caption', e.target.value)}
-                  placeholder="Подпись к фото..."
+                  placeholder="Caption..."
                   className="p-1.5 border rounded-lg text-xs w-full bg-white"
                 />
-                <button onClick={() => removeImg(i)} className="absolute top-1 right-1 bg-red-600 text-white text-xs w-6 h-6 rounded-full font-bold shadow-md">✕</button>
+                <button onClick={() => removeImg(i)} className="absolute top-1 right-1 bg-red-600 text-white text-xs w-6 h-6 rounded-full font-bold shadow-md cursor-pointer">✕</button>
               </div>
             ))}
           </div>
         )}
 
         <div className="flex gap-2 flex-wrap items-center">
-          <button onClick={handleAddUrl} className="px-3.5 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-100 flex items-center gap-1">
-            🔗 Добавить картинку по ссылке
+          <button onClick={handleAddUrl} className="px-3.5 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-100 cursor-pointer flex items-center gap-1">
+            🔗 Add Image URL
           </button>
           <label className="px-3.5 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 cursor-pointer flex items-center gap-1">
-            {uploadingImage ? '⌛ Обработка фото...' : '📁 Загрузить с ПК / телефона'}
+            {uploadingImage ? '⌛ Processing image...' : '📁 Upload Photo'}
             <input type="file" accept="image/*" onChange={handleFileUploadCDN} disabled={uploadingImage} className="hidden" />
           </label>
         </div>
@@ -161,7 +212,6 @@ export const EditableBlockCard = ({ block, onChange }) => {
 
     const handleTranscriptInput = (e) => {
       let textVal = e.target.value;
-      // Instant auto-clean if timestamped VTT or SRT text is pasted
       if (textVal.includes('-->') || textVal.includes('WEBVTT')) {
         textVal = cleanVttToSentences(textVal);
       }
@@ -169,12 +219,11 @@ export const EditableBlockCard = ({ block, onChange }) => {
     };
 
     const handleAutoFetchSubtitles = async () => {
-      if (!block.url) return alert('Сначала вставьте ссылку на YouTube видео!');
+      if (!block.url) return alert('Enter YouTube URL first!');
       setFetchingSubtitles(true);
-      setSubtitleStatus('⌛ Извлечение транскрипта из бэкенд-сервиса...');
+      setSubtitleStatus('⌛ Extracting transcript...');
 
       let transcript = null;
-
       try {
         const res = await fetch('/api/youtube/transcript', {
           method: 'POST',
@@ -194,9 +243,9 @@ export const EditableBlockCard = ({ block, onChange }) => {
 
       if (transcript) {
         onChange({ ...block, transcript });
-        setSubtitleStatus(`✅ Речевой транскрипт загружен! (${transcript.split(' ').length} слов)`);
+        setSubtitleStatus(`✅ Transcript loaded! (${transcript.split(' ').length} words)`);
       } else {
-        setSubtitleStatus(`ℹ️ Субтитры не извлечены автоматически. Скопируйте текст из TubeTranscript/YouTube и вставьте ниже — таймкоды очистятся автоматически!`);
+        setSubtitleStatus(`ℹ️ Subtitles not fetched automatically. Paste text below.`);
       }
     };
 
@@ -207,14 +256,14 @@ export const EditableBlockCard = ({ block, onChange }) => {
             type="text"
             value={block.title || ''}
             onChange={e => onChange({ ...block, title: e.target.value })}
-            placeholder="Название видео..."
+            placeholder="Video Title..."
             className="p-2.5 border rounded-xl text-xs font-semibold"
           />
           <input
             type="text"
             value={block.url || ''}
             onChange={e => handleUrlChange(e.target.value)}
-            placeholder="Ссылка YouTube (...)"
+            placeholder="YouTube Link (...)"
             className="p-2.5 border rounded-xl text-xs font-mono"
           />
         </div>
@@ -222,7 +271,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
         <div className="space-y-1.5">
           <div className="flex justify-between items-center">
             <label className="text-[10px] font-bold text-slate-500 uppercase">
-              📝 Субтитры / Содержание видео (для AI Помощника)
+              📝 Video Transcript / Script (For AI Assistant)
             </label>
             <button
               type="button"
@@ -230,17 +279,17 @@ export const EditableBlockCard = ({ block, onChange }) => {
               onClick={handleAutoFetchSubtitles}
               className="px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold transition disabled:opacity-40 cursor-pointer"
             >
-              {fetchingSubtitles ? '⌛ Извлечение...' : '🪄 Авто-Извлечь Субтитры'}
+              {fetchingSubtitles ? '⌛ Extracting...' : '🪄 Fetch Subtitles'}
             </button>
           </div>
 
           {subtitleStatus && <p className="text-xs font-semibold text-indigo-600 bg-indigo-50/80 p-2 rounded-lg border border-indigo-100">{subtitleStatus}</p>}
 
           <textarea
-            rows="6"
+            rows="5"
             value={block.transcript || ''}
             onChange={handleTranscriptInput}
-            placeholder="Вставьте сюда текст из TubeTranscript/YouTube — таймкоды очистятся автоматически..."
+            placeholder="Paste raw transcripts here..."
             className="w-full p-2.5 border rounded-xl text-xs font-sans bg-slate-50 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 leading-relaxed"
           ></textarea>
         </div>
@@ -257,7 +306,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
       updated[idx] = { ...updated[idx], [field]: val };
       onChange({ ...block, cards: updated });
     };
-    const addCard = () => onChange({ ...block, cards: [...cards, { front: 'Word', back: 'Перевод', example: '' }] });
+    const addCard = () => onChange({ ...block, cards: [...cards, { front: 'Word', back: 'Translation', example: '' }] });
     const removeCard = (idx) => onChange({ ...block, cards: cards.filter((_, i) => i !== idx) });
 
     return (
@@ -266,7 +315,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.title || ''}
           onChange={e => onChange({ ...block, title: e.target.value })}
-          placeholder="Заголовок карточек..."
+          placeholder="Flashcards Title..."
           className="p-2 border rounded-xl text-xs font-bold w-full"
         />
         <div className="space-y-2">
@@ -276,40 +325,40 @@ export const EditableBlockCard = ({ block, onChange }) => {
                 type="text"
                 value={c.front || ''}
                 onChange={e => updateCard(i, 'front', e.target.value)}
-                placeholder="Слово..."
+                placeholder="Target Word..."
                 className="p-2 border rounded-lg text-xs w-1/3 font-bold bg-white"
               />
               <input
                 type="text"
                 value={c.back || ''}
                 onChange={e => updateCard(i, 'back', e.target.value)}
-                placeholder="Перевод..."
+                placeholder="Translation / Definition..."
                 className="p-2 border rounded-lg text-xs w-1/3 bg-white"
               />
               <input
                 type="text"
                 value={c.example || ''}
                 onChange={e => updateCard(i, 'example', e.target.value)}
-                placeholder="Пример..."
+                placeholder="Context Example Sentence..."
                 className="p-2 border rounded-lg text-xs w-1/3 italic bg-white"
               />
-              <button onClick={() => removeCard(i)} className="text-red-500 font-bold px-2">✕</button>
+              <button onClick={() => removeCard(i)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>
             </div>
           ))}
         </div>
-        <button onClick={addCard} className="px-3.5 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold">+ Добавить флешкарту</button>
+        <button onClick={addCard} className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer">+ Add Flashcard</button>
       </div>
     );
   }
 
   if (block.type === 'multiple_choice') {
-    const options = block.options || ['Вариант A', 'Вариант B'];
+    const options = block.options || ['Option A', 'Option B'];
     const updateOpt = (idx, val) => {
       const updated = [...options];
       updated[idx] = val;
       onChange({ ...block, options: updated });
     };
-    const addOpt = () => onChange({ ...block, options: [...options, 'Новый вариант'] });
+    const addOpt = () => onChange({ ...block, options: [...options, 'New Option'] });
     const removeOpt = (idx) => onChange({ ...block, options: options.filter((_, i) => i !== idx) });
 
     return (
@@ -318,11 +367,11 @@ export const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.question || ''}
           onChange={e => onChange({ ...block, question: e.target.value })}
-          placeholder="Вопрос теста..."
+          placeholder="Quiz question..."
           className="p-2.5 border rounded-xl text-sm font-bold w-full"
         />
         <div className="space-y-2">
-          <label className="text-[10px] font-bold text-slate-400 uppercase">Варианты ответов (отметьте верный):</label>
+          <label className="text-[10px] font-bold text-slate-400 uppercase">Answer Options (Select correct radio):</label>
           {options.map((opt, i) => (
             <div key={i} className="flex gap-2 items-center">
               <input
@@ -330,19 +379,19 @@ export const EditableBlockCard = ({ block, onChange }) => {
                 name={`correct-${block.id}`}
                 checked={Number(block.correct) === i}
                 onChange={() => onChange({ ...block, correct: i })}
-                className="w-4 h-4 accent-indigo-600"
+                className="w-4 h-4 accent-indigo-600 cursor-pointer"
               />
               <input
                 type="text"
                 value={opt}
                 onChange={e => updateOpt(i, e.target.value)}
-                className="p-2 border rounded-xl text-xs flex-1 bg-white"
+                className="p-2 border rounded-xl text-xs flex-1 bg-white font-medium"
               />
-              {options.length > 2 && <button onClick={() => removeOpt(i)} className="text-red-500 font-bold px-2">✕</button>}
+              {options.length > 2 && <button onClick={() => removeOpt(i)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>}
             </div>
           ))}
         </div>
-        <button onClick={addOpt} className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold">+ Добавить вариант</button>
+        <button onClick={addOpt} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold cursor-pointer">+ Add Option</button>
       </div>
     );
   }
@@ -354,7 +403,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.instruction || ''}
           onChange={e => onChange({ ...block, instruction: e.target.value })}
-          placeholder="Инструкция..."
+          placeholder="Instruction..."
           className="p-2 border rounded-xl text-xs w-full"
         />
         <input
@@ -366,7 +415,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
             const extractedAns = match ? [match[1]] : (block.answers || []);
             onChange({ ...block, text: textVal, answers: extractedAns });
           }}
-          placeholder="Предложение с пропуском [ответ]..."
+          placeholder="Sentence with gap in brackets [correct_answer]..."
           className="p-2.5 border rounded-xl text-sm font-medium w-full"
         />
       </div>
@@ -380,22 +429,22 @@ export const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.instruction || ''}
           onChange={e => onChange({ ...block, instruction: e.target.value })}
-          placeholder="Инструкция..."
+          placeholder="Instruction..."
           className="p-2 border rounded-xl text-xs w-full"
         />
         <textarea
-          rows="2"
+          rows="3"
           value={block.text || ''}
           onChange={e => onChange({ ...block, text: e.target.value })}
-          placeholder="Текст с правильными ответами в скобках [слово]..."
-          className="p-2.5 border rounded-xl text-sm font-medium w-full"
+          placeholder="Paragraph with correct answers in brackets [word]..."
+          className="p-2.5 border rounded-xl text-sm font-medium w-full leading-relaxed"
         ></textarea>
         <input
           type="text"
           value={(block.distractors || []).join(', ')}
           onChange={e => onChange({ ...block, distractors: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="Фальшивые доп. слова в банк (через запятую): was, Paris, tomorrow..."
-          className="p-2 border rounded-xl text-xs w-full text-amber-700 bg-amber-50/50"
+          placeholder="Distractor words for word bank (comma separated): was, Paris, tomorrow..."
+          className="p-2 border rounded-xl text-xs w-full text-amber-800 bg-amber-50/50"
         />
       </div>
     );
@@ -408,7 +457,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
       updated[idx] = { ...updated[idx], [field]: val };
       onChange({ ...block, pairs: updated });
     };
-    const addPair = () => onChange({ ...block, pairs: [...pairs, { left: 'Слово', right: 'Пара' }] });
+    const addPair = () => onChange({ ...block, pairs: [...pairs, { left: 'Word', right: 'Match' }] });
     const removePair = (idx) => onChange({ ...block, pairs: pairs.filter((_, i) => i !== idx) });
 
     return (
@@ -417,7 +466,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.instruction || ''}
           onChange={e => onChange({ ...block, instruction: e.target.value })}
-          placeholder="Инструкция..."
+          placeholder="Instruction..."
           className="p-2 border rounded-xl text-xs w-full"
         />
         <div className="space-y-2">
@@ -427,7 +476,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
                 type="text"
                 value={p.left || ''}
                 onChange={e => updatePair(i, 'left', e.target.value)}
-                placeholder="Левая сторона..."
+                placeholder="Left word..."
                 className="p-2 border rounded-lg text-xs flex-1 font-bold bg-white"
               />
               <span className="text-slate-400">➔</span>
@@ -435,14 +484,14 @@ export const EditableBlockCard = ({ block, onChange }) => {
                 type="text"
                 value={p.right || ''}
                 onChange={e => updatePair(i, 'right', e.target.value)}
-                placeholder="Правая сторона..."
+                placeholder="Right pair..."
                 className="p-2 border rounded-lg text-xs flex-1 font-bold text-indigo-700 bg-white"
               />
-              <button onClick={() => removePair(i)} className="text-red-500 font-bold px-2">✕</button>
+              <button onClick={() => removePair(i)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>
             </div>
           ))}
         </div>
-        <button onClick={addPair} className="px-3.5 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold">+ Добавить пару</button>
+        <button onClick={addPair} className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer">+ Add Pair</button>
       </div>
     );
   }
@@ -454,12 +503,12 @@ export const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={block.prompt || ''}
           onChange={e => onChange({ ...block, prompt: e.target.value })}
-          placeholder="Вопрос..."
+          placeholder="Discussion question / Prompt..."
           className="p-2.5 border rounded-xl text-sm font-bold w-full"
         />
       </div>
     );
   }
 
-  return <p className="text-xs text-slate-500">Настройте этот блок при необходимости.</p>;
+  return <p className="text-xs text-slate-500">Configure block options as needed.</p>;
 };
