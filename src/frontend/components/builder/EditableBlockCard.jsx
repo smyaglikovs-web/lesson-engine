@@ -23,6 +23,87 @@ function cleanVttToSentences(vttText = '') {
     .trim();
 }
 
+// SUB-COMPONENT FOR TEXT / READING BLOCKS
+const TextBlockEditor = ({ block, onChange }) => {
+  const [topicInput, setTopicInput] = useState('');
+  const [textLength, setTextLength] = useState('250'); // 150 | 250 | 400
+  const [generatingText, setGeneratingText] = useState(false);
+
+  const handleAiAutoBuildText = async () => {
+    if (!topicInput.trim()) return alert('Type a topic or hint for the reading text first!');
+    setGeneratingText(true);
+    try {
+      const res = await fetch('/api/ai/transform-block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actions: ['generate_text_passage'],
+          sourceText: topicInput.trim(),
+          targetLength: textLength,
+          level: 'B1'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.newBlocks?.[0]?.text) {
+        onChange({ ...block, text: data.newBlocks[0].text });
+      } else {
+        alert('AI text generation failed. Please try again.');
+      }
+    } catch (e) {
+      alert('Error generating reading text');
+    } finally {
+      setGeneratingText(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* IN-BLOCK AI TEXT AUTO-WRITER BAR */}
+      <div className="bg-gradient-to-r from-indigo-50/80 to-purple-50/80 p-3.5 rounded-2xl border border-indigo-100 space-y-2">
+        <label className="block text-[11px] font-extrabold text-indigo-900 uppercase tracking-wider">
+          🪄 AI Text Auto-Writer: Type a topic or hint and AI will write the reading passage
+        </label>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            value={topicInput}
+            onChange={e => setTopicInput(e.target.value)}
+            placeholder="e.g. History of Twenty One Pilots, Ordering food in a restaurant..."
+            className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <div className="flex gap-2">
+            <select
+              value={textLength}
+              onChange={e => setTextLength(e.target.value)}
+              className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
+            >
+              <option value="150">Short (~150w)</option>
+              <option value="250">Medium (~250w)</option>
+              <option value="400">Long (~400w)</option>
+            </select>
+            <button
+              type="button"
+              disabled={generatingText || !topicInput.trim()}
+              onClick={handleAiAutoBuildText}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-xs transition disabled:opacity-40 cursor-pointer flex-shrink-0"
+            >
+              {generatingText ? '⌛ Writing...' : '🪄 AI Write Text'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <textarea
+        rows="6"
+        value={block.text || ''}
+        onChange={e => onChange({ ...block, text: e.target.value })}
+        placeholder="Enter, paste, or AI-generate reading story text..."
+        className="w-full p-3.5 border border-slate-200 rounded-xl text-slate-700 text-sm outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed font-sans"
+      ></textarea>
+    </div>
+  );
+};
+
 // SUB-COMPONENT FOR GRAMMAR CARDS
 const GrammarCardEditor = ({ block, onChange }) => {
   const [grammarTopicInput, setGrammarTopicInput] = useState(block.title || '');
@@ -355,17 +436,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
   }
 
   if (block.type === 'text') {
-    return (
-      <div className="space-y-2">
-        <textarea
-          rows="6"
-          value={block.text || ''}
-          onChange={e => onChange({ ...block, text: e.target.value })}
-          placeholder="Enter or paste reading passage / story text..."
-          className="w-full p-3.5 border border-slate-200 rounded-xl text-slate-700 text-sm outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed font-sans"
-        ></textarea>
-      </div>
-    );
+    return <TextBlockEditor block={block} onChange={onChange} />;
   }
 
   if (block.type === 'grammar_card') {
