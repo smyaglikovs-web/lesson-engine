@@ -1,4 +1,4 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH GRAMMAR DRILL GENERATION
+// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH PEDAGOGICAL PPP MATRIX
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, articles. Target Vocabulary: Everyday basics. Sentences: Short (5-10 words).',
@@ -367,6 +367,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   }
 }
 
+// FULL 5-PAGE CELTA/DELTA PPP LESSON GENERATOR
 export async function generateFullLessonWithAI(env, payload) {
   const { text = '', level = 'B1', topic = 'General English' } = payload;
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
@@ -447,6 +448,8 @@ export async function transformBlockWithAI(env, payload) {
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
+  const isGrammarContext = safeContextData.toLowerCase().includes('grammar rule') || sourceBlock.type === 'grammar_card';
+
   // 1. GENERATE TEXT PASSAGE
   if (actions.includes('generate_text_passage')) {
     const textSystemPrompt = `You are a master ELT Materials Writer. Write an engaging, educational reading story/passage on the topic provided for CEFR Level ${level} (~${targetLength} words).\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY A VALID JSON OBJECT WITH A "text" PROPERTY:\n{ "text": "Full educational reading story passage..." }`;
@@ -490,7 +493,7 @@ export async function transformBlockWithAI(env, payload) {
   // 4. TASK & GRAMMAR DRILL GENERATION
   let taskInstructions = '';
   if (actions.includes('listening')) {
-    taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing understanding of context. Template: [ { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
+    taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template: [ { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
   }
   if (actions.includes('flashcards')) {
     taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words from context. Template: [ { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "sentence" } ] } ]\n`;
@@ -499,7 +502,7 @@ export async function transformBlockWithAI(env, payload) {
     taskInstructions += `- Generate 1 "multiple_choice" block with 4 True/False questions based on context.\n`;
   }
   if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
-    taskInstructions += `- Generate 1 "gap_fill" block with 4 sentences separated by newlines \\n, putting target grammar/words in brackets [word]. Example: "1. The company [started] yesterday.\\n2. They [met] at a party."\n`;
+    taskInstructions += `- Generate 1 "gap_fill" block with 4 sentences separated by newlines \\n, putting target grammar/words in brackets [word]. Example: "1. Yesterday she [went] to the store.\\n2. They [bought] a car."\n`;
   }
   if (actions.includes('gap_fill_bank')) {
     taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] in brackets and 3 distractors.\n`;
@@ -514,10 +517,16 @@ export async function transformBlockWithAI(env, payload) {
     taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${safeContextData}". Write real questions testing correct grammar usage vs distractors! DO NOT write placeholders!\n`;
   }
 
-  const systemPrompt = `You are an expert ELT Materials Designer. Generate ONLY the requested exercise block(s) for CEFR Level ${level} based on context. 
+  let grammarPromptAddon = '';
+  if (isGrammarContext) {
+    grammarPromptAddon = `\nCRITICAL RULE FOR GRAMMAR CONTEXT: The source context is a Grammar Presentation Rule (${safeContextData}). ALL generated exercise questions, option choices, and gap-fill sentences MUST specifically test and drill this target grammar rule!
+- For "multiple_choice": Write questions asking for the correct grammar form. Options must contain 1 correct form and 2 common student grammar distractors.
+- For "gap_fill": Write sentences with bracketed target verb/grammar forms.
+- For "matching": Create target verb form or collocation pairs (e.g. Left: "go", Right: "went").
+- DO NOT return generic placeholders like "Question?" or "Option A"!`;
+  }
 
-CRITICAL RULE FOR GRAMMAR CONTEXT:
-- If context is a Grammar Rule, generate real practice questions, options, and gap-fills that directly drill and test that specific grammar rule! NEVER return placeholder text like "Question?" or "Option A"!
+  const systemPrompt = `You are an expert ELT Materials Designer. Generate ONLY the requested exercise block(s) for CEFR Level ${level} based on context.${grammarPromptAddon}
 
 RETURN VALID JSON ARRAY OF REQUESTED BLOCK OBJECTS:
 [ { "type": "multiple_choice", "question": "...", "options": [...], "correct": 0, "explanation": "..." } ]\n${taskInstructions}`;
