@@ -39,16 +39,55 @@ export async function saveLesson(env, lesson, password) {
   return { success: true, id };
 }
 
+// BULLETPROOF LESSON RETRIEVAL & NORMALIZATION (READS BOTH 'data' AND 'pages_json')
 export async function getSingleLesson(env, lessonId) {
   await ensureTables(env);
-  const row = await env.DB.prepare("SELECT data FROM lessons WHERE id = ?").bind(lessonId).first();
-  if (!row || !row.data) return null;
+  const row = await env.DB.prepare(
+    "SELECT data, pages_json, title, level, topic, description FROM lessons WHERE id = ?"
+  ).bind(lessonId).first();
 
-  try {
-    return typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
-  } catch(e) {
-    return null;
+  if (!row) return null;
+
+  let rawData = row.data || row.pages_json;
+  let parsed = null;
+
+  if (rawData) {
+    try {
+      parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+    } catch(e) {}
   }
+
+  if (!parsed || typeof parsed !== 'object') {
+    parsed = {
+      id: lessonId,
+      title: row.title || 'Untitled Lesson',
+      level: row.level || 'B1',
+      topic: row.topic || 'General',
+      description: row.description || '',
+      pages: [{ id: 'p1', title: 'Part 1', blocks: [] }]
+    };
+  }
+
+  // Normalize pages array structure
+  let pages = Array.isArray(parsed.pages) ? parsed.pages : [];
+  if (pages.length === 0) {
+    if (Array.isArray(parsed.blocks)) {
+      pages = [{ id: 'p1', title: parsed.topic || row.topic || 'Part 1', blocks: parsed.blocks }];
+    } else if (Array.isArray(parsed)) {
+      pages = [{ id: 'p1', title: row.topic || 'Part 1', blocks: parsed }];
+    } else {
+      pages = [{ id: 'p1', title: row.topic || 'Part 1', blocks: [] }];
+    }
+  }
+
+  return {
+    id: lessonId,
+    title: parsed.title || row.title || 'Untitled Lesson',
+    level: parsed.level || row.level || 'B1',
+    topic: parsed.topic || row.topic || 'General',
+    description: parsed.description || row.description || '',
+    pages: pages
+  };
 }
 
 export async function deleteLesson(env, lessonId, password) {
