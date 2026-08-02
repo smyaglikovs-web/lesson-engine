@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH AUTO-RULE BUILDER & CEFR MATRIX
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH TYPE-STRICT JSON TEMPLATES
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -209,48 +209,73 @@ export default {
 
         const systemPrompt = `You are a CELTA ELT Methodologist. Generate a complete 5-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
 
-STRICT JSON QUOTE RULE:
+STRICT BLOCK TYPE NAMES (USE ONLY THESE EXACT KEYS):
+- "heading": { "type": "heading", "level": 1, "text": "Title" }
+- "text": { "type": "text", "text": "Full reading passage story..." }
+- "open_input": { "type": "open_input", "prompt": "Question text?" }
+- "flashcards": { "type": "flashcards", "title": "Vocab", "cards": [ { "front": "word", "back": "translation", "example": "sentence" } ] }
+- "multiple_choice": { "type": "multiple_choice", "question": "Question?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Reason" }
+- "matching": { "type": "matching", "instruction": "Match pairs:", "pairs": [ { "left": "word", "right": "match" } ] }
+- "grammar_card": { "type": "grammar_card", "title": "Rule Title", "formula": "Formula", "explanation": "Explanation", "examples": ["Ex 1"] }
+- "gap_fill_bank": { "type": "gap_fill_bank", "instruction": "Fill gaps:", "text": "Story with [answers] in brackets.", "distractors": ["fake1"] }
+- "gap_fill": { "type": "gap_fill", "instruction": "Transform:", "text": "Sentence with [answer].", "answers": ["answer"] }
+
+STRICT QUOTE RULE:
 - Use single quotes (') for quotes or speech inside text values. NO unescaped double quotes!
 - 100% Target Language Policy: All instructions, questions, texts MUST be in English.
 - CEFR Level ${level} Target: ${cefrRules}
 
-LESSON STRUCTURE:
-Page 1: Lead-in & Core Reading Passage
-- "heading": Lesson Title
-- "open_input": 2 Lead-in discussion questions
-- "flashcards": 5 vocabulary cards ({ front, back, example })
-- "text": A complete 200-word reading passage strictly matching CEFR ${level}.
-
-Page 2: Comprehension
-- "multiple_choice": 1 main idea question
-- "matching": 5 pairs based on facts from text
-- "multiple_choice": 4 True/False questions with explanations
-
-Page 3: Grammar Presentation
-- "grammar_card": Target CEFR ${level} grammar rule ({ title, formula, explanation, examples })
-- "matching": 5 collocation/synonym pairs
-
-Page 4: Semi-Controlled Practice
-- "gap_fill_bank": Paragraph with [answers] in brackets and 3 distractors
-- "gap_fill": 4 sentence transformations with [answer] in brackets
-
-Page 5: Production & Homework
-- "open_input": 3 speaking discussion questions
-- "open_input": Writing / roleplay prompt
-- "gap_fill": 4 homework gap fill items
-
-RETURN ONLY VALID JSON FORMAT:
+RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
 {
-  "title": "Title",
+  "title": "${topic}",
   "level": "${level}",
   "topic": "${topic}",
-  "description": "Short description",
+  "description": "Interactive CEFR ${level} Lesson on ${topic}",
   "pages": [
-    { "id": "p1", "title": "Part 1: Lead-in & Reading", "blocks": [...] },
-    { "id": "p2", "title": "Part 2: Text Comprehension", "blocks": [...] },
-    { "id": "p3", "title": "Part 3: Grammar Presentation", "blocks": [...] },
-    { "id": "p4", "title": "Part 4: Practice & Transformation", "blocks": [...] },
-    { "id": "p5", "title": "Part 5: Production & Homework", "blocks": [...] }
+    {
+      "id": "p1",
+      "title": "Part 1: Lead-in & Reading",
+      "blocks": [
+        { "type": "heading", "level": 1, "text": "${topic}" },
+        { "type": "open_input", "prompt": "What do you know about ${topic}?" },
+        { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "translation", "example": "sentence" } ] },
+        { "type": "text", "text": "Write a complete 220-word reading passage about ${topic} for CEFR Level ${level}..." }
+      ]
+    },
+    {
+      "id": "p2",
+      "title": "Part 2: Text Comprehension",
+      "blocks": [
+        { "type": "multiple_choice", "question": "Main idea of the reading passage?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Explanation" },
+        { "type": "matching", "instruction": "Match facts from the reading passage:", "pairs": [ { "left": "Fact", "right": "Detail" } ] },
+        { "type": "multiple_choice", "question": "True or False question?", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Explanation" }
+      ]
+    },
+    {
+      "id": "p3",
+      "title": "Part 3: Grammar Presentation",
+      "blocks": [
+        { "type": "grammar_card", "title": "Target Grammar Rule for ${level}", "formula": "Formula", "explanation": "Explanation", "examples": ["Example 1"] },
+        { "type": "matching", "instruction": "Match collocations:", "pairs": [ { "left": "Word", "right": "Preposition" } ] }
+      ]
+    },
+    {
+      "id": "p4",
+      "title": "Part 4: Practice & Transformation",
+      "blocks": [
+        { "type": "gap_fill_bank", "instruction": "Fill gaps from the reading passage:", "text": "Paragraph with [answers] in brackets.", "distractors": ["extra1"] },
+        { "type": "gap_fill", "instruction": "Transform sentence:", "text": "Sentence with [answer].", "answers": ["answer"] }
+      ]
+    },
+    {
+      "id": "p5",
+      "title": "Part 5: Production & Homework",
+      "blocks": [
+        { "type": "open_input", "prompt": "Speaking discussion question on ${topic}?" },
+        { "type": "open_input", "prompt": "Writing / roleplay prompt?" },
+        { "type": "gap_fill", "instruction": "Homework practice:", "text": "Sentence with [answer].", "answers": ["answer"] }
+      ]
+    }
   ]
 }`;
 
@@ -322,11 +347,9 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
 
         // UNBREAKABLE TEXT REFINEMENT
         if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
-          let targetLength = '350-450 words';
           let textInstruction = 'Expand this reading passage into a richer, longer, more detailed story (350-450 words) with CEFR Level ' + level + ' vocabulary.';
           
           if (actions.includes('shorten_text')) {
-            targetLength = '120-150 words';
             textInstruction = 'Shorten this reading passage into a concise summary (~150 words) matching CEFR Level ' + level + '.';
           } else if (actions.includes('refine_level')) {
             textInstruction = 'Rewrite this reading passage strictly adapting grammar and vocabulary to CEFR Level ' + level + '.';
