@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH AUTO-REPAIRING JSON PARSER
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH D1 MIGRATION & TEXT REFINEMENT AI
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -55,7 +55,6 @@ function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
-// ULTRA-RESILIENT AUTO-REPAIRING JSON PARSER
 function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -69,11 +68,9 @@ function cleanAndParseJson(rawText) {
     clean = clean.substring(start);
   }
 
-  // Attempt 1: Direct Parse
   try {
     return JSON.parse(clean);
   } catch (e1) {
-    // Attempt 2: Fix unescaped newlines and control characters inside string values
     let fixed = '';
     let inString = false;
     for (let i = 0; i < clean.length; i++) {
@@ -93,7 +90,6 @@ function cleanAndParseJson(rawText) {
     try {
       return JSON.parse(fixed);
     } catch (e2) {
-      // Attempt 3: Auto-repair truncated JSON brackets if response hit token limits
       let stack = [];
       let repaired = '';
       let insideStr = false;
@@ -138,6 +134,11 @@ async function ensureTables(db) {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    // AUTO-MIGRATE COLUMN FOR EXISTING TABLES
+    try {
+      await db.prepare(`ALTER TABLE lessons ADD COLUMN pages_json TEXT`).run();
+    } catch (e) {}
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS homework_submissions (
@@ -207,10 +208,10 @@ export default {
 
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-        const systemPrompt = `You are a CELTA ELT Methodologist. Generate a complete 5-PAGE interactive English lesson strictly matching CEFR level ${level}.
+        const systemPrompt = `You are a CELTA ELT Methodologist. Generate a complete 5-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
 
 STRICT JSON QUOTE RULE:
-- Use single quotes (') for any quotes or speech inside text string values. NEVER use unescaped double quotes (") inside JSON string values!
+- Use single quotes (') for quotes or speech inside text values. NO unescaped double quotes!
 - 100% Target Language Policy: All instructions, questions, texts MUST be in English.
 - CEFR Level ${level} Target: ${cefrRules}
 
@@ -219,7 +220,7 @@ Page 1: Lead-in & Core Reading Passage
 - "heading": Lesson Title
 - "open_input": 2 Lead-in discussion questions
 - "flashcards": 5 vocabulary cards ({ front, back, example })
-- "text": A complete 180-word reading passage strictly matching CEFR ${level}.
+- "text": A complete 220-word rich reading passage strictly matching CEFR ${level}.
 
 Page 2: Comprehension
 - "multiple_choice": 1 main idea question
@@ -275,41 +276,67 @@ RETURN ONLY VALID JSON FORMAT:
         return jsonResponse({ success: true, jsonText: JSON.stringify(parsedJson, null, 2) });
       }
 
-      // SINGLE BLOCK AI TRANSFORMER
+      // SINGLE BLOCK AI TRANSFORMER & TEXT REFINEMENT
       if (path === '/api/ai/transform-block' && request.method === 'POST') {
         const { actions = [], sourceBlock = {}, lessonContext = '', level = 'B1' } = await request.json();
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-        const systemPrompt = `You are an expert ELT Materials Designer. Generate complete interactive exercise blocks based on the provided Reading Passage/Context for CEFR Level ${level}.
+        // SPECIAL CASE: TEXT REFINEMENT (Expand, Shorten, Change CEFR Level)
+        if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
+          let textInstruction = 'Rewrite and improve this reading passage.';
+          if (actions.includes('expand_text')) textInstruction = 'EXPAND this reading passage into a longer, richer, more detailed story (350-450 words) with enhanced vocabulary matching CEFR Level ' + level + '.';
+          if (actions.includes('shorten_text')) textInstruction = 'SHORTEN this reading passage into a concise summary (~150 words) matching CEFR Level ' + level + '.';
+          if (actions.includes('refine_level')) textInstruction = 'REWRITE this reading passage strictly adapting grammar and vocabulary to CEFR Level ' + level + '.';
+
+          const textSystemPrompt = `You are an ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY A VALID JSON ARRAY WITH A SINGLE TEXT BLOCK OBJECT:\n[ { "type": "text", "text": "New refined passage text here..." } ]`;
+
+          const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
+            messages: [
+              { role: 'system', content: textSystemPrompt },
+              { role: 'user', content: `Original Text:\n${sourceBlock.text || lessonContext}` }
+            ],
+            temperature: 0.3,
+            max_tokens: 2000
+          });
+
+          const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
+          const parsedBlocks = cleanAndParseJson(rawText);
+          return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
+        }
+
+        // GENERAL SINGLE BLOCK FULFILLMENT FROM LESSON TEXT
+        const systemPrompt = `You are an expert ELT Materials Designer. Generate complete interactive exercise blocks BASED DIRECTLY ON THE LESSON READING PASSAGE for CEFR Level ${level}.
 
 STRICT RULES:
-1. Use single quotes (') inside string values. No unescaped double quotes!
+1. Every exercise MUST directly test/use vocabulary or facts from the provided Reading Passage!
 2. 100% English target language policy.
-3. CEFR Level ${level} Target: ${cefrRules}
+3. Use single quotes (') inside text string values. No unescaped double quotes!
+4. CEFR Level ${level} Target: ${cefrRules}
 
 REQUESTED ACTION TASKS (${actions.join(', ')}):
 Generate JSON block objects for requested task types:
 
+- "fill_this_block": Generate a 100% full, non-empty block of type "${sourceBlock.type}".
 - "listening": multiple_choice block with 4 comprehension questions ({ question, options [3], correct, explanation }).
-- "flashcards": flashcards block with 5 items ({ cards: [{ front, back, example }] }).
+- "flashcards": flashcards block with 6 items ({ cards: [{ front, back, example }] }).
 - "true_false": multiple_choice block with 4 True/False questions.
 - "gap_fill": gap_fill block with 4 sentences containing [answer] in brackets.
 - "gap_fill_bank": gap_fill_bank block with text containing [answers] and 3 distractors.
-- "matching": matching block with 5 pairs [{ left, right }].
+- "matching": matching block with 6 pairs [{ left, right }].
 - "discussion": open_input block with 3 speaking discussion prompts.
 - "grammar": grammar_card block with CEFR ${level} rule ({ title, formula, explanation, examples }).
 
 RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
-[ { "type": "multiple_choice", ... } ]`;
+[ { "type": "${sourceBlock.type || 'multiple_choice'}", ... } ]`;
 
-        const userContent = `CEFR Level: ${level}\nLesson Text/Context:\n${lessonContext || sourceBlock.text || sourceBlock.transcript || JSON.stringify(sourceBlock)}`;
+        const userContent = `CEFR Level: ${level}\nLesson Reading Passage:\n${lessonContext || sourceBlock.text || sourceBlock.transcript || JSON.stringify(sourceBlock)}`;
 
         const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userContent }
           ],
-          temperature: 0.2,
+          temperature: 0.3,
           max_tokens: 2500
         });
 
@@ -335,7 +362,7 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
         return jsonResponse({ success: false, message: 'Paste transcripts manually if unavailable.' });
       }
 
-      // LESSONS CRUD
+      // LESSONS CRUD (WITH SAFE D1 FALLBACK)
       if (path === '/api/lessons' && request.method === 'GET') {
         const { results } = await env.DB.prepare('SELECT id, title, level, topic, description, created_at FROM lessons ORDER BY created_at DESC').all();
         return jsonResponse(results || []);
@@ -377,16 +404,29 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
         const id = lesson.id || 'lesson-' + Date.now();
         const pagesJson = JSON.stringify(lesson.pages || lesson.blocks || []);
 
-        await env.DB.prepare(`
-          INSERT INTO lessons (id, title, level, topic, description, pages_json)
-          VALUES (?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            title=excluded.title,
-            level=excluded.level,
-            topic=excluded.topic,
-            description=excluded.description,
-            pages_json=excluded.pages_json
-        `).bind(id, lesson.title || 'Untitled', lesson.level || 'B1', lesson.topic || 'General', lesson.description || '', pagesJson).run();
+        try {
+          await env.DB.prepare(`
+            INSERT INTO lessons (id, title, level, topic, description, pages_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              title=excluded.title,
+              level=excluded.level,
+              topic=excluded.topic,
+              description=excluded.description,
+              pages_json=excluded.pages_json
+          `).bind(id, lesson.title || 'Untitled', lesson.level || 'B1', lesson.topic || 'General', lesson.description || '', pagesJson).run();
+        } catch (e1) {
+          // Fallback if pages_json column is missing
+          await env.DB.prepare(`
+            INSERT INTO lessons (id, title, level, topic, description)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              title=excluded.title,
+              level=excluded.level,
+              topic=excluded.topic,
+              description=excluded.description
+          `).bind(id, lesson.title || 'Untitled', lesson.level || 'B1', lesson.topic || 'General', lesson.description || '').run();
+        }
 
         return jsonResponse({ success: true, id });
       }
