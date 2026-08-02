@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH CEFR MATRIX, PPP & D1 FIX
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH CEFR MATRIX & OPTIMIZED TOKEN GENERATION
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -173,63 +173,60 @@ export default {
         return jsonResponse({ error: 'Invalid password' }, 401);
       }
 
-      // FULL AI LESSON GENERATOR (CELTA/DELTA PPP + CEFR MATRIX)
+      // FULL AI LESSON GENERATOR
       if (path === '/api/ai/generate' && request.method === 'POST') {
         const { text, level = 'B1', topic = 'General English' } = await request.json();
 
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-        const systemPrompt = `You are a world-class CELTA/DELTA ELT Methodologist and TEFL Master Material Writer.
-Generate a complete 5-PAGE interactive English lesson strictly adhering to PPP (Presentation, Practice, Production) and Communicative Language Teaching (CLT).
+        const systemPrompt = `You are a world-class CELTA ELT Methodologist. Generate a complete 5-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
 
-STRICT LANGUAGE POLICY:
-- 100% TARGET LANGUAGE POLICY: All instructions, texts, questions, options, explanations, and prompts MUST be in natural, idiomatic ENGLISH appropriate for CEFR level ${level}.
-- NO RUSSIAN TEXT is allowed anywhere, except optionally on the 'back' of vocabulary flashcards as translation.
+STRICT RULES:
+1. 100% Target Language Policy: All instructions, questions, texts MUST be in English.
+2. CEFR Level ${level} Target: ${cefrRules}
+3. EVERY SINGLE FIELD MUST BE FULLY POPULATED WITH HIGH-QUALITY ENGLISH TEXT. NO EMPTY STRINGS OR PLACEHOLDERS!
 
-CEFR LEVEL SPECIFICATION (${level}):
-${cefrRules}
+LESSON STRUCTURE:
+Page 1: Lead-in & Core Reading Passage
+- "heading": Lesson Title
+- "open_input": 2 Lead-in discussion questions
+- "flashcards": 6 key vocabulary cards ({ front, back, example })
+- "text": A complete 200-word reading passage strictly matching CEFR ${level}.
 
-METHODOLOGICAL 5-PAGE LESSON PIPELINE:
-Page 1: Lead-in & Vocabulary Warm-up
-- Block 1 (type: "heading", level: 1): Lesson Title.
-- Block 2 (type: "open_input"): 2-3 Brainstorming / Lead-in discussion questions.
-- Block 3 (type: "flashcards"): 6-8 key target vocabulary words with front (word), back (translation/synonym), example (sentence).
-- Block 4 (type: "text"): The core source reading text or adapted script (approx 200-300 words strictly matching CEFR ${level}).
+Page 2: Comprehension
+- "multiple_choice": 1 main idea question
+- "matching": 5 pairs based on facts from text
+- "multiple_choice": 4 True/False questions with explanations
 
-Page 2: Comprehension Check (Gist & Detail)
-- Block 1 (type: "multiple_choice"): Main Idea / Gist Question (3 options, 1 correct).
-- Block 2 (type: "matching"): 6-8 pairs for ordering events or matching key facts/dates from text.
-- Block 3 (type: "multiple_choice"): 5 detailed True / False / Not Stated questions with explanations.
-
-Page 3: Grammar & Key Vocabulary Presentation
-- Block 1 (type: "grammar_card"): Target grammar presentation rule strictly from CEFR level ${level} (fields: title, formula, explanation, examples).
-- Block 2 (type: "matching"): 6-8 Collocation or Synonym pairs matching target vocabulary.
+Page 3: Grammar Presentation
+- "grammar_card": Target CEFR ${level} grammar rule ({ title, formula, explanation, examples })
+- "matching": 5 collocation/synonym pairs
 
 Page 4: Semi-Controlled Practice
-- Block 1 (type: "gap_fill_bank"): Sentence text with [target_words] in brackets and 3 distractor words.
-- Block 2 (type: "gap_fill"): 5 transformation / gap fill items testing target grammar/vocab. Format: "Sentence with [answer] inside."
+- "gap_fill_bank": Paragraph with [answers] in brackets and 3 distractors
+- "gap_fill": 4 sentence transformations with [answer] in brackets
 
 Page 5: Production & Homework
-- Block 1 (type: "open_input"): 3-4 Speaking & Discussion questions for debate/roleplay.
-- Block 2 (type: "open_input"): Creative writing / Retelling / Roleplay prompt.
-- Block 3 (type: "gap_fill"): Homework gap fill exercise (5 items).
+- "open_input": 3 speaking discussion questions
+- "open_input": Writing / roleplay prompt
+- "gap_fill": 4 homework gap fill items
 
-STRICT OUTPUT FORMAT: Return ONLY valid JSON matching this structure:
+RETURN ONLY VALID JSON FORMAT:
 {
-  "title": "Lesson Title",
+  "title": "Title",
   "level": "${level}",
   "topic": "${topic}",
-  "description": "Short description of the lesson",
+  "description": "Short description",
   "pages": [
-    { "id": "p1", "title": "Part 1: Lead-in & Vocabulary", "blocks": [...] },
+    { "id": "p1", "title": "Part 1: Lead-in & Reading", "blocks": [...] },
     { "id": "p2", "title": "Part 2: Text Comprehension", "blocks": [...] },
-    { "id": "p3", "title": "Part 3: Grammar & Vocabulary Presentation", "blocks": [...] },
+    { "id": "p3", "title": "Part 3: Grammar Presentation", "blocks": [...] },
     { "id": "p4", "title": "Part 4: Practice & Transformation", "blocks": [...] },
-    { "id": "p5", "title": "Part 5: Speaking Production & Homework", "blocks": [...] }
+    { "id": "p5", "title": "Part 5: Production & Homework", "blocks": [...] }
   ]
 }`;
 
-        const userContent = `Source Topic / Materials for CEFR Level ${level}:\nTopic: ${topic}\nInput Material/Text: ${text || 'Create an engaging topic-based lesson.'}`;
+        const userContent = `Topic: ${topic}\nMaterial/Context: ${text || 'Create a topic-based story.'}`;
 
         if (!env.AI) {
           return jsonResponse({ error: 'Cloudflare Workers AI binding (AI) is not configured.' }, 500);
@@ -241,7 +238,7 @@ STRICT OUTPUT FORMAT: Return ONLY valid JSON matching this structure:
             { role: 'user', content: userContent }
           ],
           temperature: 0.3,
-          max_tokens: 4000
+          max_tokens: 3800
         });
 
         const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
@@ -250,33 +247,34 @@ STRICT OUTPUT FORMAT: Return ONLY valid JSON matching this structure:
         return jsonResponse({ success: true, jsonText: JSON.stringify(parsedJson, null, 2) });
       }
 
-      // SINGLE BLOCK AI TRANSFORMER
+      // SINGLE BLOCK AI TRANSFORMER (USES LESSON CONTEXT TO FILL ANY BLOCK)
       if (path === '/api/ai/transform-block' && request.method === 'POST') {
-        const { actions = [], sourceBlock = {}, level = 'B1' } = await request.json();
+        const { actions = [], sourceBlock = {}, lessonContext = '', level = 'B1' } = await request.json();
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-        const systemPrompt = `You are an expert ELT Materials Designer. Your task is to generate specific interactive exercise blocks based ON THE PROVIDED SOURCE CONTENT for CEFR Level ${level}.
+        const systemPrompt = `You are an expert ELT Materials Designer. Generate complete interactive exercise blocks based on the provided Reading Passage/Context for CEFR Level ${level}.
 
 STRICT RULES:
-1. 100% English target language policy (all instructions, questions, options MUST be in English).
-2. ANTI-LAZY DENSITY: Every generated block MUST contain at least 5-8 rich, complete items.
-3. CEFR ${level} Rules: ${cefrRules}
+1. 100% English target language policy.
+2. EVERY ITEM MUST BE 100% POPULATED WITH RICH TEXT. NO EMPTY PLACEHOLDERS!
+3. CEFR Level ${level} Target: ${cefrRules}
 
 REQUESTED ACTION TASKS (${actions.join(', ')}):
-Generate ONLY JSON block objects for the requested task types:
+Generate JSON block objects for requested task types:
 
-- "listening": Return multiple_choice block with 5 comprehension questions (question, options [3], correct index, explanation).
-- "flashcards": Return flashcards block with 6-8 items (cards: [{ front, back, example }]).
-- "true_false": Return multiple_choice block with 5 True/False questions (question, options: ["True", "False", "Not Stated"], correct index, explanation).
-- "gap_fill": Return gap_fill block with 5 sentences containing [answer] in brackets.
-- "gap_fill_bank": Return gap_fill_bank block with full paragraph text containing [answers] in brackets and 3-4 distractors.
-- "matching": Return matching block with 6-8 pairs [{ left, right }].
-- "discussion": Return open_input block with 3-4 speaking discussion prompts.
+- "listening": multiple_choice block with 4 comprehension questions ({ question, options [3], correct, explanation }).
+- "flashcards": flashcards block with 6 items ({ cards: [{ front, back, example }] }).
+- "true_false": multiple_choice block with 4 True/False questions.
+- "gap_fill": gap_fill block with 5 sentences containing [answer] in brackets.
+- "gap_fill_bank": gap_fill_bank block with text containing [answers] and 3 distractors.
+- "matching": matching block with 6 pairs [{ left, right }].
+- "discussion": open_input block with 3 speaking discussion prompts.
+- "grammar": grammar_card block with CEFR ${level} rule ({ title, formula, explanation, examples }).
 
 RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
-[ { "type": "multiple_choice", ... }, ... ]`;
+[ { "type": "multiple_choice", ... } ]`;
 
-        const userContent = `Source Content (${sourceBlock.type}):\nTitle/Text: ${sourceBlock.text || sourceBlock.title || sourceBlock.transcript || JSON.stringify(sourceBlock)}`;
+        const userContent = `CEFR Level: ${level}\nLesson Text/Context:\n${lessonContext || sourceBlock.text || sourceBlock.transcript || JSON.stringify(sourceBlock)}`;
 
         const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
           messages: [
@@ -293,7 +291,7 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
         return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
       }
 
-      // YOUTUBE TRANSCRIPT EXTRACTION ENDPOINT
+      // YOUTUBE TRANSCRIPT
       if (path === '/api/youtube/transcript' && request.method === 'POST') {
         const { url: ytUrl } = await request.json();
         if (!ytUrl) return jsonResponse({ error: 'No URL provided' }, 400);
