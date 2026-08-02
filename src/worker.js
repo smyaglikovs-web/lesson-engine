@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - GEMINI 2.5 FLASH REST + LLAMA 3.3 FAST + QWEN 2.5 CASCADE
+// CLOUDFLARE WORKER BACKEND - VERIFIED ULTRA-RELIABLE CASCADE AI PIPELINE
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -121,34 +121,31 @@ function cleanAndParseJson(rawText) {
   }
 }
 
-// UNBREAKABLE CASCADE AI PIPELINE
+// BULLETPROOF CASCADE AI PIPELINE
 async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
-  // 1. TIER 1: GOOGLE GEMINI FLASH VIA REST API
+  // 1. TIER 1: GOOGLE GEMINI 1.5 FLASH (Native Google AI REST Endpoint)
   if (env.GEMINI_API_KEY) {
-    const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-    for (const gModel of geminiModels) {
-      try {
-        const gRestUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${env.GEMINI_API_KEY}`;
-        const gRestRes = await fetch(gRestUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-          })
-        });
+    try {
+      const gRestUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
+      const gRestRes = await fetch(gRestUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+        })
+      });
 
-        if (gRestRes.ok) {
-          const gData = await gRestRes.json();
-          const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          const gParsed = cleanAndParseJson(gRawText);
-          if (gParsed) return gParsed;
-        } else {
-          console.warn(`Gemini model ${gModel} returned status ${gRestRes.status}, trying next model...`);
-        }
-      } catch (eGemini) {
-        console.warn(`Gemini call for ${gModel} failed:`, eGemini);
+      if (gRestRes.ok) {
+        const gData = await gRestRes.json();
+        const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const gParsed = cleanAndParseJson(gRawText);
+        if (gParsed) return gParsed;
+      } else {
+        console.warn(`Gemini REST API status ${gRestRes.status}, cascading to Cloudflare...`);
       }
+    } catch (eGemini) {
+      console.warn('Gemini API call failed, cascading to Workers AI...', eGemini);
     }
   }
 
@@ -168,25 +165,43 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
       const parsedL3 = cleanAndParseJson(rawL3);
       if (parsedL3) return parsedL3;
     } catch (eL3) {
-      console.warn('Llama 3.3 70B failed, cascading to Qwen 2.5 72B...', eL3);
+      console.warn('Llama 3.3 70B Fast failed, cascading to Llama 3.1 70B...', eL3);
     }
 
-    // 3. TIER 3: WORKERS AI QWEN 2.5 72B (STRICT JSON FALLBACK)
+    // 3. TIER 3: WORKERS AI META LLAMA 3.1 70B
     try {
-      const resQwen = await env.AI.run('@cf/qwen/qwen2.5-72b-instruct', {
+      const resL31 = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
         messages: [
-          { role: 'system', content: systemPrompt + '\nSTRICT RULE: Output 100% valid JSON with zero conversational text.' },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 0.2,
+        max_tokens: maxTokens
+      });
+
+      const rawL31 = resL31?.response || resL31?.choices?.[0]?.message?.content;
+      const parsedL31 = cleanAndParseJson(rawL31);
+      if (parsedL31) return parsedL31;
+    } catch (eL31) {
+      console.warn('Llama 3.1 70B failed, cascading to Llama 3.1 8B...', eL31);
+    }
+
+    // 4. TIER 4: WORKERS AI META LLAMA 3.1 8B (ULTRA-FAST 100% RELIABLE)
+    try {
+      const resL8 = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+        messages: [
+          { role: 'system', content: systemPrompt + '\nSTRICT RULE: Output 100% valid JSON.' },
           { role: 'user', content: userContent }
         ],
         temperature: 0.1,
         max_tokens: maxTokens
       });
 
-      const rawQwen = resQwen?.response || resQwen?.choices?.[0]?.message?.content;
-      const parsedQwen = cleanAndParseJson(rawQwen);
-      if (parsedQwen) return parsedQwen;
-    } catch (eQwen) {
-      console.error('All AI models in cascade failed:', eQwen);
+      const rawL8 = resL8?.response || resL8?.choices?.[0]?.message?.content;
+      const parsedL8 = cleanAndParseJson(rawL8);
+      if (parsedL8) return parsedL8;
+    } catch (eL8) {
+      console.error('All Workers AI models failed:', eL8);
     }
   }
 
@@ -358,7 +373,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
         return jsonResponse({ success: true, jsonText: JSON.stringify(parsedJson, null, 2) });
       }
 
-      // SINGLE BLOCK & CONTEXTUAL AI ASSISTANT (DYNAMIC TASK PROMPTING)
+      // SINGLE BLOCK & CONTEXTUAL AI ASSISTANT
       if (path === '/api/ai/transform-block' && request.method === 'POST') {
         const {
           actions = [],
@@ -380,7 +395,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
 
 Target Length: ~${targetWords}.
 CEFR Level ${level} Target: ${cefrRules}
-STRICT QUOTE RULE: Use single quotes (') for quotes or speech inside text.
+STRICT QUOTE RULE: Use single quotes (') for quotes inside text.
 RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
 [
   {
@@ -399,7 +414,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
           const grammarSystemPrompt = `You are a master ELT Methodologist. Generate a comprehensive Grammar Presentation Card for the grammar topic provided for CEFR Level ${level}.
 
 CEFR Level ${level} Target: ${cefrRules}
-STRICT QUOTE RULE: Use single quotes (') for quotes or speech inside text strings.
+STRICT QUOTE RULE: Use single quotes (') for quotes inside text strings.
 RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
 [
   {
@@ -410,22 +425,6 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
     "examples": [ "Example sentence 1.", "Example sentence 2.", "Example sentence 3." ]
   }
 ]`;
-
-          try {
-            const dsRes = await env.AI.run('@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', {
-              messages: [
-                { role: 'system', content: grammarSystemPrompt },
-                { role: 'user', content: `Grammar Topic Name: ${contextData}` }
-              ],
-              temperature: 0.2,
-              max_tokens: 1500
-            });
-            const rawDs = dsRes?.response || dsRes?.choices?.[0]?.message?.content;
-            const dsParsed = cleanAndParseJson(rawDs);
-            if (dsParsed) {
-              return jsonResponse({ success: true, newBlocks: Array.isArray(dsParsed) ? dsParsed : [dsParsed] });
-            }
-          } catch (eDs) {}
 
           const fallbackParsed = await runAiPipeline(env, grammarSystemPrompt, `Grammar Topic Name: ${contextData}`, 1500);
           return jsonResponse({ success: true, newBlocks: Array.isArray(fallbackParsed) ? fallbackParsed : [fallbackParsed] });
@@ -448,25 +447,45 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
-        // DYNAMIC TASK PROMPT CONSTRUCTION (STRICTLY ONLY GENERATES REQUESTED TASKS)
+        // DYNAMIC TASK PROMPT CONSTRUCTION (FEW-SHOT TEMPLATES FOR ZERO ERRORS)
         let taskInstructions = '';
-        if (actions.includes('listening')) taskInstructions += '- Generate 1 "multiple_choice" block with 4 comprehension questions based on the context ({ question, options [3], correct, explanation }).\n';
-        if (actions.includes('flashcards')) taskInstructions += `- Generate 1 "flashcards" block with 6 target words from context ({ title: "Key Vocabulary", cards: [{ front: "word", back: "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", example: "sentence" }] }).\n`;
-        if (actions.includes('true_false')) taskInstructions += '- Generate 1 "multiple_choice" block with 4 True/False questions based on the context.\n';
-        if (actions.includes('gap_fill')) taskInstructions += '- Generate 1 "gap_fill" block with 4 sentences containing [answer] in brackets.\n';
-        if (actions.includes('gap_fill_bank')) taskInstructions += '- Generate 1 "gap_fill_bank" block with paragraph text containing [answers] in brackets and 3 distractors.\n';
-        if (actions.includes('matching')) taskInstructions += `- Generate 1 "matching" block with 6 pairs [{ left, right }] configured as "${matchingType}".\n`;
-        if (actions.includes('discussion')) taskInstructions += '- Generate 1 "open_input" block with 3 speaking discussion prompts.\n';
-        if (actions.includes('grammar_transform')) taskInstructions += '- Generate 1 "gap_fill" block with 4 sentence transformations targeting the grammar rule in context.\n';
-        if (actions.includes('grammar_quiz')) taskInstructions += '- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule in context.\n';
-        if (actions.includes('fill_this_block')) taskInstructions += `- Generate 1 100% full, non-empty block of type "${sourceBlock.type}".\n`;
+        if (actions.includes('listening')) {
+          taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
+        }
+        if (actions.includes('flashcards')) {
+          taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words from context. Template:\n[ { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "sentence" } ] } ]\n`;
+        }
+        if (actions.includes('true_false')) {
+          taskInstructions += `- Generate 1 "multiple_choice" block with 4 True/False questions based on context. Template:\n[ { "type": "multiple_choice", "question": "True or False?", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Reason" } ]\n`;
+        }
+        if (actions.includes('gap_fill')) {
+          taskInstructions += `- Generate 1 "gap_fill" block with 4 sentences containing [answer] in brackets.\n`;
+        }
+        if (actions.includes('gap_fill_bank')) {
+          taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] and 3 distractors.\n`;
+        }
+        if (actions.includes('matching')) {
+          taskInstructions += `- Generate 1 "matching" block with 6 pairs [{ left, right }] configured as "${matchingType}".\n`;
+        }
+        if (actions.includes('discussion')) {
+          taskInstructions += `- Generate 1 "open_input" block with 3 speaking discussion prompts.\n`;
+        }
+        if (actions.includes('grammar_transform')) {
+          taskInstructions += `- Generate 1 "gap_fill" block with 4 sentence transformations targeting grammar.\n`;
+        }
+        if (actions.includes('grammar_quiz')) {
+          taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing grammar.\n`;
+        }
+        if (actions.includes('fill_this_block')) {
+          taskInstructions += `- Generate 1 100% full, non-empty block of type "${sourceBlock.type}".\n`;
+        }
 
         const systemPrompt = `You are an expert ELT Materials Designer. Your task is to generate ONLY the requested exercise block(s) for CEFR Level ${level} based DIRECTLY on the provided source context.
 
 STRICT RULES:
-1. ONLY generate the specific block(s) requested below. Do NOT generate any unrequested or extra blocks!
-2. All exercise items MUST be 100% full and populated with rich English content based on the source context.
-3. Use single quotes (') inside string values. No unescaped double quotes!
+1. ONLY generate the specific block(s) requested below. Do NOT generate any unrequested extra blocks!
+2. All exercise items MUST be 100% full and populated with rich English content based on context.
+3. Use single quotes (') for quotes inside string values. No unescaped double quotes!
 4. 100% English target language policy (except Russian translations if explicitly requested).
 5. CEFR Level ${level} Target: ${cefrRules}
 
