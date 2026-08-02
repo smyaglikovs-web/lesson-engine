@@ -3,16 +3,28 @@ import React, { useState } from 'react';
 export function getYouTubeEmbedUrl(url) {
   if (!url) return null;
   if (url.indexOf('embed/') !== -1) return url;
+  
+  // Support standard watch?v= format
   if (url.indexOf('watch?v=') !== -1) {
     var parts = url.split('watch?v=')[1];
     var id = parts ? parts.split('&')[0] : '';
     return 'https://www.youtube.com/embed/' + id;
   }
+  
+  // Support short links youtu.be/
   if (url.indexOf('youtu.be/') !== -1) {
     var parts = url.split('youtu.be/')[1];
     var id = parts ? parts.split('?')[0] : '';
     return 'https://www.youtube.com/embed/' + id;
   }
+
+  // Support YouTube Shorts youtube.com/shorts/
+  if (url.indexOf('youtube.com/shorts/') !== -1) {
+    var parts = url.split('youtube.com/shorts/')[1];
+    var id = parts ? parts.split('?')[0] : '';
+    return 'https://www.youtube.com/embed/' + id;
+  }
+
   return url;
 }
 
@@ -26,7 +38,6 @@ export const BlockHeading = ({ block }) => {
 
 export const BlockText = ({ block }) => <p className="text-slate-600 text-lg leading-relaxed mb-4">{block.text}</p>;
 
-// PHOTO GALLERY COMPONENT WITH RESPONSIVE GRID & LIGHTBOX
 export const BlockImage = ({ block, onEditMedia }) => {
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
@@ -74,7 +85,6 @@ export const BlockImage = ({ block, onEditMedia }) => {
         </button>
       )}
 
-      {/* Lightbox Modal */}
       {lightboxUrl && (
         <div
           onClick={() => setLightboxUrl(null)}
