@@ -1,4 +1,4 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH FULL GRAMMAR & TASK SANITIZATION
+// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH STATEMENT UNPACKER
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, articles. Target Vocabulary: Everyday basics. Sentences: Short (5-10 words).',
@@ -19,9 +19,9 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// SANITIZES LLM OBJECT OUTPUTS INTO CLEAN FRONTEND PRIMITIVES (PREVENTS [object Object])
+// SANITIZES & UNPACKS STATEMENT-PACKED BLOCKS INTO INDIVIDUAL QUESTION BLOCKS
 export function sanitizeBlockStructure(b) {
-  if (!b || typeof b !== 'object') return b;
+  if (!b || typeof b !== 'object') return [b];
 
   let type = String(b.type || 'text').toLowerCase().trim();
   if (type === 'header' || type === 'title') type = 'heading';
@@ -32,13 +32,39 @@ export function sanitizeBlockStructure(b) {
 
   b.type = type;
 
-  // Fix multiple_choice options if returned as [{ text: "A", isCorrect: true }]
-  if (b.type === 'multiple_choice') {
-    let rawOpts = Array.isArray(b.options) ? b.options : ['Option A', 'Option B'];
+  // Unpack statement objects inside multiple_choice options
+  if (b.type === 'multiple_choice' && Array.isArray(b.options)) {
+    let statementObjects = [];
+
+    b.options.forEach(opt => {
+      let parsedOpt = null;
+      if (typeof opt === 'string' && opt.trim().startsWith('{')) {
+        try { parsedOpt = JSON.parse(opt); } catch(e) {}
+      } else if (typeof opt === 'object' && opt !== null) {
+        parsedOpt = opt;
+      }
+      if (parsedOpt && (parsedOpt.statement || parsedOpt.question)) {
+        statementObjects.push(parsedOpt);
+      }
+    });
+
+    // If AI packed 4 True/False statement objects into options, UNPACK THEM into 4 separate blocks!
+    if (statementObjects.length > 0) {
+      return statementObjects.map((sObj, idx) => ({
+        type: 'multiple_choice',
+        id: `${b.id || 'tf'}-${idx}-${Date.now()}`,
+        question: sObj.statement || sObj.question || `Statement ${idx + 1}`,
+        options: Array.isArray(sObj.answers) ? sObj.answers : (Array.isArray(sObj.options) ? sObj.options : ['True', 'False']),
+        correct: typeof sObj.correct === 'number' ? sObj.correct : 0,
+        explanation: sObj.explanation || ''
+      }));
+    }
+
+    // Standard multiple_choice options cleanup
     let cleanOptions = [];
     let detectedCorrect = typeof b.correct === 'number' ? b.correct : 0;
 
-    rawOpts.forEach((opt, idx) => {
+    b.options.forEach((opt, idx) => {
       if (typeof opt === 'string') {
         cleanOptions.push(opt);
       } else if (opt && typeof opt === 'object') {
@@ -56,7 +82,7 @@ export function sanitizeBlockStructure(b) {
     b.correct = detectedCorrect;
   }
 
-  // Fix matching pairs if returned as [{ term: "A", definition: "B" }]
+  // Fix matching pairs
   if (b.type === 'matching') {
     let rawPairs = Array.isArray(b.pairs) ? b.pairs : [];
     b.pairs = rawPairs.map(p => {
@@ -69,7 +95,7 @@ export function sanitizeBlockStructure(b) {
     });
   }
 
-  // Fix flashcards if returned as [{ word: "A", translation: "B" }]
+  // Fix flashcards
   if (b.type === 'flashcards') {
     let rawCards = Array.isArray(b.cards) ? b.cards : [];
     b.cards = rawCards.map(c => {
@@ -83,14 +109,13 @@ export function sanitizeBlockStructure(b) {
     });
   }
 
-  return b;
+  return [b];
 }
 
-// ULTRA-RESILIENT JSON PARSER WITH DEEPSEEK <think> STRIPPER & AUTO-REPAIR
+// ULTRA-RESILIENT JSON PARSER WITH AUTO-REPAIR
 export function cleanAndParseJson(rawText, topic = '', level = 'B1') {
   if (!rawText) return null;
 
-  // 1. Strip DeepSeek reasoning <think>...</think> tags if present
   let clean = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   clean = clean.replace(/```json/gi, '').replace(/```/g, '').trim();
 
@@ -437,7 +462,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   }
 }
 
-// FULL 5-PAGE CELTA/DELTA PPP LESSON GENERATOR
 export async function generateFullLessonWithAI(env, payload) {
   const { text = '', level = 'B1', topic = 'General English' } = payload;
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
@@ -505,7 +529,13 @@ RETURN ONLY VALID JSON MATCHING THIS TEMPLATE:
     const parsedJson = await runAiPipeline(env, systemPrompt, userPrompt, 3500, topic, level);
     if (parsedJson && parsedJson.pages) {
       parsedJson.pages.forEach(p => {
-        p.blocks = (p.blocks || []).map(b => sanitizeBlockStructure(b));
+        let cleanBlocks = [];
+        (p.blocks || []).forEach(b => {
+          const res = sanitizeBlockStructure(b);
+          if (Array.isArray(res)) cleanBlocks.push(...res);
+          else cleanBlocks.push(res);
+        });
+        p.blocks = cleanBlocks;
       });
     }
     return { success: true, jsonText: JSON.stringify(parsedJson, null, 2) };
@@ -514,7 +544,6 @@ RETURN ONLY VALID JSON MATCHING THIS TEMPLATE:
   }
 }
 
-// CONTEXTUAL SINGLE BLOCK ASSISTANT & GRAMMAR DRILL GENERATION
 export async function transformBlockWithAI(env, payload) {
   const { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (actions.length === 0) return { error: 'Выберите задание.' };
@@ -525,7 +554,6 @@ export async function transformBlockWithAI(env, payload) {
 
   const isGrammarContext = safeContextData.toLowerCase().includes('grammar rule') || sourceBlock.type === 'grammar_card';
 
-  // 1. GENERATE TEXT PASSAGE
   if (actions.includes('generate_text_passage')) {
     const textSystemPrompt = `You are a master ELT Materials Writer. Write an engaging, educational reading story/passage on the topic provided for CEFR Level ${level} (~${targetLength} words).\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY A VALID JSON OBJECT WITH A "text" PROPERTY:\n{ "text": "Full educational reading story passage..." }`;
     try {
@@ -537,19 +565,23 @@ export async function transformBlockWithAI(env, payload) {
     }
   }
 
-  // 2. GENERATE GRAMMAR CARD
   if (actions.includes('generate_grammar_card')) {
     const grammarSystemPrompt = `Generate a Grammar Card JSON array object for CEFR Level ${level}:\n[ { "type": "grammar_card", "title": "${safeContextData}", "formula": "Subject + Verb", "explanation": "Rule explanation", "examples": ["Example 1", "Example 2"] } ]`;
     try {
       const fallbackParsed = await runAiPipeline(env, grammarSystemPrompt, `Grammar Topic: ${safeContextData}`, 1500);
-      const sanitized = Array.isArray(fallbackParsed) ? fallbackParsed.map(b => sanitizeBlockStructure(b)) : [sanitizeBlockStructure(fallbackParsed)];
-      return { success: true, newBlocks: sanitized };
+      const rawList = Array.isArray(fallbackParsed) ? fallbackParsed : [fallbackParsed];
+      let cleanBlocks = [];
+      rawList.forEach(b => {
+        const res = sanitizeBlockStructure(b);
+        if (Array.isArray(res)) cleanBlocks.push(...res);
+        else cleanBlocks.push(res);
+      });
+      return { success: true, newBlocks: cleanBlocks };
     } catch (e) {
       return { error: 'Failed to generate grammar card: ' + e.message };
     }
   }
 
-  // 3. TEXT REFINEMENT TOOLS
   if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
     let textInstruction = `Expand this text into a detailed, rich, 350-400 word educational story passage matching CEFR Level ${level}.`;
     if (actions.includes('shorten_text')) textInstruction = `Shorten this text into a concise, clear summary (~150 words) matching CEFR Level ${level}.`;
@@ -566,16 +598,15 @@ export async function transformBlockWithAI(env, payload) {
     }
   }
 
-  // 4. TASK & GRAMMAR DRILL GENERATION
   let taskInstructions = '';
+  if (actions.includes('true_false')) {
+    taskInstructions += `- Generate 4-5 separate "multiple_choice" blocks for True/False questions based on context. Each block must have "question" as a statement, and "options": ["True", "False", "Not Stated"].\n`;
+  }
   if (actions.includes('listening')) {
-    taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template: [ { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
+    taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. "options" MUST be an array of simple text strings like ["Option A", "Option B", "Option C"].\n`;
   }
   if (actions.includes('flashcards')) {
-    taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words from context. Template: [ { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "sentence" } ] } ]\n`;
-  }
-  if (actions.includes('true_false')) {
-    taskInstructions += `- Generate 1 "multiple_choice" block with 4 True/False questions based on context.\n`;
+    taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words from context.\n`;
   }
   if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
     taskInstructions += `- Generate 1 "gap_fill" block with 4 sentences separated by newlines \\n, putting target grammar/words in brackets [word]. Example: "1. Yesterday she [went] to the store.\\n2. They [bought] a car."\n`;
@@ -590,28 +621,38 @@ export async function transformBlockWithAI(env, payload) {
     taskInstructions += `- Generate 1 "open_input" block with 3 speaking discussion prompts.\n`;
   }
   if (actions.includes('grammar_quiz')) {
-    taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${safeContextData}". Write real questions testing correct grammar usage vs distractors! DO NOT write placeholders!\n`;
+    taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${safeContextData}". "options" MUST be an array of simple text strings! Write real questions testing correct grammar usage vs distractors!\n`;
   }
 
   let grammarPromptAddon = '';
   if (isGrammarContext) {
     grammarPromptAddon = `\nCRITICAL RULE FOR GRAMMAR CONTEXT: The source context is a Grammar Presentation Rule (${safeContextData}). ALL generated exercise questions, option choices, and gap-fill sentences MUST specifically test and drill this target grammar rule!
-- For "multiple_choice": Write questions asking for the correct grammar form. Options must be an array of simple text strings like ["Option A", "Option B", "Option C"].
+- For "multiple_choice": Write questions asking for the correct grammar form. "options" MUST be an array of simple text strings like ["Option A", "Option B", "Option C"].
 - For "gap_fill": Write sentences with bracketed target verb/grammar forms.
 - For "matching": Create target verb form or collocation pairs (e.g. Left: "go", Right: "went").
-- DO NOT return generic placeholders like "Question?" or "Option A"!`;
+- DO NOT return generic placeholders!`;
   }
 
   const systemPrompt = `You are an expert ELT Materials Designer. Generate ONLY the requested exercise block(s) for CEFR Level ${level} based on context.${grammarPromptAddon}
 
+STRICT RULE FOR MULTIPLE CHOICE OPTIONS:
+- "options" MUST be an array of plain text strings like ["True", "False"] or ["Option A", "Option B", "Option C"]. DO NOT output objects inside "options"!
+
 RETURN VALID JSON ARRAY OF REQUESTED BLOCK OBJECTS:
-[ { "type": "multiple_choice", "question": "...", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "..." } ]\n${taskInstructions}`;
+[ { "type": "multiple_choice", "question": "Statement text...", "options": ["True", "False"], "correct": 0, "explanation": "Reason..." } ]\n${taskInstructions}`;
 
   try {
     const parsedBlocks = await runAiPipeline(env, systemPrompt, `Source Context:\n${safeContextData}`, 2500);
     const rawList = Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks];
-    const sanitizedList = rawList.map(b => sanitizeBlockStructure(b));
-    return { success: true, newBlocks: sanitizedList };
+    
+    let cleanBlocks = [];
+    rawList.forEach(b => {
+      const res = sanitizeBlockStructure(b);
+      if (Array.isArray(res)) cleanBlocks.push(...res);
+      else cleanBlocks.push(res);
+    });
+
+    return { success: true, newBlocks: cleanBlocks };
   } catch (err) {
     return { error: 'AI transformation failed: ' + err.message };
   }
