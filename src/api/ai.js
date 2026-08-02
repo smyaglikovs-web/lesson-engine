@@ -388,7 +388,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
                   .replace(/&amp;/g, '&')
                   .replace(/&lt;/g, '<')
                   .replace(/&gt;/g, '>')
-                  .replace(/&#39;/g,="'")
+                  .replace(/&#39;/g, "'")
                   .replace(/&quot;/g, '"')
                   .trim();
                 if (decodedText) fullText += decodedText + ' ';
