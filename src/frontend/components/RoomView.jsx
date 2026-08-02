@@ -13,7 +13,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [studentName, setStudentName] = useState('');
   const [hasStartedHomework, setHasStartedHomework] = useState(false);
 
-  // AUTO-NORMALIZE LESSON STRUCTURE (Supports both paged and flat formats)
   const normalizedPages = React.useMemo(() => {
     if (!activeLesson) return [{ id: 'p1', title: 'Part 1', blocks: [] }];
     if (activeLesson.pages && Array.isArray(activeLesson.pages) && activeLesson.pages.length > 0) {
@@ -30,7 +29,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const pageBlocks = activePage.blocks || activePage.items || [];
   const progressPct = Math.round(((currentPageIdx + 1) / totalPages) * 100);
 
-  // AUTO-RESUME: Restore answers & student name from localStorage on refresh
   useEffect(() => {
     if (!roomId) return;
     try {
@@ -46,7 +44,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     } catch (e) {}
   }, [roomId]);
 
-  // REALTIME POLLING: Page changes & answer sync
   useEffect(() => {
     if (!roomId) return;
 
@@ -131,15 +128,46 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     let score = 0;
     let total = 0;
 
+    // Comprehensive multi-task scoring across all 6 interactive block types
     normalizedPages.forEach(p => {
       p.blocks?.forEach(b => {
+        const studentAns = userAnswers[b.id];
+
         if (b.type === 'multiple_choice') {
           total++;
-          if (userAnswers[b.id]?.selected === b.correct) score++;
+          if (studentAns && studentAns.selected !== undefined && Number(studentAns.selected) === Number(b.correct)) score++;
         } else if (b.type === 'gap_fill') {
           total++;
-          const ans = userAnswers[b.id]?.userAnswer || '';
-          if (b.answers?.some(a => a.trim().toLowerCase() === ans.trim().toLowerCase())) score++;
+          const ansText = studentAns?.userAnswer || '';
+          if (b.answers?.some(a => a.trim().toLowerCase() === ansText.trim().toLowerCase())) score++;
+        } else if (b.type === 'gap_fill_bank') {
+          total++;
+          const placedSlots = studentAns?.placedSlots || {};
+          const rawParts = (b.text || '').split(/\[(.*?)\]/);
+          const correctAns = rawParts.filter((_, idx) => idx % 2 === 1);
+          let allCorrect = correctAns.length > 0;
+          correctAns.forEach((ans, idx) => {
+            if (placedSlots[idx]?.text?.trim().toLowerCase() !== ans.trim().toLowerCase()) {
+              allCorrect = false;
+            }
+          });
+          if (allCorrect && correctAns.length > 0) score++;
+        } else if (b.type === 'matching') {
+          total++;
+          const matched = studentAns?.matched || [];
+          if (matched.length === (b.pairs?.length || 0) && studentAns?.mistakes === 0) score++;
+        } else if (b.type === 'sentence_reorder') {
+          total++;
+          const userSentence = (studentAns?.selectedWordObjects || []).map(w => w.text).join(' ');
+          if (userSentence.trim().toLowerCase() === (b.sentence || '').trim().toLowerCase()) score++;
+        } else if (b.type === 'categorization') {
+          total++;
+          const placements = studentAns?.placements || {};
+          let allCorrect = (b.items || []).length > 0;
+          (b.items || []).forEach(it => {
+            if (placements[it.id] !== it.categoryIndex) allCorrect = false;
+          });
+          if (allCorrect) score++;
         }
       });
     });
