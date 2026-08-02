@@ -1,68 +1,152 @@
-function getYouTubeId(url = '') {
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = String(url).match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
-}
+// FULL CELTA/DELTA METHODOLOGY PIPELINE & MULTI-TIER AI CASCADE MODULE
+
+export const CEFR_MATRIX = {
+  'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
+  'A2': 'Target Grammar: Past Simple (regular/irregular), Present Continuous for future, Comparatives/Superlatives, some/any/much/many, modals (should/have to), want/like + to-infinitive or gerund. Target Vocabulary: Daily routines, hobbies, travel, shopping. Sentence Structure: Simple compound sentences with and/but/because.',
+  'B1': 'Target Grammar: Past Continuous, Past Perfect, Conditionals 1 & 2, Passive Voice, Reported Speech, Relative Clauses (who/which/that), Present Perfect vs Past Simple, will/should/might. Target Vocabulary: Intermediate work, feelings, environment, education, media. Sentence Structure: Varied clause structures.',
+  'B2': 'Target Grammar: Conditionals 3 & Mixed Conditionals, Future Perfect & Future Continuous, Past Modals (should have/could have), Non-defining relative clauses, wish/if only, Gerund vs Infinitive nuances. Target Vocabulary: Upper-intermediate abstract concepts, business, tech, subtle idioms. Sentence Structure: Complex with linking devices (however, despite, nevertheless).',
+  'C1': 'Target Grammar: Inversion (Not only did..., Hardly had I...), Inversion in Conditionals (Had I known...), Cleft sentences (It was X that...), Advanced Passive, Past Perfect Continuous, Advanced Past Modals. Target Vocabulary: Advanced C1 academic, sophisticated idioms, subtle nuances. Sentence Structure: Sophisticated, highly varied narrative prose.'
+};
 
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
   'Accept-Language': 'en-US,en;q=0.9'
 };
 
-function parseVttToText(vttText = '') {
-  return vttText
-    .replace(/^WEBVTT.*/gi, '')
-    .replace(/Kind:.*/gi, '')
-    .replace(/Language:.*/gi, '')
-    .replace(/\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}.*/g, '')
-    .replace(/\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}\.\d{3}.*/g, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/\n+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+function getYouTubeId(url = '') {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = String(url).match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
 }
 
-function parseAIJson(responseText) {
-  if (!responseText) return null;
-  let clean = responseText.trim();
+// ULTRA-RESILIENT JSON PARSER (HANDLES UNESCAPED QUOTES, NEWLINES & TRUNCATED BRACKETS)
+export function cleanAndParseJson(rawText) {
+  if (!rawText) return null;
+  let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+  const firstBrace = clean.indexOf('{');
+  const firstBracket = clean.indexOf('[');
   
-  const codeBlockMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (codeBlockMatch) {
-    clean = codeBlockMatch[1].trim();
-  } else {
-    const firstBrace = clean.search(/[{\[]/);
-    const lastBrace = Math.max(clean.lastIndexOf('}'), clean.lastIndexOf(']'));
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      clean = clean.substring(firstBrace, lastBrace + 1);
-    }
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    const lastBrace = clean.lastIndexOf('}');
+    if (lastBrace > firstBrace) clean = clean.substring(firstBrace, lastBrace + 1);
+  } else if (firstBracket !== -1) {
+    const lastBracket = clean.lastIndexOf(']');
+    if (lastBracket > firstBracket) clean = clean.substring(firstBracket, lastBracket + 1);
   }
 
   try {
     return JSON.parse(clean);
-  } catch (err) {
+  } catch (e1) {
     try {
       let fixed = '';
       let inString = false;
       for (let i = 0; i < clean.length; i++) {
-        const c = clean.charAt(i);
-        const code = clean.charCodeAt(i);
-        if (c === '"' && (i === 0 || clean.charAt(i - 1) !== '\\')) {
+        const c = clean[i];
+        if (c === '"' && (i === 0 || clean[i - 1] !== '\\')) {
           inString = !inString;
           fixed += c;
-        } else if (inString && (code === 10 || code === 13)) {
+        } else if (inString && (c === '\n' || c === '\r')) {
           fixed += '\\n';
+        } else if (inString && c === '\t') {
+          fixed += '\\t';
         } else {
           fixed += c;
         }
       }
       return JSON.parse(fixed);
-    } catch (e) {
-      return null;
+    } catch (e2) {
+      let stack = [];
+      let repaired = '';
+      let insideStr = false;
+
+      for (let i = 0; i < clean.length; i++) {
+        const char = clean[i];
+        if (char === '"' && (i === 0 || clean[i - 1] !== '\\')) {
+          insideStr = !insideStr;
+        }
+        repaired += char;
+        if (!insideStr) {
+          if (char === '{') stack.push('}');
+          else if (char === '[') stack.push(']');
+          else if (char === '}' || char === ']') stack.pop();
+        }
+      }
+
+      if (insideStr) repaired += '"';
+      while (stack.length > 0) repaired += stack.pop();
+
+      try {
+        return JSON.parse(repaired);
+      } catch (e3) {
+        return null;
+      }
     }
   }
+}
+
+// BULLETPROOF CASCADE AI PIPELINE (GEMINI 2.5 FLASH -> WORKERS AI LLAMA 3.3/3.1/QWEN)
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
+  // 1. TIER 1: GOOGLE AI STUDIO (GEMINI API VIA x-goog-api-key)
+  if (env.GEMINI_API_KEY) {
+    const geminiModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+    for (const gModel of geminiModels) {
+      try {
+        const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent`;
+        const gRes = await fetch(gUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': env.GEMINI_API_KEY.trim()
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+          })
+        });
+
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          const gParsed = cleanAndParseJson(gRawText);
+          if (gParsed) return gParsed;
+        }
+      } catch (eG) {
+        console.warn(`Gemini API call for ${gModel} failed:`, eG);
+      }
+    }
+  }
+
+  // 2. TIER 2: WORKERS AI ACTIVE MODELS CASCADE
+  if (env.AI) {
+    const cfModels = [
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      '@cf/meta/llama-3.1-8b-instruct-fast',
+      '@cf/qwen/qwen2.5-72b-instruct',
+      '@cf/meta/llama-3.1-70b-instruct'
+    ];
+
+    for (const cfModel of cfModels) {
+      try {
+        const resCf = await env.AI.run(cfModel, {
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent }
+          ],
+          temperature: 0.2,
+          max_tokens: maxTokens
+        });
+
+        const rawCf = resCf?.response || resCf?.choices?.[0]?.message?.content;
+        const parsedCf = cleanAndParseJson(rawCf);
+        if (parsedCf) return parsedCf;
+      } catch (eCf) {
+        console.warn(`Workers AI model ${cfModel} failed:`, eCf);
+      }
+    }
+  }
+
+  throw new Error('AI Generation failed on all cascade tiers. Please check API Key or try again.');
 }
 
 async function fetchLyricsForSong(title = '') {
@@ -84,7 +168,7 @@ async function fetchLyricsForSong(title = '') {
   return null;
 }
 
-// HIGH-PERFORMANCE NATIVE YOUTUBE TRANSCRIPT EXTRACTOR
+// HIGH-PERFORMANCE NATIVE YOUTUBE TRANSCRIPT SCRAPER
 export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   try {
     const videoId = getYouTubeId(videoUrl);
@@ -92,10 +176,9 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
 
     let title = '';
     let transcriptText = '';
-
     const apiKey = env.YOUTUBE_API_KEY || '';
 
-    // Step 1: Query Official YouTube Data API v3 for Metadata (Title)
+    // Step 1: Query Official YouTube Data API v3 for Metadata
     if (apiKey) {
       try {
         const apiRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`);
@@ -123,7 +206,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
       const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: BROWSER_HEADERS });
       if (pageRes.ok) {
         const html = await pageRes.text();
-
         const captionRegex = /"captionTracks":\s*(\[.*?\])/;
         const match = html.match(captionRegex);
 
@@ -152,9 +234,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
               }
 
               fullText = fullText.replace(/\s+/g, ' ').trim();
-              if (fullText.length > 50) {
-                transcriptText = fullText.slice(0, 3500);
-              }
+              if (fullText.length > 50) transcriptText = fullText.slice(0, 3500);
             }
           }
         }
@@ -209,161 +289,250 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   }
 }
 
+// FULL 5-PAGE CELTA/DELTA PPP LESSON GENERATOR
+export async function generateFullLessonWithAI(env, payload) {
+  const { text = '', level = 'B1', topic = 'General English' } = payload;
+  const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
+
+  const systemPrompt = `You are a world-class CELTA/DELTA ELT Methodologist. Generate a complete 5-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
+
+STRICT BLOCK TYPE NAMES (USE ONLY THESE EXACT KEYS):
+- "heading": { "type": "heading", "level": 1, "text": "Title" }
+- "text": { "type": "text", "text": "Full reading passage story..." }
+- "open_input": { "type": "open_input", "prompt": "Question text?" }
+- "flashcards": { "type": "flashcards", "title": "Vocab", "cards": [ { "front": "word", "back": "translation", "example": "sentence" } ] }
+- "multiple_choice": { "type": "multiple_choice", "question": "Question?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Reason" }
+- "matching": { "type": "matching", "instruction": "Match pairs:", "pairs": [ { "left": "word", "right": "match" } ] }
+- "grammar_card": { "type": "grammar_card", "title": "Rule Title", "formula": "Formula", "explanation": "Explanation", "examples": ["Ex 1"] }
+- "gap_fill_bank": { "type": "gap_fill_bank", "instruction": "Fill gaps:", "text": "Story with [answers] in brackets.", "distractors": ["fake1"] }
+- "gap_fill": { "type": "gap_fill", "instruction": "Transform:", "text": "Sentence 1 with [answer].\\nSentence 2 with [answer].", "answers": ["answer1", "answer2"] }
+
+STRICT QUOTE RULE:
+- Use single quotes (') for quotes or speech inside text values. NO unescaped double quotes!
+- 100% Target Language Policy: All instructions, questions, texts MUST be in English.
+- CEFR Level ${level} Target: ${cefrRules}
+
+RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
+{
+  "title": "${topic}",
+  "level": "${level}",
+  "topic": "${topic}",
+  "description": "Interactive CEFR ${level} Lesson on ${topic}",
+  "pages": [
+    {
+      "id": "p1",
+      "title": "Part 1: Lead-in & Reading",
+      "blocks": [
+        { "type": "heading", "level": 1, "text": "${topic}" },
+        { "type": "open_input", "prompt": "What do you know about ${topic}?" },
+        { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "translation", "example": "sentence" } ] },
+        { "type": "text", "text": "Write a complete 220-word reading passage about ${topic} for CEFR Level ${level}..." }
+      ]
+    },
+    {
+      "id": "p2",
+      "title": "Part 2: Text Comprehension",
+      "blocks": [
+        { "type": "multiple_choice", "question": "Main idea of the reading passage?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Explanation" },
+        { "type": "matching", "instruction": "Match facts from the reading passage:", "pairs": [ { "left": "Fact", "right": "Detail" } ] },
+        { "type": "multiple_choice", "question": "True or False question?", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Explanation" }
+      ]
+    },
+    {
+      "id": "p3",
+      "title": "Part 3: Grammar Presentation",
+      "blocks": [
+        { "type": "grammar_card", "title": "Target Grammar Rule for ${level}", "formula": "Formula", "explanation": "Explanation", "examples": ["Example 1"] },
+        { "type": "matching", "instruction": "Match collocations:", "pairs": [ { "left": "Word", "right": "Preposition" } ] }
+      ]
+    },
+    {
+      "id": "p4",
+      "title": "Part 4: Practice & Transformation",
+      "blocks": [
+        { "type": "gap_fill_bank", "instruction": "Fill gaps:", "text": "Paragraph with [answers] in brackets.", "distractors": ["extra1"] },
+        { "type": "gap_fill", "instruction": "Complete the sentences:", "text": "1. First sentence with [word1].\\n2. Second sentence with [word2].", "answers": ["word1", "word2"] }
+      ]
+    },
+    {
+      "id": "p5",
+      "title": "Part 5: Production & Homework",
+      "blocks": [
+        { "type": "open_input", "prompt": "Speaking discussion question on ${topic}?" },
+        { "type": "open_input", "prompt": "Writing / roleplay prompt?" },
+        { "type": "gap_fill", "instruction": "Homework practice:", "text": "1. Homework sentence [word1].\\n2. Homework sentence [word2].", "answers": ["word1", "word2"] }
+      ]
+    }
+  ]
+}`;
+
+  const userPrompt = `Topic: ${topic}\nMaterial/Context: ${text || 'Create a topic-based story.'}`;
+
+  try {
+    const parsedJson = await runAiPipeline(env, systemPrompt, userPrompt, 3800);
+    return { success: true, jsonText: JSON.stringify(parsedJson, null, 2) };
+  } catch (err) {
+    return { error: 'AI generation error: ' + err.message };
+  }
+}
+
+// CONTEXTUAL SINGLE BLOCK ASSISTANT
 export async function transformBlockWithAI(env, payload) {
-  const { actions = [], sourceBlock, level = 'B1' } = payload;
+  const {
+    actions = [],
+    sourceBlock = {},
+    sourceText = '',
+    targetLength = '250',
+    matchingType = 'synonym',
+    flashcardType = 'russian',
+    level = 'B1'
+  } = payload;
 
   if (actions.length === 0) {
     return { error: 'Выберите хотя бы одно задание.' };
   }
 
-  let videoDetailsText = '';
-  if (sourceBlock.type === 'video' && sourceBlock.url) {
+  const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
+
+  // SANITIZE CONTEXT DATA
+  let rawContext = '';
+  if (sourceBlock.type === 'grammar_card') {
+    rawContext = `Grammar Topic: ${sourceBlock.title || ''} | Formula: ${sourceBlock.formula || ''} | Explanation: ${sourceBlock.explanation || ''} | Examples: ${(sourceBlock.examples || []).join('; ')}`;
+  } else if (sourceBlock.type === 'video' && sourceBlock.url) {
     const ytData = await fetchYouTubeTranscriptNative(sourceBlock.url, env);
-    if (ytData) {
-      if (ytData.title) sourceBlock.title = ytData.title;
-      if (ytData.transcript) {
-        videoDetailsText = `SPOKEN VIDEO TRANSCRIPT / CONTENT:\n"${ytData.transcript}"`;
-      } else if (ytData.title) {
-        videoDetailsText = `VIDEO TITLE & TOPIC:\n"${ytData.title}"`;
-      }
-    }
-  }
-
-  let sourceTextContent = '';
-
-  if (sourceBlock.type === 'video') {
-    const videoTitle = sourceBlock.title || 'Educational Video';
-    const transcript = sourceBlock.transcript || videoDetailsText || '';
-
-    if (transcript.length > 50) {
-      sourceTextContent = `VIDEO TITLE: "${videoTitle}"\n\nSPOKEN VIDEO TRANSCRIPT:\n"${transcript}"`;
+    if (ytData && ytData.transcript) {
+      rawContext = `Video Title: ${ytData.title || sourceBlock.title}\nTranscript: ${ytData.transcript}`;
     } else {
-      sourceTextContent = `VIDEO TITLE & TOPIC: "${videoTitle}"\n\nNOTE: Create educational comprehension and vocabulary questions based on the topic "${videoTitle}".`;
+      rawContext = `Video Title: ${sourceBlock.title || 'Educational Video'}`;
     }
-  } else if (sourceBlock.type === 'text') {
-    sourceTextContent = sourceBlock.text || '';
-  } else if (sourceBlock.type === 'flashcards') {
-    sourceTextContent = (sourceBlock.cards || []).map(c => `${c.front} = ${c.back}`).join('\n');
   } else {
-    sourceTextContent = sourceBlock.text || sourceBlock.prompt || sourceBlock.title || '';
+    rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   }
 
-  const taskInstructions = [];
+  const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  if (actions.includes('listening') || actions.includes('true_false') || actions.includes('quiz')) {
-    taskInstructions.push(`- COMPREHENSION QUIZ: 4-5 multiple-choice questions testing educational understanding of the topic/content. Format: { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Why" }`);
+  // IN-BLOCK AI TEXT PASSAGE AUTO-WRITER
+  if (actions.includes('generate_text_passage')) {
+    const textSystemPrompt = `You are a master ELT Materials Writer. Write an engaging, educational reading story/passage on the topic provided for CEFR Level ${level}.
+
+Target Length: ~${targetLength} words.
+CEFR Level ${level} Target: ${cefrRules}
+STRICT QUOTE RULE: Use single quotes (') for quotes or speech inside text.
+RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
+[
+  {
+    "type": "text",
+    "text": "Full educational reading passage story written strictly for CEFR Level ${level}..."
+  }
+]`;
+
+    try {
+      const parsedBlocks = await runAiPipeline(env, textSystemPrompt, `Topic/Hint for Reading Text: ${safeContextData}`, 3000);
+      const newStoryText = Array.isArray(parsedBlocks) ? (parsedBlocks[0]?.text || JSON.stringify(parsedBlocks[0])) : (parsedBlocks.text || JSON.stringify(parsedBlocks));
+      return { success: true, newBlocks: [{ type: 'text', text: newStoryText }] };
+    } catch (e) {
+      return { error: 'Failed to generate text passage: ' + e.message };
+    }
+  }
+
+  // IN-BLOCK AI GRAMMAR RULE AUTO-BUILDER
+  if (actions.includes('generate_grammar_card')) {
+    const grammarSystemPrompt = `You are a master ELT Methodologist. Generate a comprehensive Grammar Presentation Card for the grammar topic provided for CEFR Level ${level}.
+
+CEFR Level ${level} Target: ${cefrRules}
+STRICT QUOTE RULE: Use single quotes (') for quotes or speech inside text strings.
+RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
+[
+  {
+    "type": "grammar_card",
+    "title": "${safeContextData}",
+    "formula": "Rule Formula (e.g. Subject + had + V3 + would have + V3)",
+    "explanation": "Clear CEFR Level ${level} explanation of when and how to use this grammar rule.",
+    "examples": [ "Example sentence 1.", "Example sentence 2.", "Example sentence 3." ]
+  }
+]`;
+
+    try {
+      const fallbackParsed = await runAiPipeline(env, grammarSystemPrompt, `Grammar Topic Name: ${safeContextData}`, 1500);
+      return { success: true, newBlocks: Array.isArray(fallbackParsed) ? fallbackParsed : [fallbackParsed] };
+    } catch (e) {
+      return { error: 'Failed to generate grammar card: ' + e.message };
+    }
+  }
+
+  // TEXT REFINEMENT TOOLS
+  if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
+    let textInstruction = 'Expand this reading passage into a richer, longer, more detailed story (350-450 words) with CEFR Level ' + level + ' vocabulary.';
+    
+    if (actions.includes('shorten_text')) {
+      textInstruction = 'Shorten this reading passage into a concise summary (~150 words) matching CEFR Level ' + level + '.';
+    } else if (actions.includes('refine_level')) {
+      textInstruction = 'Rewrite this reading passage strictly adapting grammar and vocabulary to CEFR Level ' + level + '.';
+    }
+
+    const textSystemPrompt = `You are a master ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nSTRICT QUOTE RULE: Use single quotes (') for quotes inside text.\nRETURN ONLY A VALID JSON OBJECT WITH "text":\n{ "text": "Full rewritten reading story text here..." }`;
+
+    try {
+      const parsedObj = await runAiPipeline(env, textSystemPrompt, `Original Text:\n${safeContextData}`, 3000);
+      const newStoryText = parsedObj.text || (Array.isArray(parsedObj) ? parsedObj[0]?.text : JSON.stringify(parsedObj));
+      return { success: true, newBlocks: [{ type: 'text', text: newStoryText }] };
+    } catch (e) {
+      return { error: 'Failed to refine text: ' + e.message };
+    }
+  }
+
+  // DYNAMIC TASK PROMPT CONSTRUCTION WITH FEW-SHOT TEMPLATES
+  let taskInstructions = '';
+  if (actions.includes('listening')) {
+    taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
   }
   if (actions.includes('flashcards')) {
-    taskInstructions.push(`- FLASHCARDS: 6-8 key vocabulary words with Russian translation and example sentence. Format: { "type": "flashcards", "title": "Key Vocabulary", "lang": "en-US", "cards": [{ "front": "Word", "back": "Перевод", "example": "Sentence" }] }`);
+    taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words from context. Template:\n[ { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "sentence" } ] } ]\n`;
   }
-  if (actions.includes('gap_fill')) {
-    taskInstructions.push(`- GAP FILL: 5 sentences testing vocabulary: { "type": "gap_fill", "instruction": "Fill the gaps:", "text": "Sentence [answer] here.", "answers": ["answer"] }`);
+  if (actions.includes('true_false')) {
+    taskInstructions += `- Generate 1 "multiple_choice" block with 4 True/False questions based on context. Template:\n[ { "type": "multiple_choice", "question": "True or False?", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Reason" } ]\n`;
+  }
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
+    taskInstructions += `- Generate 1 "gap_fill" block with 4 separate sentences, separated by newlines \\n, putting target words in brackets [word]. Template:\n[ { "type": "gap_fill", "instruction": "Complete the sentences using correct form:", "text": "1. Sentence one with [word1].\\n2. Sentence two with [word2].\\n3. Sentence three with [word3].", "answers": ["word1", "word2", "word3"] } ]\n`;
   }
   if (actions.includes('gap_fill_bank')) {
-    taskInstructions.push(`- WORD BANK GAP FILL: Sentences with words in [brackets] plus 2 distractors: { "type": "gap_fill_bank", "instruction": "🧩 Заполните пропуски:", "text": "Sentence [word1] and [word2].", "distractors": ["fake1", "fake2"] }`);
+    taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] in brackets and 3 distractors.\n`;
   }
   if (actions.includes('matching')) {
-    taskInstructions.push(`- MATCHING: 6 pairs: { "type": "matching", "instruction": "Match pairs:", "pairs": [{ "left": "Word", "right": "Match" }] }`);
+    taskInstructions += `- Generate 1 "matching" block with 6 pairs [{ left, right }] configured as "${matchingType}".\n`;
   }
   if (actions.includes('discussion')) {
-    taskInstructions.push(`- DISCUSSION: 3 questions: { "type": "open_input", "prompt": "Discussion question?", "placeholder": "Your answer..." }`);
+    taskInstructions += `- Generate 1 "open_input" block with 3 speaking discussion prompts.\n`;
+  }
+  if (actions.includes('grammar_quiz')) {
+    taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${safeContextData}". Template:\n[ { "type": "multiple_choice", "question": "Which sentence correctly uses the grammar rule?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
+  }
+  if (actions.includes('fill_this_block')) {
+    taskInstructions += `- Generate 1 100% full, non-empty block of type "${sourceBlock.type}".\n`;
   }
 
-  if (taskInstructions.length === 0) {
-    taskInstructions.push(`- PRACTICE TASK: 3 discussion questions: { "type": "open_input", "prompt": "Practice question?" }`);
-  }
+  const systemPrompt = `You are an expert ELT Materials Designer. Your task is to generate ONLY the requested exercise block(s) for CEFR Level ${level} based DIRECTLY on the provided source context.
 
-  const systemPrompt = `Ты — ведущий методист английского языка высшей квалификации.
-Твоя задача — создать СТРОГО УКАЗАННЫЕ ИНТЕРАКТИВНЫЕ БЛОКИ ДЛЯ ОБУЧЕНИЯ АНГЛИЙСКОМУ ЯЗЫКУ.
-Уровень языка: ${level}.
+STRICT RULES:
+1. ONLY generate the specific block(s) requested below. Do NOT generate any unrequested extra blocks!
+2. All exercise items MUST be 100% full and populated with rich English content based on context.
+3. For "gap_fill" blocks, write all sentences inside the single "text" property separated by newlines \\n with target words in brackets [word].
+4. Use single quotes (') inside string values. No unescaped double quotes!
+5. 100% English target language policy (except Russian translations if explicitly requested).
+6. CEFR Level ${level} Target: ${cefrRules}
 
-КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
-1. Задавай вопросы ИСКЛЮЧИТЕЛЬНО по учебному содержанию темы/видео/текста.
-2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО задавать мета-вопросы о коде, ID видео, названии файлов или системных данных!
+REQUESTED EXERCISE TASK(S) TO GENERATE:
+${taskInstructions}
 
-ТРЕБУЕМЫЕ БЛОКИ:
-${taskInstructions.join('\n')}
+RETURN ONLY A VALID JSON ARRAY OF THE REQUESTED BLOCK OBJECT(S) (e.g. gap_fill, multiple_choice, flashcards, matching, open_input):
+[ { "type": "gap_fill", "instruction": "...", "text": "...", "answers": [...] } ]`;
 
-ВЕРНИ СТРОГО ЧИСТЫЙ JSON МАССИВ БЛОКОВ (без \`\`\`json):
-{
-  "blocks": [
-    /* созданные учебные блоки */
-  ]
-}`;
-
-  const userPrompt = `ИСХОДНЫЙ УЧЕБНЫЙ МАТЕРИАЛ:\n${sourceTextContent}`;
+  const userContent = `CEFR Level: ${level}\nSource Context:\n${safeContextData}`;
 
   try {
-    const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      max_tokens: 3500,
-      temperature: 0.3
-    });
-
-    const parsedData = parseAIJson(aiResponse.response || "");
-    if (!parsedData) {
-      return { error: 'AI generated invalid response format.' };
-    }
-
-    const newBlocks = Array.isArray(parsedData.blocks) ? parsedData.blocks : [parsedData];
-    return { success: true, newBlocks };
+    const parsedBlocks = await runAiPipeline(env, systemPrompt, userContent, 2500);
+    return { success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] };
   } catch (err) {
-    return { error: 'AI error: ' + err.message };
-  }
-}
-
-export async function generateFullLessonWithAI(env, payload) {
-  const { text = '', level = 'B1', topic = 'General English' } = payload;
-
-  const systemPrompt = `Ты — ведущий методист английского языка.
-Создай ПОЛНЫЙ ИНТЕРАКТИВНЫЙ УРОК по теме "${topic}" (Уровень ${level}) в формате JSON.
-
-Структура урока должна содержать 3-4 страницы ("pages"), каждая с блоками ("blocks"):
-- Заголовки (heading)
-- Текст истории/правила (text)
-- Карточки лексики (flashcards)
-- Выбор ответа (multiple_choice)
-- Пропуски в тексте (gap_fill_bank или gap_fill)
-- Сопоставление пар (matching)
-- Вопросы для обсуждения (open_input)
-
-ВЕРНИ СТРОГО ЧИСТЫЙ JSON УРОКА:
-{
-  "title": "...",
-  "level": "${level}",
-  "topic": "${topic}",
-  "description": "...",
-  "pages": [
-    {
-      "id": "p1",
-      "title": "Часть 1: Введение",
-      "blocks": [ ... ]
-    }
-  ]
-}`;
-
-  const userPrompt = text ? `МАТЕРИАЛЫ УРОКА:\n${text}` : `Тема урока: ${topic}`;
-
-  try {
-    const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      max_tokens: 4000,
-      temperature: 0.3
-    });
-
-    const parsedLesson = parseAIJson(aiResponse.response || "");
-    if (!parsedLesson) {
-      return { error: 'AI generation failed to produce valid JSON.' };
-    }
-
-    return { success: true, jsonText: JSON.stringify(parsedLesson, null, 2) };
-  } catch (err) {
-    return { error: 'AI generation error: ' + err.message };
+    return { error: 'AI transformation failed: ' + err.message };
   }
 }
