@@ -113,9 +113,18 @@ export default function App() {
     }
   };
 
-  const handleEditLesson = (lesson) => {
-    setEditingLesson(lesson);
-    setView('create');
+  const handleEditLesson = async (lessonSummary) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/lessons/${lessonSummary.id}`);
+      const fullLessonData = await res.json();
+      setEditingLesson(fullLessonData);
+      setView('create');
+    } catch (e) {
+      alert('Ошибка загрузки содержимого урока');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCreateNew = () => {
