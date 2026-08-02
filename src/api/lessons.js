@@ -8,28 +8,57 @@ export async function verifyTeacherLogin(env, password) {
 
 export async function getLessons(env) {
   await ensureTables(env);
-  const { results } = await env.DB.prepare("SELECT id, title, level, topic, description, created_at FROM lessons ORDER BY created_at DESC").all();
+  const { results } = await env.DB.prepare(
+    "SELECT id, title, level, topic, description, created_at FROM lessons ORDER BY created_at DESC"
+  ).all();
   return results || [];
 }
 
 export async function saveLesson(env, lesson, password) {
   await ensureTables(env);
+  const cleanPass = (password || '').trim();
+  const expectedPass = env.TEACHER_PASSWORD || 'teacher123';
+  if (cleanPass !== expectedPass) {
+    return { error: "Неверный пароль учителя!" };
+  }
+
   const id = lesson.id || 'lesson-' + Date.now();
-  await env.DB.prepare("INSERT OR REPLACE INTO lessons (id, title, level, topic, description, data) VALUES (?, ?, ?, ?, ?, ?)").bind(
-    id, lesson.title || 'Untitled', lesson.level || 'A2', lesson.topic || 'General', lesson.description || '', JSON.stringify(lesson)
+  const jsonString = JSON.stringify(lesson);
+
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO lessons (id, title, level, topic, description, data) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(
+    id, 
+    lesson.title || 'Untitled', 
+    lesson.level || 'A2', 
+    lesson.topic || 'General', 
+    lesson.description || '', 
+    jsonString
   ).run();
+
   return { success: true, id };
 }
 
 export async function getSingleLesson(env, lessonId) {
+  await ensureTables(env);
   const row = await env.DB.prepare("SELECT data FROM lessons WHERE id = ?").bind(lessonId).first();
-  return row ? row.data : null;
+  if (!row || !row.data) return null;
+
+  try {
+    return typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+  } catch(e) {
+    return null;
+  }
 }
 
 export async function deleteLesson(env, lessonId, password) {
+  await ensureTables(env);
   const clean = (password || '').trim();
   const expectedPass = env.TEACHER_PASSWORD || 'teacher123';
-  if (clean !== expectedPass) return { error: "Неверный пароль учителя!" };
+  if (clean !== expectedPass) {
+    return { error: "Неверный пароль учителя!" };
+  }
+
   await env.DB.prepare("DELETE FROM lessons WHERE id = ?").bind(lessonId).run();
   return { success: true };
 }
