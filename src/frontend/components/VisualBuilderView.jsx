@@ -91,7 +91,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
           if (b && b.type === 'text' && b.text) contextText += b.text + '\n';
           if (b && b.type === 'video' && b.transcript) contextText += b.transcript + '\n';
           if (b && b.type === 'grammar_card') {
-            contextText += `Grammar Rule (${b.title}): Formula: ${b.formula || ''} - Explanation: ${b.explanation || ''}\n`;
+            contextText += `Grammar Rule (${b.title}): Formula: ${b.formula || ''} - Explanation: ${b.explanation || ''} - Examples: ${(b.examples || []).join('; ')}\n`;
           }
         });
       }
@@ -186,7 +186,18 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
 
   const handleOpenAiModal = (block, blockIdx) => {
     setAiModalTarget({ block, blockIdx });
-    setSelectedSourceId(block.id);
+
+    // SMART SOURCE SELECTION:
+    // If target block is anchor (text, grammar_card, video), select itself.
+    // If target block is exercise (multiple_choice, gap_fill, etc.), auto-select nearest Grammar/Text block!
+    const isAnchor = block.type === 'text' || block.type === 'grammar_card' || block.type === 'video' || block.type === 'audio';
+    if (isAnchor) {
+      setSelectedSourceId(block.id);
+    } else {
+      const nearestSource = availableSourceBlocks[0];
+      setSelectedSourceId(nearestSource ? nearestSource.id : '');
+    }
+
     if (block.type === 'grammar_card') setSelectedTasks(['grammar_quiz']);
     else if (block.type === 'matching') setSelectedTasks(['matching']);
     else if (block.type === 'flashcards') setSelectedTasks(['flashcards']);
