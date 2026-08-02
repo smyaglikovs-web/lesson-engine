@@ -22,7 +22,7 @@ const DEFAULT_LESSON = {
 };
 
 export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => {
-  const [lesson, setLesson] = useState(initialLesson || DEFAULT_LESSON);
+  const [lesson, setLesson] = useState(DEFAULT_LESSON);
   const [activePageIndex, setActivePageIndex] = useState(0);
 
   const [aiModalTarget, setAiModalTarget] = useState(null);
@@ -33,13 +33,21 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
   useEffect(() => {
     if (initialLesson) {
-      setLesson(initialLesson);
+      const normalized = { ...initialLesson };
+      if (!normalized.pages || !Array.isArray(normalized.pages) || normalized.pages.length === 0) {
+        if (normalized.blocks && Array.isArray(normalized.blocks)) {
+          normalized.pages = [{ id: 'p1', title: 'Part 1: Lesson Content', blocks: normalized.blocks }];
+        } else {
+          normalized.pages = [{ id: 'p1', title: 'Part 1: Lesson Content', blocks: [] }];
+        }
+      }
+      setLesson(normalized);
+      setActivePageIndex(0); // ALWAYS RESET TO PAGE 1 ON NEW LESSON LOAD
     }
   }, [initialLesson]);
 
   const activePage = lesson.pages?.[activePageIndex] || lesson.pages?.[0] || { blocks: [] };
 
-  // Helper to extract main lesson text context for AI
   const extractLessonContext = () => {
     let contextText = '';
     lesson.pages?.forEach(page => {
