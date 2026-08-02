@@ -3,7 +3,13 @@ import React from 'react';
 export const BuilderAiModal = ({ aiModalTarget, selectedTasks, toggleTaskSelection, onExecute, onClose, aiGenerating }) => {
   if (!aiModalTarget) return null;
 
+  const isTextBlock = aiModalTarget.block?.type === 'text';
   const taskCount = selectedTasks.length;
+
+  const handleFillSingleBlock = () => {
+    toggleTaskSelection('fill_this_block');
+    onExecute();
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -18,42 +24,69 @@ export const BuilderAiModal = ({ aiModalTarget, selectedTasks, toggleTaskSelecti
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1 cursor-pointer">✕</button>
         </div>
 
-        <p className="text-xs text-slate-500 font-medium">Select the specific exercise types you want AI to generate from this content:</p>
+        {/* 1-CLICK DIRECT BLOCK FILL BUTTON */}
+        {!isTextBlock && (
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-2xl border border-indigo-100 space-y-2">
+            <p className="text-xs font-bold text-indigo-900">🪄 Want AI to populate THIS empty block directly from your lesson text?</p>
+            <button
+              onClick={handleFillSingleBlock}
+              disabled={aiGenerating}
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-xs transition cursor-pointer"
+            >
+              {aiGenerating ? '⌛ Filling block...' : `✨ Auto-Fill THIS ${aiModalTarget.block.type.toUpperCase()} Block`}
+            </button>
+          </div>
+        )}
 
-        <div className="space-y-2.5 text-sm font-semibold">
-          <label className="flex items-center gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-300 transition">
+        {/* TEXT REFINEMENT TOOLS FOR TEXT BLOCKS */}
+        {isTextBlock && (
+          <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+            <p className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">📜 Text Refinement Tools:</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => { toggleTaskSelection('expand_text'); onExecute(); }}
+                disabled={aiGenerating}
+                className="p-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-bold text-slate-800 transition cursor-pointer text-left"
+              >
+                📖 Expand Text (~400 words)
+              </button>
+              <button
+                onClick={() => { toggleTaskSelection('shorten_text'); onExecute(); }}
+                disabled={aiGenerating}
+                className="p-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-bold text-slate-800 transition cursor-pointer text-left"
+              >
+                ✂️ Shorten Text (~150 words)
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-slate-500 font-medium pt-1">Or select new exercise blocks to insert below this block:</p>
+
+        <div className="space-y-2 text-sm font-semibold">
+          <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
             <input type="checkbox" checked={selectedTasks.includes('listening')} onChange={() => toggleTaskSelection('listening')} className="w-4 h-4 accent-indigo-600 rounded" />
             <span>🎧 Listening / Comprehension Questions</span>
           </label>
 
-          <label className="flex items-center gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-300 transition">
+          <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
             <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600 rounded" />
-            <span>🎴 Vocabulary Flashcards (With translations & examples)</span>
+            <span>🎴 Vocabulary Flashcards</span>
           </label>
 
-          <label className="flex items-center gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-300 transition">
+          <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
             <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600 rounded" />
-            <span>❓ True / False Quiz Questions</span>
+            <span>❓ True / False Questions</span>
           </label>
 
-          <label className="flex items-center gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-300 transition">
+          <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
             <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600 rounded" />
-            <span>✏️ Gap-Fill Exercise (Keyboard input)</span>
+            <span>✏️ Gap-Fill Exercises</span>
           </label>
 
-          <label className="flex items-center gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-300 transition">
-            <input type="checkbox" checked={selectedTasks.includes('gap_fill_bank')} onChange={() => toggleTaskSelection('gap_fill_bank')} className="w-4 h-4 accent-indigo-600 rounded" />
-            <span>🧩 Gap-Fill with Word Bank</span>
-          </label>
-
-          <label className="flex items-center gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-300 transition">
+          <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
             <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600 rounded" />
-            <span>🔗 Pair Matching (Synonyms / Vocabulary)</span>
-          </label>
-
-          <label className="flex items-center gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 hover:border-indigo-300 transition">
-            <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600 rounded" />
-            <span>💬 Speaking & Discussion Questions</span>
+            <span>🔗 Pair Matching</span>
           </label>
         </div>
 
@@ -66,7 +99,7 @@ export const BuilderAiModal = ({ aiModalTarget, selectedTasks, toggleTaskSelecti
             disabled={taskCount === 0 || aiGenerating}
             className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-extrabold rounded-2xl text-xs shadow-md disabled:opacity-40 cursor-pointer transition"
           >
-            {aiGenerating ? '⌛ AI is Generating...' : `🚀 Generate (${taskCount} Task${taskCount > 1 ? 's' : ''})`}
+            {aiGenerating ? '⌛ Generating...' : `🚀 Insert (${taskCount} Tasks)`}
           </button>
         </div>
       </div>
