@@ -187,9 +187,6 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
   const handleOpenAiModal = (block, blockIdx) => {
     setAiModalTarget({ block, blockIdx });
 
-    // SMART SOURCE CONTEXT SELECTION:
-    // If target is anchor (text, grammar_card, video), select itself.
-    // If target is lightweight task, auto-select nearest Heavyweight Anchor (Grammar or Text)!
     const isAnchor = block.type === 'text' || block.type === 'grammar_card' || block.type === 'video' || block.type === 'audio';
     if (isAnchor) {
       setSelectedSourceId(block.id);
@@ -235,8 +232,16 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         const updatedPages = [...(lesson.pages || [])];
         const currentBlocks = updatedPages[activePageIndex].blocks;
 
-        if ((actionsToRun.includes('fill_this_block') || actionsToRun.includes('expand_text') || actionsToRun.includes('shorten_text') || actionsToRun.includes('refine_level')) && blocksWithIds.length > 0) {
-          currentBlocks[aiModalTarget.blockIdx] = { ...currentBlocks[aiModalTarget.blockIdx], ...blocksWithIds[0], id: aiModalTarget.block.id };
+        const isSingleFill = actionsToRun.includes('fill_this_block') || actionsToRun.includes('expand_text') || actionsToRun.includes('shorten_text') || actionsToRun.includes('refine_level');
+
+        if (isSingleFill && blocksWithIds.length > 0) {
+          // STRICT TARGET BLOCK TYPE LOCKING: Force returned block to maintain target block's type!
+          const filledBlock = {
+            ...blocksWithIds[0],
+            id: aiModalTarget.block.id,
+            type: aiModalTarget.block.type // TYPE LOCK!
+          };
+          currentBlocks[aiModalTarget.blockIdx] = filledBlock;
         } else {
           const insertIdx = aiModalTarget.blockIdx + 1;
           currentBlocks.splice(insertIdx, 0, ...blocksWithIds);
