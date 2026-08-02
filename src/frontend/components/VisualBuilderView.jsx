@@ -21,8 +21,8 @@ const DEFAULT_LESSON = {
   ]
 };
 
-export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => {
-  const [lesson, setLesson] = useState(DEFAULT_LESSON);
+export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson, onCancel }) => {
+  const [lesson, setLesson] = useState(initialLesson || DEFAULT_LESSON);
   const [activePageIndex, setActivePageIndex] = useState(0);
 
   const [aiModalTarget, setAiModalTarget] = useState(null);
@@ -34,6 +34,14 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
   const [aiGenerating, setAiGenerating] = useState(false);
 
   const [draggedBlockIdx, setDraggedBlockIdx] = useState(null);
+
+  const updateLessonState = (updater) => {
+    setLesson(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (onChangeLesson) onChangeLesson(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (initialLesson) {
@@ -47,7 +55,6 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
       }
       setLesson(normalized);
       setModalLevel(normalized.level || 'B1');
-      setActivePageIndex(0);
     }
   }, [initialLesson]);
 
@@ -94,21 +101,21 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
   const handleAddPage = () => {
     const newPage = { id: 'page-' + Date.now(), title: `Part ${(lesson.pages?.length || 0) + 1}`, blocks: [] };
-    setLesson(prev => ({ ...prev, pages: [...(prev.pages || []), newPage] }));
+    updateLessonState(prev => ({ ...prev, pages: [...(prev.pages || []), newPage] }));
     setActivePageIndex(lesson.pages?.length || 0);
   };
 
   const handleDeletePage = (idx) => {
     if ((lesson.pages?.length || 0) <= 1) return;
     const updatedPages = lesson.pages.filter((_, i) => i !== idx);
-    setLesson(prev => ({ ...prev, pages: updatedPages }));
+    updateLessonState(prev => ({ ...prev, pages: updatedPages }));
     setActivePageIndex(Math.max(0, idx - 1));
   };
 
   const handleUpdatePageTitle = (newTitle) => {
     const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex] = { ...updatedPages[activePageIndex], title: newTitle };
-    setLesson(prev => ({ ...prev, pages: updatedPages }));
+    updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
   const handleAddBlock = (type) => {
@@ -130,13 +137,13 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
       updatedPages[activePageIndex] = { id: 'p1', title: 'Part 1', blocks: [] };
     }
     updatedPages[activePageIndex].blocks.push(newBlock);
-    setLesson(prev => ({ ...prev, pages: updatedPages }));
+    updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
   const handleUpdateBlock = (blockIdx, updatedBlock) => {
     const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex].blocks[blockIdx] = updatedBlock;
-    setLesson(prev => ({ ...prev, pages: updatedPages }));
+    updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
   const handleMoveBlock = (blockIdx, direction) => {
@@ -150,7 +157,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
     const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex].blocks = blocks;
-    setLesson(prev => ({ ...prev, pages: updatedPages }));
+    updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
   const handleDragStart = (idx) => {
@@ -167,19 +174,19 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
     const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex].blocks = blocks;
-    setLesson(prev => ({ ...prev, pages: updatedPages }));
+    updateLessonState(prev => ({ ...prev, pages: updatedPages }));
     setDraggedBlockIdx(null);
   };
 
   const handleDeleteBlock = (blockIdx) => {
     const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex].blocks = updatedPages[activePageIndex].blocks.filter((_, i) => i !== blockIdx);
-    setLesson(prev => ({ ...prev, pages: updatedPages }));
+    updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
   const handleOpenAiModal = (block, blockIdx) => {
     setAiModalTarget({ block, blockIdx });
-    setSelectedSourceId(block.id); // ALWAYS DEFAULT SOURCE CONTEXT TO THIS BLOCK!
+    setSelectedSourceId(block.id);
     if (block.type === 'grammar_card') setSelectedTasks(['grammar_quiz']);
     else if (block.type === 'matching') setSelectedTasks(['matching']);
     else if (block.type === 'flashcards') setSelectedTasks(['flashcards']);
@@ -224,7 +231,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
           currentBlocks.splice(insertIdx, 0, ...blocksWithIds);
         }
 
-        setLesson(prev => ({ ...prev, pages: updatedPages }));
+        updateLessonState(prev => ({ ...prev, pages: updatedPages }));
         setAiModalTarget(null);
       } else {
         alert('AI Transformation failed: ' + (data.error || 'Unknown error'));
@@ -238,7 +245,6 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
   return (
     <div className="space-y-6">
-      {/* HEADER BAR & METADATA INPUTS */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -267,7 +273,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
             <input
               type="text"
               value={lesson.title || ''}
-              onChange={e => setLesson(prev => ({ ...prev, title: e.target.value }))}
+              onChange={e => updateLessonState(prev => ({ ...prev, title: e.target.value }))}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-bold text-slate-900 outline-none transition shadow-2xs"
               placeholder="e.g. Travel Vocabulary & Past Simple"
             />
@@ -279,7 +285,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
                 value={lesson.level || 'B1'}
                 onChange={e => {
                   const newLvl = e.target.value;
-                  setLesson(prev => ({ ...prev, level: newLvl }));
+                  updateLessonState(prev => ({ ...prev, level: newLvl }));
                   setModalLevel(newLvl);
                 }}
                 className="w-28 px-3 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-bold text-slate-900 outline-none transition shadow-2xs cursor-pointer"
@@ -289,7 +295,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
               <input
                 type="text"
                 value={lesson.topic || ''}
-                onChange={e => setLesson(prev => ({ ...prev, topic: e.target.value }))}
+                onChange={e => updateLessonState(prev => ({ ...prev, topic: e.target.value }))}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-medium text-slate-900 outline-none transition shadow-2xs"
                 placeholder="Topic..."
               />
@@ -331,18 +337,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
               >
                 <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <span
-                      className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-600 font-bold px-1 text-base select-none"
-                      title="Drag to reorder block"
-                    >
-                      ⣿
-                    </span>
-                    <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">
-                      #{idx + 1}
-                    </span>
-                    <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">
-                      {block?.type?.replace(/_/g, ' ') || 'block'}
-                    </span>
+                    <span className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-600 font-bold px-1 text-base select-none" title="Drag to reorder block">⣿</span>
+                    <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">#{idx + 1}</span>
+                    <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">{block?.type?.replace(/_/g, ' ') || 'block'}</span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
