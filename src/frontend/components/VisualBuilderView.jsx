@@ -70,7 +70,12 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
   const extractLessonContext = (overrideBlockId) => {
     if (overrideBlockId) {
       const found = availableSourceBlocks.find(b => b.id === overrideBlockId);
-      if (found) return found.text || found.transcript || found.explanation || JSON.stringify(found);
+      if (found) {
+        if (found.type === 'grammar_card') {
+          return `Grammar Rule Title: ${found.title || ''}\nFormula: ${found.formula || ''}\nExplanation: ${found.explanation || ''}\nExamples: ${(found.examples || []).join('; ')}`;
+        }
+        return found.text || found.transcript || found.explanation || JSON.stringify(found);
+      }
     }
     let contextText = '';
     lesson.pages?.forEach(page => {
@@ -78,7 +83,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         page.blocks.forEach(b => {
           if (b && b.type === 'text' && b.text) contextText += b.text + '\n';
           if (b && b.type === 'video' && b.transcript) contextText += b.transcript + '\n';
-          if (b && b.type === 'grammar_card' && b.explanation) contextText += `Grammar Rule (${b.title}): ${b.formula} - ${b.explanation}\n`;
+          if (b && b.type === 'grammar_card') {
+            contextText += `Grammar Rule (${b.title}): Formula: ${b.formula || ''} - Explanation: ${b.explanation || ''}\n`;
+          }
         });
       }
     });
@@ -172,7 +179,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
   const handleOpenAiModal = (block, blockIdx) => {
     setAiModalTarget({ block, blockIdx });
-    // Default single task selection based on block type
+    setSelectedSourceId(block.id); // ALWAYS DEFAULT SOURCE CONTEXT TO THIS BLOCK!
     if (block.type === 'grammar_card') setSelectedTasks(['grammar_quiz']);
     else if (block.type === 'matching') setSelectedTasks(['matching']);
     else if (block.type === 'flashcards') setSelectedTasks(['flashcards']);
@@ -197,7 +204,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         body: JSON.stringify({
           actions: actionsToRun,
           sourceBlock: aiModalTarget.block,
-          sourceText: extractLessonContext(selectedSourceId),
+          sourceText: extractLessonContext(selectedSourceId || aiModalTarget.block.id),
           matchingType,
           flashcardType,
           level: modalLevel || lesson.level || 'B1'
