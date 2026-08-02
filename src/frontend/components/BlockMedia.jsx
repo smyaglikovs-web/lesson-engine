@@ -41,7 +41,7 @@ export const BlockImage = ({ block, onEditMedia }) => {
                    imageList.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4';
 
   return (
-    <div className="my-6 space-y-3">
+    <div className="my-6 space-y-3 relative group">
       {block.caption && <h4 className="font-bold text-slate-800 text-base">{block.caption}</h4>}
 
       <div className={`grid ${gridCols} gap-4`}>
@@ -64,6 +64,15 @@ export const BlockImage = ({ block, onEditMedia }) => {
           </div>
         ))}
       </div>
+
+      {onEditMedia && (
+        <button
+          onClick={() => onEditMedia(block.id, 'url', block.url)}
+          className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition cursor-pointer"
+        >
+          🔗 Изменить ссылку на фото
+        </button>
+      )}
 
       {/* Lightbox Modal */}
       {lightboxUrl && (
@@ -94,6 +103,14 @@ export const BlockVideo = ({ block, onEditMedia }) => {
           <video controls className="w-full h-full"><source src={block.url} type="video/mp4" /></video>
         )}
       </div>
+      {onEditMedia && (
+        <button
+          onClick={() => onEditMedia(block.id, 'url', block.url)}
+          className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition cursor-pointer"
+        >
+          🔗 Изменить ссылку на видео (YouTube / MP4)
+        </button>
+      )}
     </div>
   );
 };
@@ -107,11 +124,19 @@ export const BlockAudio = ({ block, onEditMedia }) => {
           <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white">🎧</div>
           <h4 className="font-semibold text-lg">{block.title || 'Прослушайте запись:'}</h4>
         </div>
+        {onEditMedia && (
+          <button
+            onClick={() => onEditMedia(block.id, 'url', block.url)}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer"
+          >
+            🔗 Вставить MP3 ссылку
+          </button>
+        )}
       </div>
       <audio controls className="w-full mb-4"><source src={block.url} type="audio/mpeg" /></audio>
       {block.transcript && (
         <div>
-          <button onClick={() => setShowTranscript(!showTranscript)} className="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium">
+          <button onClick={() => setShowTranscript(!showTranscript)} className="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium cursor-pointer">
             {showTranscript ? 'Скрыть текст' : 'Показать транскрипт'}
           </button>
           {showTranscript && <div className="mt-3 p-3 bg-slate-800 rounded-lg text-sm text-slate-300 whitespace-pre-line border border-slate-700">{block.transcript}</div>}
