@@ -46,7 +46,7 @@ const cleanAndParseJson = (val) => {
   }
 };
 
-// AUTO-SANITIZE LESSON BLOCKS TO PREVENT REACT RENDERING CRASHES
+// AUTO-MAP LOOSE AI BLOCK TYPES INTO EXACT ENGINE TYPES
 function sanitizeLessonStructure(lessonObj) {
   if (!lessonObj || typeof lessonObj !== 'object') return DEFAULT_NEW_JSON;
 
@@ -65,54 +65,94 @@ function sanitizeLessonStructure(lessonObj) {
       if (!b || typeof b !== 'object') {
         return { id: `b-${pIdx}-${bIdx}`, type: 'heading', level: 2, text: 'Section' };
       }
-      const blockId = b.id || `b-${pIdx}-${bIdx}-${Date.now()}`;
       
-      if (b.type === 'multiple_choice') {
+      const blockId = b.id || `b-${pIdx}-${bIdx}-${Date.now()}`;
+      let blockType = (b.type || 'text').toLowerCase().trim();
+
+      // Normalize loose AI type names into exact engine types
+      if (blockType === 'header' || blockType === 'title') blockType = 'heading';
+      if (blockType === 'paragraph' || blockType === 'reading' || blockType === 'article') blockType = 'text';
+      if (blockType === 'quiz' || blockType === 'question' || blockType === 'true_false') blockType = 'multiple_choice';
+      if (blockType === 'vocab' || blockType === 'words') blockType = 'flashcards';
+      if (blockType === 'prompt' || blockType === 'speaking' || blockType === 'discussion') blockType = 'open_input';
+      if (blockType === 'rule' || blockType === 'grammar') blockType = 'grammar_card';
+
+      if (blockType === 'heading') {
+        return { ...b, id: blockId, type: 'heading', level: b.level || 2, text: b.text || b.title || b.content || 'Section' };
+      }
+      if (blockType === 'text') {
+        return { ...b, id: blockId, type: 'text', text: b.text || b.content || b.story || b.value || '' };
+      }
+      if (blockType === 'multiple_choice') {
         return {
           ...b,
           id: blockId,
-          question: b.question || 'Question?',
+          type: 'multiple_choice',
+          question: b.question || b.prompt || 'Question?',
           options: Array.isArray(b.options) && b.options.length > 0 ? b.options : ['Option A', 'Option B'],
-          correct: typeof b.correct === 'number' ? b.correct : 0
+          correct: typeof b.correct === 'number' ? b.correct : 0,
+          explanation: b.explanation || ''
         };
       }
-      if (b.type === 'matching') {
+      if (blockType === 'matching') {
         return {
           ...b,
           id: blockId,
+          type: 'matching',
           instruction: b.instruction || 'Match pairs:',
           pairs: Array.isArray(b.pairs) && b.pairs.length > 0 ? b.pairs : [{ left: 'Word', right: 'Match' }]
         };
       }
-      if (b.type === 'flashcards') {
+      if (blockType === 'flashcards') {
         return {
           ...b,
           id: blockId,
+          type: 'flashcards',
           title: b.title || 'Vocabulary',
           cards: Array.isArray(b.cards) && b.cards.length > 0 ? b.cards : [{ front: 'Word', back: 'Translation' }]
         };
       }
-      if (b.type === 'grammar_card') {
+      if (blockType === 'grammar_card') {
         return {
           ...b,
           id: blockId,
+          type: 'grammar_card',
           title: b.title || 'Grammar Rule',
           formula: b.formula || '',
           explanation: b.explanation || '',
           examples: Array.isArray(b.examples) ? b.examples : ['Example sentence']
         };
       }
-      if (b.type === 'gap_fill_bank') {
+      if (blockType === 'gap_fill_bank') {
         return {
           ...b,
           id: blockId,
+          type: 'gap_fill_bank',
           instruction: b.instruction || 'Fill the gaps:',
           text: b.text || 'Text with [answers] in brackets.',
           distractors: Array.isArray(b.distractors) ? b.distractors : []
         };
       }
+      if (blockType === 'gap_fill') {
+        return {
+          ...b,
+          id: blockId,
+          type: 'gap_fill',
+          instruction: b.instruction || 'Fill the gap:',
+          text: b.text || 'Sentence with [answer] in brackets.',
+          answers: Array.isArray(b.answers) ? b.answers : ['answer']
+        };
+      }
+      if (blockType === 'open_input') {
+        return {
+          ...b,
+          id: blockId,
+          type: 'open_input',
+          prompt: b.prompt || b.question || 'Discussion Question?'
+        };
+      }
 
-      return { ...b, id: blockId };
+      return { ...b, id: blockId, type: 'text', text: b.text || b.content || JSON.stringify(b) };
     });
 
     return {
@@ -134,7 +174,7 @@ function sanitizeLessonStructure(lessonObj) {
 }
 
 export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
-  const [createMode, setCreateMode] = useState('visual'); // 'visual' | 'ai' | 'json'
+  const [createMode, setCreateMode] = useState('visual');
   const [currentLesson, setCurrentLesson] = useState(initialLesson ? sanitizeLessonStructure(initialLesson) : null);
   const [successBanner, setSuccessBanner] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
