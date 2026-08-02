@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH UNBREAKABLE TEXT EXPANSION & LEVEL REFINEMENT
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH AUTO-RULE BUILDER & CEFR MATRIX
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -275,7 +275,7 @@ RETURN ONLY VALID JSON FORMAT:
         return jsonResponse({ success: true, jsonText: JSON.stringify(parsedJson, null, 2) });
       }
 
-      // SINGLE BLOCK & TEXT REFINEMENT AI
+      // SINGLE BLOCK & CONTEXTUAL AI ASSISTANT
       if (path === '/api/ai/transform-block' && request.method === 'POST') {
         const {
           actions = [],
@@ -289,10 +289,41 @@ RETURN ONLY VALID JSON FORMAT:
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
         const contextData = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
 
-        // UNBREAKABLE TEXT REFINEMENT (Expand, Shorten, Change Level)
+        // SPECIAL CASE: IN-BLOCK AI GRAMMAR RULE AUTO-BUILDER
+        if (actions.includes('generate_grammar_card')) {
+          const grammarSystemPrompt = `You are a master ELT Methodologist. Generate a comprehensive Grammar Presentation Card for the grammar topic provided for CEFR Level ${level}.
+
+CEFR Level ${level} Target: ${cefrRules}
+STRICT QUOTE RULE: Use single quotes (') for quotes or speech inside text strings.
+RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
+[
+  {
+    "type": "grammar_card",
+    "title": "${contextData}",
+    "formula": "Rule Formula (e.g. Subject + had + V3 + would have + V3)",
+    "explanation": "Clear CEFR Level ${level} explanation of when and how to use this grammar rule.",
+    "examples": [ "Example sentence 1.", "Example sentence 2.", "Example sentence 3." ]
+  }
+]`;
+
+          const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
+            messages: [
+              { role: 'system', content: grammarSystemPrompt },
+              { role: 'user', content: `Grammar Topic Name: ${contextData}` }
+            ],
+            temperature: 0.2,
+            max_tokens: 1500
+          });
+
+          const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
+          const parsedBlocks = cleanAndParseJson(rawText);
+          return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
+        }
+
+        // UNBREAKABLE TEXT REFINEMENT
         if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
           let targetLength = '350-450 words';
-          let textInstruction = 'Expand this reading passage into a richer, longer, more detailed story (350-450 words) with CEFR Level ' + level + ' vocabulary and grammar.';
+          let textInstruction = 'Expand this reading passage into a richer, longer, more detailed story (350-450 words) with CEFR Level ' + level + ' vocabulary.';
           
           if (actions.includes('shorten_text')) {
             targetLength = '120-150 words';
@@ -319,7 +350,6 @@ RETURN ONLY VALID JSON FORMAT:
             const parsedObj = cleanAndParseJson(rawText);
             newStoryText = parsedObj.text || parsedObj[0]?.text || rawText;
           } catch (eFallback) {
-            // Unbreakable fallback: extract text directly
             newStoryText = rawText.replace(/```json/gi, '').replace(/```/g, '').replace(/^{"text":\s*"/i, '').replace(/"}$/, '').trim();
           }
 
@@ -346,11 +376,11 @@ Generate JSON block objects for requested task types:
 
 - "fill_this_block": Populate 100% full, non-empty block of type "${sourceBlock.type}".
 - "listening": multiple_choice block with 4 comprehension questions ({ question, options [3], correct, explanation }).
-- "flashcards": flashcards block with 5 items ({ cards: [{ front, back (${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}), example }] }).
+- "flashcards": flashcards block with 6 items ({ cards: [{ front, back (${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}), example }] }).
 - "true_false": multiple_choice block with 4 True/False questions.
 - "gap_fill": gap_fill block with 4 sentences containing [answer] in brackets.
 - "gap_fill_bank": gap_fill_bank block with text containing [answers] and 3 distractors.
-- "matching": matching block with 5 pairs [{ left, right }] configured as "${matchingType}".
+- "matching": matching block with 6 pairs [{ left, right }] configured as "${matchingType}".
 - "discussion": open_input block with 3 speaking discussion prompts.
 - "grammar_transform": gap_fill block with 4 sentence transformations targeting the grammar rule in source context.
 - "grammar_quiz": multiple_choice block with 4 questions testing the grammar rule in source context.
