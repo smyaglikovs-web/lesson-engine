@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH CONTEXTUAL AI ASSISTANT
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH UNBREAKABLE TEXT EXPANSION & LEVEL REFINEMENT
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -275,7 +275,7 @@ RETURN ONLY VALID JSON FORMAT:
         return jsonResponse({ success: true, jsonText: JSON.stringify(parsedJson, null, 2) });
       }
 
-      // SINGLE BLOCK & CONTEXTUAL AI ASSISTANT
+      // SINGLE BLOCK & TEXT REFINEMENT AI
       if (path === '/api/ai/transform-block' && request.method === 'POST') {
         const {
           actions = [],
@@ -289,27 +289,41 @@ RETURN ONLY VALID JSON FORMAT:
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
         const contextData = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
 
-        // TEXT REFINEMENT
+        // UNBREAKABLE TEXT REFINEMENT (Expand, Shorten, Change Level)
         if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
-          let textInstruction = 'Rewrite and improve this reading passage.';
-          if (actions.includes('expand_text')) textInstruction = 'EXPAND this reading passage into a longer, richer story (350-450 words) with CEFR Level ' + level + ' vocabulary.';
-          if (actions.includes('shorten_text')) textInstruction = 'SHORTEN this reading passage into a concise summary (~150 words) matching CEFR Level ' + level + '.';
-          if (actions.includes('refine_level')) textInstruction = 'REWRITE this reading passage strictly adapting grammar and vocabulary to CEFR Level ' + level + '.';
+          let targetLength = '350-450 words';
+          let textInstruction = 'Expand this reading passage into a richer, longer, more detailed story (350-450 words) with CEFR Level ' + level + ' vocabulary and grammar.';
+          
+          if (actions.includes('shorten_text')) {
+            targetLength = '120-150 words';
+            textInstruction = 'Shorten this reading passage into a concise summary (~150 words) matching CEFR Level ' + level + '.';
+          } else if (actions.includes('refine_level')) {
+            textInstruction = 'Rewrite this reading passage strictly adapting grammar and vocabulary to CEFR Level ' + level + '.';
+          }
 
-          const textSystemPrompt = `You are an ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY VALID JSON ARRAY WITH A SINGLE TEXT BLOCK:\n[ { "type": "text", "text": "New refined passage text here..." } ]`;
+          const textSystemPrompt = `You are a master ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nSTRICT QUOTE RULE: Use single quotes (') for quotes inside text.\nRETURN ONLY A VALID JSON OBJECT WITH "text":\n{ "text": "Full rewritten reading story text here..." }`;
 
           const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
             messages: [
               { role: 'system', content: textSystemPrompt },
-              { role: 'user', content: `Original Content:\n${contextData}` }
+              { role: 'user', content: `Original Text:\n${contextData}` }
             ],
             temperature: 0.3,
-            max_tokens: 2000
+            max_tokens: 3000
           });
 
           const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
-          const parsedBlocks = cleanAndParseJson(rawText);
-          return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
+          let newStoryText = '';
+
+          try {
+            const parsedObj = cleanAndParseJson(rawText);
+            newStoryText = parsedObj.text || parsedObj[0]?.text || rawText;
+          } catch (eFallback) {
+            // Unbreakable fallback: extract text directly
+            newStoryText = rawText.replace(/```json/gi, '').replace(/```/g, '').replace(/^{"text":\s*"/i, '').replace(/"}$/, '').trim();
+          }
+
+          return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
         // CONTEXTUAL EXERCISE GENERATOR
@@ -332,11 +346,11 @@ Generate JSON block objects for requested task types:
 
 - "fill_this_block": Populate 100% full, non-empty block of type "${sourceBlock.type}".
 - "listening": multiple_choice block with 4 comprehension questions ({ question, options [3], correct, explanation }).
-- "flashcards": flashcards block with 6 items ({ cards: [{ front, back (${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}), example }] }).
+- "flashcards": flashcards block with 5 items ({ cards: [{ front, back (${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}), example }] }).
 - "true_false": multiple_choice block with 4 True/False questions.
 - "gap_fill": gap_fill block with 4 sentences containing [answer] in brackets.
 - "gap_fill_bank": gap_fill_bank block with text containing [answers] and 3 distractors.
-- "matching": matching block with 6 pairs [{ left, right }] configured as "${matchingType}".
+- "matching": matching block with 5 pairs [{ left, right }] configured as "${matchingType}".
 - "discussion": open_input block with 3 speaking discussion prompts.
 - "grammar_transform": gap_fill block with 4 sentence transformations targeting the grammar rule in source context.
 - "grammar_quiz": multiple_choice block with 4 questions testing the grammar rule in source context.
