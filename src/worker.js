@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH D1 MIGRATION & TEXT REFINEMENT AI
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH CONTEXTUAL AI ASSISTANT
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -135,7 +135,6 @@ async function ensureTables(db) {
       )
     `).run();
 
-    // AUTO-MIGRATE COLUMN FOR EXISTING TABLES
     try {
       await db.prepare(`ALTER TABLE lessons ADD COLUMN pages_json TEXT`).run();
     } catch (e) {}
@@ -220,7 +219,7 @@ Page 1: Lead-in & Core Reading Passage
 - "heading": Lesson Title
 - "open_input": 2 Lead-in discussion questions
 - "flashcards": 5 vocabulary cards ({ front, back, example })
-- "text": A complete 220-word rich reading passage strictly matching CEFR ${level}.
+- "text": A complete 200-word reading passage strictly matching CEFR ${level}.
 
 Page 2: Comprehension
 - "multiple_choice": 1 main idea question
@@ -276,24 +275,33 @@ RETURN ONLY VALID JSON FORMAT:
         return jsonResponse({ success: true, jsonText: JSON.stringify(parsedJson, null, 2) });
       }
 
-      // SINGLE BLOCK AI TRANSFORMER & TEXT REFINEMENT
+      // SINGLE BLOCK & CONTEXTUAL AI ASSISTANT
       if (path === '/api/ai/transform-block' && request.method === 'POST') {
-        const { actions = [], sourceBlock = {}, lessonContext = '', level = 'B1' } = await request.json();
-        const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
+        const {
+          actions = [],
+          sourceBlock = {},
+          sourceText = '',
+          matchingType = 'synonym',
+          flashcardType = 'russian',
+          level = 'B1'
+        } = await request.json();
 
-        // SPECIAL CASE: TEXT REFINEMENT (Expand, Shorten, Change CEFR Level)
+        const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
+        const contextData = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
+
+        // TEXT REFINEMENT
         if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
           let textInstruction = 'Rewrite and improve this reading passage.';
-          if (actions.includes('expand_text')) textInstruction = 'EXPAND this reading passage into a longer, richer, more detailed story (350-450 words) with enhanced vocabulary matching CEFR Level ' + level + '.';
+          if (actions.includes('expand_text')) textInstruction = 'EXPAND this reading passage into a longer, richer story (350-450 words) with CEFR Level ' + level + ' vocabulary.';
           if (actions.includes('shorten_text')) textInstruction = 'SHORTEN this reading passage into a concise summary (~150 words) matching CEFR Level ' + level + '.';
           if (actions.includes('refine_level')) textInstruction = 'REWRITE this reading passage strictly adapting grammar and vocabulary to CEFR Level ' + level + '.';
 
-          const textSystemPrompt = `You are an ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY A VALID JSON ARRAY WITH A SINGLE TEXT BLOCK OBJECT:\n[ { "type": "text", "text": "New refined passage text here..." } ]`;
+          const textSystemPrompt = `You are an ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY VALID JSON ARRAY WITH A SINGLE TEXT BLOCK:\n[ { "type": "text", "text": "New refined passage text here..." } ]`;
 
           const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
             messages: [
               { role: 'system', content: textSystemPrompt },
-              { role: 'user', content: `Original Text:\n${sourceBlock.text || lessonContext}` }
+              { role: 'user', content: `Original Content:\n${contextData}` }
             ],
             temperature: 0.3,
             max_tokens: 2000
@@ -304,32 +312,39 @@ RETURN ONLY VALID JSON FORMAT:
           return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
         }
 
-        // GENERAL SINGLE BLOCK FULFILLMENT FROM LESSON TEXT
-        const systemPrompt = `You are an expert ELT Materials Designer. Generate complete interactive exercise blocks BASED DIRECTLY ON THE LESSON READING PASSAGE for CEFR Level ${level}.
+        // CONTEXTUAL EXERCISE GENERATOR
+        const systemPrompt = `You are an expert ELT Materials Designer. Generate interactive exercise blocks BASED DIRECTLY ON THE PROVIDED SOURCE CONTEXT for CEFR Level ${level}.
 
 STRICT RULES:
-1. Every exercise MUST directly test/use vocabulary or facts from the provided Reading Passage!
-2. 100% English target language policy.
-3. Use single quotes (') inside text string values. No unescaped double quotes!
+1. All exercises MUST test or practice content directly from the provided source context!
+2. Use single quotes (') inside string values. No unescaped double quotes!
+3. 100% English target language policy (except Russian translations if explicitly requested).
 4. CEFR Level ${level} Target: ${cefrRules}
+
+MATCHING PAIR CONFIGURATION:
+- Matching style requested: "${matchingType}" (synonym / russian / antonym / collocation).
+
+FLASHCARD BACK CONFIGURATION:
+- Flashcard back style requested: "${flashcardType}" (russian translation vs english CEFR definition).
 
 REQUESTED ACTION TASKS (${actions.join(', ')}):
 Generate JSON block objects for requested task types:
 
-- "fill_this_block": Generate a 100% full, non-empty block of type "${sourceBlock.type}".
+- "fill_this_block": Populate 100% full, non-empty block of type "${sourceBlock.type}".
 - "listening": multiple_choice block with 4 comprehension questions ({ question, options [3], correct, explanation }).
-- "flashcards": flashcards block with 6 items ({ cards: [{ front, back, example }] }).
+- "flashcards": flashcards block with 6 items ({ cards: [{ front, back (${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}), example }] }).
 - "true_false": multiple_choice block with 4 True/False questions.
 - "gap_fill": gap_fill block with 4 sentences containing [answer] in brackets.
 - "gap_fill_bank": gap_fill_bank block with text containing [answers] and 3 distractors.
-- "matching": matching block with 6 pairs [{ left, right }].
+- "matching": matching block with 6 pairs [{ left, right }] configured as "${matchingType}".
 - "discussion": open_input block with 3 speaking discussion prompts.
-- "grammar": grammar_card block with CEFR ${level} rule ({ title, formula, explanation, examples }).
+- "grammar_transform": gap_fill block with 4 sentence transformations targeting the grammar rule in source context.
+- "grammar_quiz": multiple_choice block with 4 questions testing the grammar rule in source context.
 
 RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
 [ { "type": "${sourceBlock.type || 'multiple_choice'}", ... } ]`;
 
-        const userContent = `CEFR Level: ${level}\nLesson Reading Passage:\n${lessonContext || sourceBlock.text || sourceBlock.transcript || JSON.stringify(sourceBlock)}`;
+        const userContent = `CEFR Level: ${level}\nSource Context:\n${contextData}`;
 
         const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
           messages: [
@@ -362,7 +377,7 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
         return jsonResponse({ success: false, message: 'Paste transcripts manually if unavailable.' });
       }
 
-      // LESSONS CRUD (WITH SAFE D1 FALLBACK)
+      // LESSONS CRUD
       if (path === '/api/lessons' && request.method === 'GET') {
         const { results } = await env.DB.prepare('SELECT id, title, level, topic, description, created_at FROM lessons ORDER BY created_at DESC').all();
         return jsonResponse(results || []);
@@ -416,7 +431,6 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
               pages_json=excluded.pages_json
           `).bind(id, lesson.title || 'Untitled', lesson.level || 'B1', lesson.topic || 'General', lesson.description || '', pagesJson).run();
         } catch (e1) {
-          // Fallback if pages_json column is missing
           await env.DB.prepare(`
             INSERT INTO lessons (id, title, level, topic, description)
             VALUES (?, ?, ?, ?, ?)
