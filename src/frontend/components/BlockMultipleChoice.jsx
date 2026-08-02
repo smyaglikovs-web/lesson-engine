@@ -30,6 +30,25 @@ export const BlockMultipleChoice = ({ block, value, onChange }) => {
           const isSelected = selected !== null && Number(selected) === Number(idx);
           const isTargetCorrect = Number(idx) === Number(block.correct);
 
+          // Defensive string coercion for option text
+          let optionText = '';
+          if (typeof option === 'string') {
+            if (option.trim().startsWith('{')) {
+              try {
+                const parsed = JSON.parse(option);
+                optionText = parsed.statement || parsed.question || parsed.text || parsed.option || option;
+              } catch(e) {
+                optionText = option;
+              }
+            } else {
+              optionText = option;
+            }
+          } else if (typeof option === 'object' && option !== null) {
+            optionText = option.statement || option.question || option.text || option.option || option.value || JSON.stringify(option);
+          } else {
+            optionText = String(option);
+          }
+
           let btnStyle = "w-full text-left p-4 rounded-xl border font-medium transition text-sm flex items-center justify-between touch-manipulation ";
           if (submitted) {
             if (isTargetCorrect) btnStyle += "bg-green-50 border-green-500 text-green-900 font-bold";
@@ -46,7 +65,7 @@ export const BlockMultipleChoice = ({ block, value, onChange }) => {
               onClick={() => handleSelect(idx)}
               className={btnStyle}
             >
-              <span>{option}</span>
+              <span>{optionText}</span>
               {isSelected && !submitted && <span className="text-indigo-600 font-bold">✓</span>}
             </button>
           );
