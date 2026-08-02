@@ -30,6 +30,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
   const [selectedTasks, setSelectedTasks] = useState(['listening', 'quiz']);
   const [matchingType, setMatchingType] = useState('synonym');
   const [flashcardType, setFlashcardType] = useState('russian');
+  const [modalLevel, setModalLevel] = useState('B1');
   const [aiGenerating, setAiGenerating] = useState(false);
 
   const [draggedBlockIdx, setDraggedBlockIdx] = useState(null);
@@ -45,13 +46,13 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         }
       }
       setLesson(normalized);
+      setModalLevel(normalized.level || 'B1');
       setActivePageIndex(0);
     }
   }, [initialLesson]);
 
   const activePage = lesson.pages?.[activePageIndex] || lesson.pages?.[0] || { blocks: [] };
 
-  // Collect all available anchor source blocks (text, video, audio, grammar_card) in the lesson
   const availableSourceBlocks = React.useMemo(() => {
     const list = [];
     lesson.pages?.forEach(p => {
@@ -187,7 +188,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
           sourceText: extractLessonContext(selectedSourceId),
           matchingType,
           flashcardType,
-          level: lesson.level || 'B1'
+          level: modalLevel || lesson.level || 'B1'
         })
       });
 
@@ -197,7 +198,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         const updatedPages = [...(lesson.pages || [])];
         const currentBlocks = updatedPages[activePageIndex].blocks;
 
-        if (selectedTasks.includes('fill_this_block') && blocksWithIds.length > 0) {
+        if ((selectedTasks.includes('fill_this_block') || selectedTasks.includes('expand_text') || selectedTasks.includes('shorten_text') || selectedTasks.includes('refine_level')) && blocksWithIds.length > 0) {
           // Replace current block in-place
           currentBlocks[aiModalTarget.blockIdx] = { ...blocksWithIds[0], id: aiModalTarget.block.id };
         } else {
@@ -259,7 +260,11 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
             <div className="flex gap-2">
               <select
                 value={lesson.level || 'B1'}
-                onChange={e => setLesson(prev => ({ ...prev, level: e.target.value }))}
+                onChange={e => {
+                  const newLvl = e.target.value;
+                  setLesson(prev => ({ ...prev, level: newLvl }));
+                  setModalLevel(newLvl);
+                }}
                 className="w-28 px-3 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-bold text-slate-900 outline-none transition shadow-2xs cursor-pointer"
               >
                 <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
@@ -354,6 +359,8 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         setMatchingType={setMatchingType}
         flashcardType={flashcardType}
         setFlashcardType={setFlashcardType}
+        modalLevel={modalLevel}
+        setModalLevel={setModalLevel}
         onExecute={handleExecuteBlockAi}
         onClose={() => setAiModalTarget(null)}
         aiGenerating={aiGenerating}
