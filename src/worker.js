@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - PRIMARY GOOGLE GEMINI FLASH + CLOUDFLARE LLAMA 4 CASCADE
+// CLOUDFLARE WORKER BACKEND - GEMINI 2.5 FLASH + LLAMA 4 SCOUT + UNBREAKABLE CASCADE
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -55,41 +55,46 @@ function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
+// ULTRA-RESILIENT JSON PARSER (RETURNS NULL ON FAILURE TO PERMIT CASCADE)
 function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
 
-  const start = clean.indexOf('{');
-  if (start === -1) {
-    const arrStart = clean.indexOf('[');
-    if (arrStart !== -1) clean = clean.substring(arrStart);
-    else throw new Error('No JSON structure found in AI output.');
-  } else {
-    clean = clean.substring(start);
+  const firstBrace = clean.indexOf('{');
+  const firstBracket = clean.indexOf('[');
+  
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    const lastBrace = clean.lastIndexOf('}');
+    if (lastBrace > firstBrace) clean = clean.substring(firstBrace, lastBrace + 1);
+  } else if (firstBracket !== -1) {
+    const lastBracket = clean.lastIndexOf(']');
+    if (lastBracket > firstBracket) clean = clean.substring(firstBracket, lastBracket + 1);
   }
 
+  // Attempt 1: Direct JSON parse
   try {
     return JSON.parse(clean);
   } catch (e1) {
-    let fixed = '';
-    let inString = false;
-    for (let i = 0; i < clean.length; i++) {
-      const c = clean[i];
-      if (c === '"' && (i === 0 || clean[i - 1] !== '\\')) {
-        inString = !inString;
-        fixed += c;
-      } else if (inString && (c === '\n' || c === '\r')) {
-        fixed += '\\n';
-      } else if (inString && c === '\t') {
-        fixed += '\\t';
-      } else {
-        fixed += c;
-      }
-    }
-
+    // Attempt 2: Sanitize newlines & unescaped quotes inside JSON string values
     try {
+      let fixed = '';
+      let inString = false;
+      for (let i = 0; i < clean.length; i++) {
+        const c = clean[i];
+        if (c === '"' && (i === 0 || clean[i - 1] !== '\\')) {
+          inString = !inString;
+          fixed += c;
+        } else if (inString && (c === '\n' || c === '\r')) {
+          fixed += '\\n';
+        } else if (inString && c === '\t') {
+          fixed += '\\t';
+        } else {
+          fixed += c;
+        }
+      }
       return JSON.parse(fixed);
     } catch (e2) {
+      // Attempt 3: Auto-close open JSON brackets/braces if truncated
       let stack = [];
       let repaired = '';
       let insideStr = false;
@@ -113,42 +118,64 @@ function cleanAndParseJson(rawText) {
       try {
         return JSON.parse(repaired);
       } catch (e3) {
-        console.error('JSON Repair Final Error:', e3, 'Raw:', rawText);
-        throw new Error('AI JSON was incomplete. Please click Generate again.');
+        return null; // Return null so the cascade runner knows this model output failed and tries the next model!
       }
     }
   }
 }
 
-// PRIMARY LEADER: GEMINI FLASH ➔ FALLBACK: LLAMA 4 SCOUT ➔ LLAMA 3.3 ➔ QWEN 2.5
+// UNBREAKABLE CASCADE AI PIPELINE (GEMINI 2.5 FLASH ➔ LLAMA 4 SCOUT ➔ LLAMA 3.3 ➔ QWEN 2.5)
 async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
-  // 1. PRIMARY LEADER: GOOGLE GEMINI FLASH (1M Token Context & Native JSON Mode)
+  // 1. TIER 1: GOOGLE GEMINI 2.5 FLASH (OpenAI-compatible Chat Completions API)
   if (env.GEMINI_API_KEY) {
     try {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
-      const geminiRes = await fetch(geminiUrl, {
+      const gRes = await fetch('https://generativelanguage.googleapis.com/v1beta/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${env.GEMINI_API_KEY}`
+        },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+          model: 'gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent }
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.2
         })
       });
 
-      if (geminiRes.ok) {
-        const gData = await geminiRes.json();
-        const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        const gRawText = gData?.choices?.[0]?.message?.content;
         const gParsed = cleanAndParseJson(gRawText);
         if (gParsed) return gParsed;
       } else {
-        console.warn('Gemini API quota/error, cascading to Workers AI:', geminiRes.status);
+        // Fallback to REST endpoint if chat/completions is initializing
+        const gRestUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
+        const gRestRes = await fetch(gRestUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+          })
+        });
+
+        if (gRestRes.ok) {
+          const gData2 = await gRestRes.json();
+          const gRawText2 = gData2?.candidates?.[0]?.content?.parts?.[0]?.text;
+          const gParsed2 = cleanAndParseJson(gRawText2);
+          if (gParsed2) return gParsed2;
+        }
       }
     } catch (eGemini) {
       console.warn('Gemini API call failed, cascading to Workers AI...', eGemini);
     }
   }
 
-  // 2. TIER 2: META LLAMA 4 SCOUT (Workers AI Latest Multimodal Model)
+  // 2. TIER 2: META LLAMA 4 SCOUT (Workers AI)
   if (env.AI) {
     try {
       const resL4 = await env.AI.run('@cf/meta/llama-4-scout-17b-16e-instruct', {
@@ -167,7 +194,7 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
       console.warn('Llama 4 Scout failed, trying Llama 3.3 70B...', eL4);
     }
 
-    // 3. TIER 3: META LLAMA 3.3 70B
+    // 3. TIER 3: META LLAMA 3.3 70B (Workers AI)
     try {
       const resL3 = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
         messages: [
@@ -197,7 +224,8 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
       });
 
       const rawQwen = resQwen?.response || resQwen?.choices?.[0]?.message?.content;
-      return cleanAndParseJson(rawQwen);
+      const parsedQwen = cleanAndParseJson(rawQwen);
+      if (parsedQwen) return parsedQwen;
     } catch (eQwen) {
       console.error('All AI models in cascade failed:', eQwen);
     }
@@ -424,7 +452,6 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
   }
 ]`;
 
-          // Use DeepSeek R1 for Grammar Reasoning
           try {
             const dsRes = await env.AI.run('@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', {
               messages: [
@@ -462,7 +489,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
-        // CONTEXTUAL EXERCISE GENERATOR
+        // CONTEXTUAL EXERCISE GENERATOR (FLASHCARDS, MATCHING, QUIZ, GAP FILL)
         const systemPrompt = `You are an expert ELT Materials Designer. Generate interactive exercise blocks BASED DIRECTLY ON THE PROVIDED SOURCE CONTEXT for CEFR Level ${level}.
 
 STRICT RULES:
@@ -482,7 +509,7 @@ Generate JSON block objects for requested task types:
 
 - "fill_this_block": Populate 100% full, non-empty block of type "${sourceBlock.type}".
 - "listening": multiple_choice block with 4 comprehension questions ({ question, options [3], correct, explanation }).
-- "flashcards": flashcards block with 6 items ({ cards: [{ front, back (${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}), example }] }).
+- "flashcards": flashcards block with 6 items ({ title: "Key Vocabulary", cards: [{ front: "word", back: "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", example: "sentence" }] }).
 - "true_false": multiple_choice block with 4 True/False questions.
 - "gap_fill": gap_fill block with 4 sentences containing [answer] in brackets.
 - "gap_fill_bank": gap_fill_bank block with text containing [answers] and 3 distractors.
