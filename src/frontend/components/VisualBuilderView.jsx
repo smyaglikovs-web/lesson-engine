@@ -174,8 +174,11 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
     setSelectedTasks(prev => prev.includes(taskKey) ? prev.filter(t => t !== taskKey) : [...prev, taskKey]);
   };
 
-  const handleExecuteBlockAi = async () => {
+  const handleExecuteBlockAi = async (explicitActions) => {
     if (!aiModalTarget) return;
+    const actionsToRun = Array.isArray(explicitActions) && explicitActions.length > 0 ? explicitActions : selectedTasks;
+
+    if (actionsToRun.length === 0) return alert('Select at least one task');
     setAiGenerating(true);
 
     try {
@@ -183,7 +186,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          actions: selectedTasks,
+          actions: actionsToRun,
           sourceBlock: aiModalTarget.block,
           sourceText: extractLessonContext(selectedSourceId),
           matchingType,
@@ -198,9 +201,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         const updatedPages = [...(lesson.pages || [])];
         const currentBlocks = updatedPages[activePageIndex].blocks;
 
-        if ((selectedTasks.includes('fill_this_block') || selectedTasks.includes('expand_text') || selectedTasks.includes('shorten_text') || selectedTasks.includes('refine_level')) && blocksWithIds.length > 0) {
+        if ((actionsToRun.includes('fill_this_block') || actionsToRun.includes('expand_text') || actionsToRun.includes('shorten_text') || actionsToRun.includes('refine_level')) && blocksWithIds.length > 0) {
           // Replace current block in-place
-          currentBlocks[aiModalTarget.blockIdx] = { ...blocksWithIds[0], id: aiModalTarget.block.id };
+          currentBlocks[aiModalTarget.blockIdx] = { ...currentBlocks[aiModalTarget.blockIdx], ...blocksWithIds[0], id: aiModalTarget.block.id };
         } else {
           // Insert new blocks below
           const insertIdx = aiModalTarget.blockIdx + 1;
