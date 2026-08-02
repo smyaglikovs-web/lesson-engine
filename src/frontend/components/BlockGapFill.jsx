@@ -1,103 +1,94 @@
 import React from 'react';
 
-export const BlockReorder = ({ block, value, onChange }) => {
-  const targetSentence = block.sentence || '';
-  
-  // Create word pool with unique IDs to handle duplicate words
-  const poolWords = React.useMemo(() => {
-    const rawList = block.words && block.words.length > 0 ? block.words : targetSentence.split(' ');
-    const list = rawList.map((word, idx) => ({ id: `word-${idx}-${word}`, text: word }));
-    
-    // Fisher-Yates shuffle algorithm
-    for (let i = list.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [list[i], list[j]] = [list[j], list[i]];
-    }
-    return list;
-  }, [block.id, block.sentence, JSON.stringify(block.words)]);
-
-  const selectedWordObjects = value?.selectedWordObjects || [];
+export const BlockGapFill = ({ block, value, onChange }) => {
+  const rawText = block.text || '';
+  const lines = rawText.split('\n').filter(line => line.trim().length > 0);
   const submitted = value?.submitted || false;
 
-  const userSentence = selectedWordObjects.map(w => w.text).join(' ');
-  const isCorrect = userSentence.trim().toLowerCase() === targetSentence.trim().toLowerCase();
+  const userAnswers = value?.userAnswers || {};
 
-  const handleWordClick = (wordObj) => {
+  const handleInputChange = (key, val) => {
     if (submitted) return;
-    const newSelected = [...selectedWordObjects, wordObj];
-    onChange({ selectedWordObjects: newSelected, submitted: false });
-  };
-
-  const handleRemoveWord = (wordObjId) => {
-    if (submitted) return;
-    const newSelected = selectedWordObjects.filter(w => w.id !== wordObjId);
-    onChange({ selectedWordObjects: newSelected, submitted: false });
-  };
-
-  const handleReset = () => {
-    onChange({ selectedWordObjects: [], submitted: false });
+    const updated = { ...userAnswers, [key]: val };
+    onChange({ userAnswers: updated, userAnswer: Object.values(updated).join(', '), submitted: false });
   };
 
   const handleSubmit = () => {
-    if (selectedWordObjects.length === 0) return;
-    onChange({ selectedWordObjects, submitted: true });
+    onChange({ userAnswers, userAnswer: Object.values(userAnswers).join(', '), submitted: true });
   };
 
-  const usedIds = selectedWordObjects.map(w => w.id);
+  let totalGaps = 0;
+  let correctGaps = 0;
+
+  lines.forEach((line, lineIdx) => {
+    const parts = line.split(/\[(.*?)\]/);
+    for (let i = 1; i < parts.length; i += 2) {
+      totalGaps++;
+      const key = `${lineIdx}_${i}`;
+      const expectedAns = parts[i].trim().toLowerCase();
+      const studentAns = (userAnswers[key] || '').trim().toLowerCase();
+      if (studentAns === expectedAns) {
+        correctGaps++;
+      }
+    }
+  });
+
+  const isAllCorrect = totalGaps > 0 && correctGaps === totalGaps;
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
-      <h4 className="font-semibold text-lg text-slate-800 mb-2">{block.instruction || '🧩 Составьте предложение из слов:'}</h4>
+    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4">
+      {block.instruction && <h5 className="font-extrabold text-slate-800 text-sm leading-snug">{block.instruction}</h5>}
 
-      {/* Selected Sentence Box */}
-      <div className="min-h-16 p-4 bg-slate-50 border-2 border-dashed border-indigo-200 rounded-xl flex flex-wrap gap-2 items-center mb-4">
-        {selectedWordObjects.length === 0 ? (
-          <span className="text-slate-400 text-sm italic">Нажимайте на слова ниже, чтобы собрать предложение...</span>
-        ) : (
-          selectedWordObjects.map((wObj) => (
-            <button
-              key={`sel-${wObj.id}`}
-              disabled={submitted}
-              onClick={() => handleRemoveWord(wObj.id)}
-              className="px-3 py-1.5 bg-indigo-600 text-white font-semibold rounded-lg text-sm shadow-xs hover:bg-indigo-700 transition cursor-pointer"
-            >
-              {wObj.text} ✕
-            </button>
-          ))
-        )}
-      </div>
-
-      {/* Available Words Pool */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {poolWords.map((wObj) => {
-          const isUsed = usedIds.includes(wObj.id);
+      <div className="space-y-3 font-medium text-slate-800 text-base leading-relaxed">
+        {lines.map((line, lineIdx) => {
+          const parts = line.split(/\[(.*?)\]/);
+          if (parts.length < 3) {
+            return <p key={lineIdx} className="text-slate-700">{line}</p>;
+          }
 
           return (
-            <button
-              key={`pool-${wObj.id}`}
-              disabled={isUsed || submitted}
-              onClick={() => handleWordClick(wObj)}
-              className={`px-3 py-1.5 border rounded-lg text-sm font-medium transition cursor-pointer ${
-                isUsed 
-                  ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' 
-                  : 'bg-white text-slate-700 border-slate-300 hover:border-indigo-500 shadow-2xs'
-              }`}
-            >
-              {wObj.text}
-            </button>
+            <div key={lineIdx} className="flex flex-wrap items-center gap-2 py-1 leading-loose">
+              {parts.map((segment, segIdx) => {
+                // Odd segments are gaps inside brackets
+                if (segIdx % 2 === 1) {
+                  const key = `${lineIdx}_${segIdx}`;
+                  const expectedAns = segment;
+                  const studentAns = userAnswers[key] || '';
+                  const lineIsCorrect = studentAns.trim().toLowerCase() === expectedAns.trim().toLowerCase();
+
+                  return (
+                    <input
+                      key={key}
+                      type="text"
+                      value={studentAns}
+                      disabled={submitted}
+                      onChange={(e) => handleInputChange(key, e.target.value)}
+                      placeholder="введите ответ"
+                      className={`border-b-2 outline-none px-3 py-1 font-bold text-center transition min-w-28 text-sm ${
+                        submitted
+                          ? (lineIsCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-extrabold' : 'border-rose-500 bg-rose-50 text-rose-900 font-extrabold')
+                          : 'border-indigo-500 bg-indigo-50/30 focus:bg-white focus:border-indigo-600 text-slate-900'
+                      }`}
+                    />
+                  );
+                }
+                return <span key={segIdx}>{segment}</span>;
+              })}
+            </div>
           );
         })}
       </div>
 
-      {/* Action Buttons & Feedback */}
       {!submitted ? (
-        <div className="flex gap-2">
-          <button disabled={selectedWordObjects.length === 0} onClick={handleSubmit} className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg disabled:opacity-50 cursor-pointer">Проверить</button>
-          <button onClick={handleReset} className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-lg text-sm cursor-pointer">Сбросить</button>
-        </div>
+        <button
+          onClick={handleSubmit}
+          className="px-6 py-2.5 bg-indigo-600 text-white font-extrabold rounded-2xl hover:bg-indigo-700 transition shadow-xs text-xs cursor-pointer"
+        >
+          Проверить
+        </button>
       ) : (
-        <div className={isCorrect ? 'p-3 bg-green-100 text-green-800 rounded-lg text-sm font-bold' : 'p-3 bg-red-100 text-red-800 rounded-lg text-sm'}>
-          {isCorrect ? '🎉 Отлично! Предложение составлено верно.' : `❌ Неверно. Правильный вариант: "${targetSentence}"`}
+        <div className={`p-4 rounded-2xl text-xs font-bold ${isAllCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+          {isAllCorrect ? '🎉 Отлично! Все пропуски заполнены верно.' : `❌ Ошибка (${correctGaps} из ${totalGaps} верно). Проверьте правильные ответы.`}
         </div>
       )}
     </div>
