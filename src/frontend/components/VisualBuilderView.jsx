@@ -27,7 +27,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
   const [aiModalTarget, setAiModalTarget] = useState(null);
   const [selectedSourceId, setSelectedSourceId] = useState('');
-  const [selectedTasks, setSelectedTasks] = useState(['listening', 'quiz']);
+  const [selectedTasks, setSelectedTasks] = useState(['listening']);
   const [matchingType, setMatchingType] = useState('synonym');
   const [flashcardType, setFlashcardType] = useState('russian');
   const [modalLevel, setModalLevel] = useState('B1');
@@ -172,6 +172,11 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
   const handleOpenAiModal = (block, blockIdx) => {
     setAiModalTarget({ block, blockIdx });
+    // Default single task selection based on block type
+    if (block.type === 'grammar_card') setSelectedTasks(['grammar_quiz']);
+    else if (block.type === 'matching') setSelectedTasks(['matching']);
+    else if (block.type === 'flashcards') setSelectedTasks(['flashcards']);
+    else setSelectedTasks(['listening']);
   };
 
   const toggleTaskSelection = (taskKey) => {
