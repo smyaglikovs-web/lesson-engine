@@ -1,4 +1,4 @@
-// FULL CELTA/DELTA METHODOLOGY PIPELINE & MULTI-TIER AI CASCADE MODULE
+// FULL CELTA/DELTA METHODOLOGY PIPELINE & BULLETPROOF MULTI-TIER AI CASCADE
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -19,7 +19,7 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// ULTRA-RESILIENT JSON PARSER (HANDLES UNESCAPED QUOTES, NEWLINES & TRUNCATED BRACKETS)
+// ULTRA-RESILIENT JSON PARSER WITH AUTO-REPAIR FOR TRUNCATED LLM OUTPUTS
 export function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -35,9 +35,11 @@ export function cleanAndParseJson(rawText) {
     if (lastBracket > firstBracket) clean = clean.substring(firstBracket, lastBracket + 1);
   }
 
+  // Attempt 1: Standard JSON parse
   try {
     return JSON.parse(clean);
   } catch (e1) {
+    // Attempt 2: Escape unescaped raw newlines & control chars inside quotes
     try {
       let fixed = '';
       let inString = false;
@@ -56,6 +58,7 @@ export function cleanAndParseJson(rawText) {
       }
       return JSON.parse(fixed);
     } catch (e2) {
+      // Attempt 3: Structural bracket & string termination repair
       let stack = [];
       let repaired = '';
       let insideStr = false;
@@ -76,32 +79,47 @@ export function cleanAndParseJson(rawText) {
       if (insideStr) repaired += '"';
       while (stack.length > 0) repaired += stack.pop();
 
+      // Strip trailing commas before closing brackets
+      repaired = repaired.replace(/,\s*([\}\]])/g, '$1');
+
       try {
         return JSON.parse(repaired);
       } catch (e3) {
+        console.warn('JSON Repair failed:', e3.message);
         return null;
       }
     }
   }
 }
 
-// BULLETPROOF CASCADE AI PIPELINE (GEMINI 2.5 FLASH -> WORKERS AI LLAMA 3.3/3.1/QWEN)
+// BULLETPROOF CASCADE AI PIPELINE (GEMINI API REST -> WORKERS AI ACTIVE MODELS)
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
-  // 1. TIER 1: GOOGLE AI STUDIO (GEMINI API VIA x-goog-api-key)
-  if (env.GEMINI_API_KEY) {
-    const geminiModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+  // 1. TIER 1: GOOGLE AI STUDIO (GEMINI REST API WITH QUERY PARAM AUTH & SYSTEM INSTRUCTION)
+  if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
+    const apiKey = env.GEMINI_API_KEY.trim();
+    const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
     for (const gModel of geminiModels) {
       try {
-        const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent`;
+        const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${apiKey}`;
         const gRes = await fetch(gUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': env.GEMINI_API_KEY.trim()
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+            systemInstruction: {
+              parts: [{ text: systemPrompt }]
+            },
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: userContent }]
+              }
+            ],
+            generationConfig: { 
+              responseMimeType: 'application/json', 
+              temperature: 0.2,
+              maxOutputTokens: maxTokens
+            }
           })
         });
 
@@ -109,21 +127,27 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           const gData = await gRes.json();
           const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
           const gParsed = cleanAndParseJson(gRawText);
-          if (gParsed) return gParsed;
+          if (gParsed) {
+            console.log(`Successfully generated lesson using Gemini model: ${gModel}`);
+            return gParsed;
+          }
+        } else {
+          const errText = await gRes.text();
+          console.warn(`Gemini ${gModel} returned HTTP ${gRes.status}:`, errText.substring(0, 200));
         }
       } catch (eG) {
-        console.warn(`Gemini API call for ${gModel} failed:`, eG);
+        console.warn(`Gemini API call for ${gModel} failed:`, eG.message);
       }
     }
   }
 
-  // 2. TIER 2: WORKERS AI ACTIVE MODELS CASCADE
+  // 2. TIER 2: CLOUDFLARE WORKERS AI ACTIVE VERIFIED MODELS
   if (env.AI) {
     const cfModels = [
-      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-      '@cf/meta/llama-3.1-8b-instruct-fast',
-      '@cf/qwen/qwen2.5-72b-instruct',
-      '@cf/meta/llama-3.1-70b-instruct'
+      '@cf/meta/llama-3.1-8b-instruct',
+      '@cf/meta/llama-3.1-70b-instruct',
+      '@cf/meta/llama-3-8b-instruct',
+      '@cf/mistralai/mistral-7b-instruct-v0.2'
     ];
 
     for (const cfModel of cfModels) {
@@ -139,14 +163,17 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 
         const rawCf = resCf?.response || resCf?.choices?.[0]?.message?.content;
         const parsedCf = cleanAndParseJson(rawCf);
-        if (parsedCf) return parsedCf;
+        if (parsedCf) {
+          console.log(`Successfully generated lesson using Workers AI model: ${cfModel}`);
+          return parsedCf;
+        }
       } catch (eCf) {
-        console.warn(`Workers AI model ${cfModel} failed:`, eCf);
+        console.warn(`Workers AI model ${cfModel} failed:`, eCf.message);
       }
     }
   }
 
-  throw new Error('AI Generation failed on all cascade tiers. Please check API Key or try again.');
+  throw new Error('AI Generation failed on all cascade tiers. Please check your Gemini API key or try again.');
 }
 
 async function fetchLyricsForSong(title = '') {
@@ -178,7 +205,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
     let transcriptText = '';
     const apiKey = env.YOUTUBE_API_KEY || '';
 
-    // Step 1: Query Official YouTube Data API v3 for Metadata
     if (apiKey) {
       try {
         const apiRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`);
@@ -201,7 +227,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
       } catch(e) {}
     }
 
-    // Step 2: Extract captionTracks from Watch Page HTML via Regex
     try {
       const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: BROWSER_HEADERS });
       if (pageRes.ok) {
@@ -241,7 +266,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
       }
     } catch(e) {}
 
-    // Step 3: Direct TimedText API Fallback (Enforcing kind=asr for Auto-Captions)
     if (!transcriptText) {
       const timedTextUrls = [
         `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
@@ -277,7 +301,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
       }
     }
 
-    // Step 4: Song Lyrics Fallback
     if (!transcriptText && title) {
       const songLyrics = await fetchLyricsForSong(title);
       if (songLyrics) transcriptText = songLyrics;
@@ -326,14 +349,14 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
         { "type": "heading", "level": 1, "text": "${topic}" },
         { "type": "open_input", "prompt": "What do you know about ${topic}?" },
         { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "translation", "example": "sentence" } ] },
-        { "type": "text", "text": "Write a complete 220-word reading passage about ${topic} for CEFR Level ${level}..." }
+        { "type": "text", "text": "Write a complete 180-word reading passage about ${topic} for CEFR Level ${level}..." }
       ]
     },
     {
       "id": "p2",
       "title": "Part 2: Text Comprehension",
       "blocks": [
-        { "type": "multiple_choice", "question": "Main idea of the reading passage?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Explanation" },
+        { "type": "multiple_choice", "question": "Main idea of the reading passage?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Explanation" },
         { "type": "matching", "instruction": "Match facts from the reading passage:", "pairs": [ { "left": "Fact", "right": "Detail" } ] },
         { "type": "multiple_choice", "question": "True or False question?", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Explanation" }
       ]
@@ -369,7 +392,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
   const userPrompt = `Topic: ${topic}\nMaterial/Context: ${text || 'Create a topic-based story.'}`;
 
   try {
-    const parsedJson = await runAiPipeline(env, systemPrompt, userPrompt, 3800);
+    const parsedJson = await runAiPipeline(env, systemPrompt, userPrompt, 3500);
     return { success: true, jsonText: JSON.stringify(parsedJson, null, 2) };
   } catch (err) {
     return { error: 'AI generation error: ' + err.message };
@@ -394,7 +417,6 @@ export async function transformBlockWithAI(env, payload) {
 
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-  // SANITIZE CONTEXT DATA
   let rawContext = '';
   if (sourceBlock.type === 'grammar_card') {
     rawContext = `Grammar Topic: ${sourceBlock.title || ''} | Formula: ${sourceBlock.formula || ''} | Explanation: ${sourceBlock.explanation || ''} | Examples: ${(sourceBlock.examples || []).join('; ')}`;
@@ -411,7 +433,6 @@ export async function transformBlockWithAI(env, payload) {
 
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  // IN-BLOCK AI TEXT PASSAGE AUTO-WRITER
   if (actions.includes('generate_text_passage')) {
     const textSystemPrompt = `You are a master ELT Materials Writer. Write an engaging, educational reading story/passage on the topic provided for CEFR Level ${level}.
 
@@ -435,7 +456,6 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
     }
   }
 
-  // IN-BLOCK AI GRAMMAR RULE AUTO-BUILDER
   if (actions.includes('generate_grammar_card')) {
     const grammarSystemPrompt = `You are a master ELT Methodologist. Generate a comprehensive Grammar Presentation Card for the grammar topic provided for CEFR Level ${level}.
 
@@ -460,7 +480,6 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
     }
   }
 
-  // TEXT REFINEMENT TOOLS
   if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
     let textInstruction = 'Expand this reading passage into a richer, longer, more detailed story (350-450 words) with CEFR Level ' + level + ' vocabulary.';
     
@@ -481,7 +500,6 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
     }
   }
 
-  // DYNAMIC TASK PROMPT CONSTRUCTION WITH FEW-SHOT TEMPLATES
   let taskInstructions = '';
   if (actions.includes('listening')) {
     taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
