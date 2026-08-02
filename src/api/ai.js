@@ -1,4 +1,4 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH PEDAGOGICAL PPP MATRIX
+// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH FULL GRAMMAR & TASK SANITIZATION
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, articles. Target Vocabulary: Everyday basics. Sentences: Short (5-10 words).',
@@ -19,10 +19,80 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// ULTRA-RESILIENT JSON PARSER WITH AUTO-REPAIR
+// SANITIZES LLM OBJECT OUTPUTS INTO CLEAN FRONTEND PRIMITIVES (PREVENTS [object Object])
+export function sanitizeBlockStructure(b) {
+  if (!b || typeof b !== 'object') return b;
+
+  let type = String(b.type || 'text').toLowerCase().trim();
+  if (type === 'header' || type === 'title') type = 'heading';
+  if (type === 'paragraph' || type === 'reading' || type === 'article') type = 'text';
+  if (type === 'quiz' || type === 'question' || type === 'true_false') type = 'multiple_choice';
+  if (type === 'vocab' || type === 'words') type = 'flashcards';
+  if (type === 'rule' || type === 'grammar') type = 'grammar_card';
+
+  b.type = type;
+
+  // Fix multiple_choice options if returned as [{ text: "A", isCorrect: true }]
+  if (b.type === 'multiple_choice') {
+    let rawOpts = Array.isArray(b.options) ? b.options : ['Option A', 'Option B'];
+    let cleanOptions = [];
+    let detectedCorrect = typeof b.correct === 'number' ? b.correct : 0;
+
+    rawOpts.forEach((opt, idx) => {
+      if (typeof opt === 'string') {
+        cleanOptions.push(opt);
+      } else if (opt && typeof opt === 'object') {
+        const textVal = opt.text || opt.option || opt.value || opt.label || opt.answer || JSON.stringify(opt);
+        cleanOptions.push(String(textVal));
+        if (opt.isCorrect === true || opt.correct === true) {
+          detectedCorrect = idx;
+        }
+      } else {
+        cleanOptions.push(String(opt));
+      }
+    });
+
+    b.options = cleanOptions.length > 0 ? cleanOptions : ['Option A', 'Option B'];
+    b.correct = detectedCorrect;
+  }
+
+  // Fix matching pairs if returned as [{ term: "A", definition: "B" }]
+  if (b.type === 'matching') {
+    let rawPairs = Array.isArray(b.pairs) ? b.pairs : [];
+    b.pairs = rawPairs.map(p => {
+      if (typeof p === 'object' && p !== null) {
+        const leftVal = p.left || p.term || p.word || p.item || 'Word';
+        const rightVal = p.right || p.definition || p.match || p.answer || 'Match';
+        return { left: String(leftVal), right: String(rightVal) };
+      }
+      return { left: 'Word', right: 'Match' };
+    });
+  }
+
+  // Fix flashcards if returned as [{ word: "A", translation: "B" }]
+  if (b.type === 'flashcards') {
+    let rawCards = Array.isArray(b.cards) ? b.cards : [];
+    b.cards = rawCards.map(c => {
+      if (typeof c === 'object' && c !== null) {
+        const frontVal = c.front || c.word || c.term || 'Word';
+        const backVal = c.back || c.translation || c.definition || 'Translation';
+        const exVal = c.example || c.sentence || '';
+        return { front: String(frontVal), back: String(backVal), example: String(exVal) };
+      }
+      return { front: 'Word', back: 'Translation', example: '' };
+    });
+  }
+
+  return b;
+}
+
+// ULTRA-RESILIENT JSON PARSER WITH DEEPSEEK <think> STRIPPER & AUTO-REPAIR
 export function cleanAndParseJson(rawText, topic = '', level = 'B1') {
   if (!rawText) return null;
-  let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+  // 1. Strip DeepSeek reasoning <think>...</think> tags if present
+  let clean = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  clean = clean.replace(/```json/gi, '').replace(/```/g, '').trim();
 
   const firstBrace = clean.indexOf('{');
   const firstBracket = clean.indexOf('[');
@@ -400,7 +470,7 @@ RETURN ONLY VALID JSON MATCHING THIS TEMPLATE:
       "id": "p2",
       "title": "Part 2: Comprehension",
       "blocks": [
-        { "type": "multiple_choice", "question": "Question?", "options": ["A", "B", "C"], "correct": 0, "explanation": "Reason" },
+        { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" },
         { "type": "matching", "instruction": "Match pairs:", "pairs": [ { "left": "Fact", "right": "Detail" } ] }
       ]
     },
@@ -433,6 +503,11 @@ RETURN ONLY VALID JSON MATCHING THIS TEMPLATE:
 
   try {
     const parsedJson = await runAiPipeline(env, systemPrompt, userPrompt, 3500, topic, level);
+    if (parsedJson && parsedJson.pages) {
+      parsedJson.pages.forEach(p => {
+        p.blocks = (p.blocks || []).map(b => sanitizeBlockStructure(b));
+      });
+    }
     return { success: true, jsonText: JSON.stringify(parsedJson, null, 2) };
   } catch (err) {
     return { success: true, jsonText: JSON.stringify(createFallbackLesson(topic, level), null, 2) };
@@ -467,7 +542,8 @@ export async function transformBlockWithAI(env, payload) {
     const grammarSystemPrompt = `Generate a Grammar Card JSON array object for CEFR Level ${level}:\n[ { "type": "grammar_card", "title": "${safeContextData}", "formula": "Subject + Verb", "explanation": "Rule explanation", "examples": ["Example 1", "Example 2"] } ]`;
     try {
       const fallbackParsed = await runAiPipeline(env, grammarSystemPrompt, `Grammar Topic: ${safeContextData}`, 1500);
-      return { success: true, newBlocks: Array.isArray(fallbackParsed) ? fallbackParsed : [fallbackParsed] };
+      const sanitized = Array.isArray(fallbackParsed) ? fallbackParsed.map(b => sanitizeBlockStructure(b)) : [sanitizeBlockStructure(fallbackParsed)];
+      return { success: true, newBlocks: sanitized };
     } catch (e) {
       return { error: 'Failed to generate grammar card: ' + e.message };
     }
@@ -520,7 +596,7 @@ export async function transformBlockWithAI(env, payload) {
   let grammarPromptAddon = '';
   if (isGrammarContext) {
     grammarPromptAddon = `\nCRITICAL RULE FOR GRAMMAR CONTEXT: The source context is a Grammar Presentation Rule (${safeContextData}). ALL generated exercise questions, option choices, and gap-fill sentences MUST specifically test and drill this target grammar rule!
-- For "multiple_choice": Write questions asking for the correct grammar form. Options must contain 1 correct form and 2 common student grammar distractors.
+- For "multiple_choice": Write questions asking for the correct grammar form. Options must be an array of simple text strings like ["Option A", "Option B", "Option C"].
 - For "gap_fill": Write sentences with bracketed target verb/grammar forms.
 - For "matching": Create target verb form or collocation pairs (e.g. Left: "go", Right: "went").
 - DO NOT return generic placeholders like "Question?" or "Option A"!`;
@@ -529,11 +605,13 @@ export async function transformBlockWithAI(env, payload) {
   const systemPrompt = `You are an expert ELT Materials Designer. Generate ONLY the requested exercise block(s) for CEFR Level ${level} based on context.${grammarPromptAddon}
 
 RETURN VALID JSON ARRAY OF REQUESTED BLOCK OBJECTS:
-[ { "type": "multiple_choice", "question": "...", "options": [...], "correct": 0, "explanation": "..." } ]\n${taskInstructions}`;
+[ { "type": "multiple_choice", "question": "...", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "..." } ]\n${taskInstructions}`;
 
   try {
     const parsedBlocks = await runAiPipeline(env, systemPrompt, `Source Context:\n${safeContextData}`, 2500);
-    return { success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] };
+    const rawList = Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks];
+    const sanitizedList = rawList.map(b => sanitizeBlockStructure(b));
+    return { success: true, newBlocks: sanitizedList };
   } catch (err) {
     return { error: 'AI transformation failed: ' + err.message };
   }
