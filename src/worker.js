@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - FEW-SHOT GAP-FILL & GRAMMAR TASK GENERATOR
+// CLOUDFLARE WORKER BACKEND - MULTI-LINE GAP FILL FORMATTER & GEMINI CASCADE
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -55,7 +55,6 @@ function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
-// ULTRA-RESILIENT JSON PARSER
 function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -125,7 +124,7 @@ function cleanAndParseJson(rawText) {
 async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
   // 1. TIER 1: GOOGLE AI STUDIO (GEMINI 2.5 / 3.5 FLASH VIA x-goog-api-key HEADER)
   if (env.GEMINI_API_KEY) {
-    const geminiModels = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-2.0-flash'];
+    const geminiModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
     for (const gModel of geminiModels) {
       try {
         const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent`;
@@ -146,8 +145,6 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
           const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
           const gParsed = cleanAndParseJson(gRawText);
           if (gParsed) return gParsed;
-        } else {
-          console.warn(`Gemini model ${gModel} returned status ${gRes.status}`);
         }
       } catch (eG) {
         console.warn(`Gemini API call for ${gModel} failed:`, eG);
@@ -284,7 +281,7 @@ STRICT BLOCK TYPE NAMES (USE ONLY THESE EXACT KEYS):
 - "matching": { "type": "matching", "instruction": "Match pairs:", "pairs": [ { "left": "word", "right": "match" } ] }
 - "grammar_card": { "type": "grammar_card", "title": "Rule Title", "formula": "Formula", "explanation": "Explanation", "examples": ["Ex 1"] }
 - "gap_fill_bank": { "type": "gap_fill_bank", "instruction": "Fill gaps:", "text": "Story with [answers] in brackets.", "distractors": ["fake1"] }
-- "gap_fill": { "type": "gap_fill", "instruction": "Transform:", "text": "Sentence with [answer].", "answers": ["answer"] }
+- "gap_fill": { "type": "gap_fill", "instruction": "Transform:", "text": "Sentence 1 with [answer].\\nSentence 2 with [answer].", "answers": ["answer1", "answer2"] }
 
 STRICT QUOTE RULE:
 - Use single quotes (') for quotes or speech inside text values. NO unescaped double quotes!
@@ -330,7 +327,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
       "title": "Part 4: Practice & Transformation",
       "blocks": [
         { "type": "gap_fill_bank", "instruction": "Fill gaps:", "text": "Paragraph with [answers] in brackets.", "distractors": ["extra1"] },
-        { "type": "gap_fill", "instruction": "Transform sentence:", "text": "Sentence with [answer].", "answers": ["answer"] }
+        { "type": "gap_fill", "instruction": "Complete the sentences:", "text": "1. First sentence with [word1].\\n2. Second sentence with [word2].", "answers": ["word1", "word2"] }
       ]
     },
     {
@@ -339,7 +336,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
       "blocks": [
         { "type": "open_input", "prompt": "Speaking discussion question on ${topic}?" },
         { "type": "open_input", "prompt": "Writing / roleplay prompt?" },
-        { "type": "gap_fill", "instruction": "Homework practice:", "text": "Sentence with [answer].", "answers": ["answer"] }
+        { "type": "gap_fill", "instruction": "Homework practice:", "text": "1. Homework sentence [word1].\\n2. Homework sentence [word2].", "answers": ["word1", "word2"] }
       ]
     }
   ]
@@ -431,7 +428,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
-        // DYNAMIC TASK PROMPT CONSTRUCTION WITH FEW-SHOT TEMPLATES FOR ZERO ERRORS
+        // DYNAMIC TASK PROMPT CONSTRUCTION (WITH NEWLINE MULTI-SENTENCE TEMPLATES)
         let taskInstructions = '';
         if (actions.includes('listening')) {
           taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
@@ -443,10 +440,10 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           taskInstructions += `- Generate 1 "multiple_choice" block with 4 True/False questions based on context. Template:\n[ { "type": "multiple_choice", "question": "True or False?", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Reason" } ]\n`;
         }
         if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
-          taskInstructions += `- Generate 1 "gap_fill" block with 4 transformation sentences practicing the grammar/context. Put target word in brackets [word]. Template:\n[ { "type": "gap_fill", "instruction": "Complete using correct form:", "text": "1. The creator [who] made this was imaginative.\\n2. This is the joke [which] was told.", "answers": ["who", "which"] } ]\n`;
+          taskInstructions += `- Generate 1 "gap_fill" block with 4 separate sentences, separated by newlines \\n, putting target words in brackets [word]. Template:\n[ { "type": "gap_fill", "instruction": "Complete the sentences using correct form:", "text": "1. Sentence one with [word1].\\n2. Sentence two with [word2].\\n3. Sentence three with [word3].", "answers": ["word1", "word2", "word3"] } ]\n`;
         }
         if (actions.includes('gap_fill_bank')) {
-          taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] in brackets and 3 distractors.\n`;
+          taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] and 3 distractors.\n`;
         }
         if (actions.includes('matching')) {
           taskInstructions += `- Generate 1 "matching" block with 6 pairs [{ left, right }] configured as "${matchingType}".\n`;
@@ -466,7 +463,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
 STRICT RULES:
 1. ONLY generate the specific block(s) requested below. Do NOT generate any unrequested extra blocks!
 2. All exercise items MUST be 100% full and populated with rich English content based on context.
-3. For "gap_fill" blocks, write all 4 sentences inside the single "text" property separated by newlines \\n with target words in brackets [word].
+3. For "gap_fill" blocks, write all sentences inside the single "text" property separated by newlines \\n with target words in brackets [word].
 4. Use single quotes (') inside string values. No unescaped double quotes!
 5. 100% English target language policy (except Russian translations if explicitly requested).
 6. CEFR Level ${level} Target: ${cefrRules}
