@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH AI TEXT AUTO-WRITER
+// CLOUDFLARE WORKER BACKEND - HYBRID AI TEAM (LLAMA 3.3 + DEEPSEEK R1 + QWEN 2.5 FALLBACK)
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -120,6 +120,49 @@ function cleanAndParseJson(rawText) {
   }
 }
 
+// HYBRID AI PIPELINE (LLAMA 3.3 PRIMARY + QWEN 2.5 STRICT FALLBACK RELAY)
+async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
+  if (!env.AI) {
+    throw new Error('Cloudflare Workers AI binding (AI) is not configured.');
+  }
+
+  // 1. PRIMARY LEADER: Llama 3.3 70B (Best for native ELT English & Pedagogy)
+  try {
+    const res1 = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8', {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent }
+      ],
+      temperature: 0.2,
+      max_tokens: maxTokens
+    });
+
+    const rawText1 = res1?.response || res1?.choices?.[0]?.message?.content;
+    const parsed = cleanAndParseJson(rawText1);
+    if (parsed) return parsed;
+  } catch (e1) {
+    console.warn('Primary AI (Llama 3.3 70B) failed/timed out, switching to Fallback AI (Qwen 2.5 72B)...', e1);
+  }
+
+  // 2. FALLBACK RELAY: Qwen 2.5 72B (World-class Strict JSON Enforcement)
+  try {
+    const res2 = await env.AI.run('@cf/qwen/qwen2.5-72b-instruct', {
+      messages: [
+        { role: 'system', content: systemPrompt + '\nSTRICT RULE: Output 100% valid JSON with zero markdown or conversational wrapper.' },
+        { role: 'user', content: userContent }
+      ],
+      temperature: 0.1,
+      max_tokens: maxTokens
+    });
+
+    const rawText2 = res2?.response || res2?.choices?.[0]?.message?.content;
+    return cleanAndParseJson(rawText2);
+  } catch (e2) {
+    console.error('Fallback AI (Qwen 2.5 72B) also failed:', e2);
+    throw new Error('AI Generation failed on all models. Please click Generate again.');
+  }
+}
+
 async function ensureTables(db) {
   if (!db) return;
   try {
@@ -201,7 +244,7 @@ export default {
         return jsonResponse({ error: 'Invalid password' }, 401);
       }
 
-      // FULL AI LESSON GENERATOR
+      // FULL AI LESSON GENERATOR (PRIMARY: LLAMA 3.3 70B ➔ FALLBACK: QWEN 2.5 72B)
       if (path === '/api/ai/generate' && request.method === 'POST') {
         const { text, level = 'B1', topic = 'General English' } = await request.json();
 
@@ -263,8 +306,8 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
       "id": "p4",
       "title": "Part 4: Practice & Transformation",
       "blocks": [
-        { "type": "gap_fill_bank", "instruction": "Fill gaps:", "text": "Paragraph with [target] words.", "distractors": ["extra1"] },
-        { "type": "gap_fill", "instruction": "Transform sentence:", "text": "Sentence with [correct_form].", "answers": ["correct_form"] }
+        { "type": "gap_fill_bank", "instruction": "Fill gaps:", "text": "Paragraph with [answers] in brackets.", "distractors": ["extra1"] },
+        { "type": "gap_fill", "instruction": "Transform sentence:", "text": "Sentence with [answer].", "answers": ["answer"] }
       ]
     },
     {
@@ -281,26 +324,11 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
 
         const userContent = `Topic: ${topic}\nMaterial/Context: ${text || 'Create a topic-based story.'}`;
 
-        if (!env.AI) {
-          return jsonResponse({ error: 'Cloudflare Workers AI binding (AI) is not configured.' }, 500);
-        }
-
-        const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userContent }
-          ],
-          temperature: 0.2,
-          max_tokens: 3800
-        });
-
-        const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
-        const parsedJson = cleanAndParseJson(rawText);
-
+        const parsedJson = await runAiPipeline(env, systemPrompt, userContent, 3800);
         return jsonResponse({ success: true, jsonText: JSON.stringify(parsedJson, null, 2) });
       }
 
-      // SINGLE BLOCK & CONTEXTUAL AI ASSISTANT
+      // SINGLE BLOCK & CONTEXTUAL AI ASSISTANT (PRIMARY: DEEPSEEK R1 / LLAMA 3.3)
       if (path === '/api/ai/transform-block' && request.method === 'POST') {
         const {
           actions = [],
@@ -315,7 +343,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
         const contextData = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
 
-        // IN-BLOCK AI TEXT PASSAGE AUTO-WRITER (GENERATES FULL READING PASSAGE ON TOPIC)
+        // IN-BLOCK AI TEXT PASSAGE AUTO-WRITER
         if (actions.includes('generate_text_passage')) {
           const targetWords = targetLength + ' words';
           const textSystemPrompt = `You are a master ELT Materials Writer. Write an engaging, educational reading story/passage on the topic provided for CEFR Level ${level}.
@@ -331,29 +359,12 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
   }
 ]`;
 
-          const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
-            messages: [
-              { role: 'system', content: textSystemPrompt },
-              { role: 'user', content: `Topic/Hint for Reading Text: ${contextData}` }
-            ],
-            temperature: 0.3,
-            max_tokens: 3000
-          });
-
-          const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
-          let newStoryText = '';
-
-          try {
-            const parsedObj = cleanAndParseJson(rawText);
-            newStoryText = parsedObj.text || parsedObj[0]?.text || rawText;
-          } catch (eFallback) {
-            newStoryText = rawText.replace(/```json/gi, '').replace(/```/g, '').replace(/^{"text":\s*"/i, '').replace(/"}$/, '').trim();
-          }
-
+          const parsedBlocks = await runAiPipeline(env, textSystemPrompt, `Topic/Hint for Reading Text: ${contextData}`, 3000);
+          const newStoryText = Array.isArray(parsedBlocks) ? (parsedBlocks[0]?.text || JSON.stringify(parsedBlocks[0])) : (parsedBlocks.text || JSON.stringify(parsedBlocks));
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
-        // SPECIAL CASE: IN-BLOCK AI GRAMMAR RULE AUTO-BUILDER
+        // SPECIAL CASE: IN-BLOCK AI GRAMMAR RULE AUTO-BUILDER (USES DEEPSEEK R1 FOR REASONING)
         if (actions.includes('generate_grammar_card')) {
           const grammarSystemPrompt = `You are a master ELT Methodologist. Generate a comprehensive Grammar Presentation Card for the grammar topic provided for CEFR Level ${level}.
 
@@ -370,21 +381,28 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
   }
 ]`;
 
-          const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
-            messages: [
-              { role: 'system', content: grammarSystemPrompt },
-              { role: 'user', content: `Grammar Topic Name: ${contextData}` }
-            ],
-            temperature: 0.2,
-            max_tokens: 1500
-          });
+          // Use DeepSeek R1 for Grammar Reasoning
+          try {
+            const dsRes = await env.AI.run('@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', {
+              messages: [
+                { role: 'system', content: grammarSystemPrompt },
+                { role: 'user', content: `Grammar Topic Name: ${contextData}` }
+              ],
+              temperature: 0.2,
+              max_tokens: 1500
+            });
+            const rawDs = dsRes?.response || dsRes?.choices?.[0]?.message?.content;
+            const dsParsed = cleanAndParseJson(rawDs);
+            if (dsParsed) {
+              return jsonResponse({ success: true, newBlocks: Array.isArray(dsParsed) ? dsParsed : [dsParsed] });
+            }
+          } catch (eDs) {}
 
-          const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
-          const parsedBlocks = cleanAndParseJson(rawText);
-          return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
+          const fallbackParsed = await runAiPipeline(env, grammarSystemPrompt, `Grammar Topic Name: ${contextData}`, 1500);
+          return jsonResponse({ success: true, newBlocks: Array.isArray(fallbackParsed) ? fallbackParsed : [fallbackParsed] });
         }
 
-        // UNBREAKABLE TEXT REFINEMENT (Expand, Shorten, Change Level)
+        // UNBREAKABLE TEXT REFINEMENT
         if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
           let textInstruction = 'Expand this reading passage into a richer, longer, more detailed story (350-450 words) with CEFR Level ' + level + ' vocabulary.';
           
@@ -396,25 +414,8 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
 
           const textSystemPrompt = `You are a master ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nSTRICT QUOTE RULE: Use single quotes (') for quotes inside text.\nRETURN ONLY A VALID JSON OBJECT WITH "text":\n{ "text": "Full rewritten reading story text here..." }`;
 
-          const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
-            messages: [
-              { role: 'system', content: textSystemPrompt },
-              { role: 'user', content: `Original Text:\n${contextData}` }
-            ],
-            temperature: 0.3,
-            max_tokens: 3000
-          });
-
-          const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
-          let newStoryText = '';
-
-          try {
-            const parsedObj = cleanAndParseJson(rawText);
-            newStoryText = parsedObj.text || parsedObj[0]?.text || rawText;
-          } catch (eFallback) {
-            newStoryText = rawText.replace(/```json/gi, '').replace(/```/g, '').replace(/^{"text":\s*"/i, '').replace(/"}$/, '').trim();
-          }
-
+          const parsedObj = await runAiPipeline(env, textSystemPrompt, `Original Text:\n${contextData}`, 3000);
+          const newStoryText = parsedObj.text || (Array.isArray(parsedObj) ? parsedObj[0]?.text : JSON.stringify(parsedObj));
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
@@ -452,18 +453,7 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
 
         const userContent = `CEFR Level: ${level}\nSource Context:\n${contextData}`;
 
-        const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userContent }
-          ],
-          temperature: 0.3,
-          max_tokens: 2500
-        });
-
-        const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
-        const parsedBlocks = cleanAndParseJson(rawText);
-
+        const parsedBlocks = await runAiPipeline(env, systemPrompt, userContent, 2500);
         return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
       }
 
