@@ -26,8 +26,10 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
   const [activePageIndex, setActivePageIndex] = useState(0);
 
   const [aiModalTarget, setAiModalTarget] = useState(null);
-  const [selectedTasks, setSelectedTasks] = useState(['listening', 'flashcards', 'quiz']);
+  const [selectedTasks, setSelectedTasks] = useState(['listening', 'quiz']);
   const [aiGenerating, setAiGenerating] = useState(false);
+
+  const [draggedBlockIdx, setDraggedBlockIdx] = useState(null);
 
   const activePage = lesson.pages[activePageIndex] || lesson.pages[0];
 
@@ -88,6 +90,25 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     setLesson(prev => ({ ...prev, pages: updatedPages }));
   };
 
+  const handleDragStart = (idx) => {
+    setDraggedBlockIdx(idx);
+  };
+
+  const handleDropOnBlock = (targetIdx) => {
+    if (draggedBlockIdx === null || draggedBlockIdx === targetIdx) return;
+    const blocks = [...activePage.blocks];
+    const draggedItem = blocks[draggedBlockIdx];
+    
+    // Remove from old position and insert into new position
+    blocks.splice(draggedBlockIdx, 1);
+    blocks.splice(targetIdx, 0, draggedItem);
+
+    const updatedPages = [...lesson.pages];
+    updatedPages[activePageIndex].blocks = blocks;
+    setLesson(prev => ({ ...prev, pages: updatedPages }));
+    setDraggedBlockIdx(null);
+  };
+
   const handleDeleteBlock = (blockIdx) => {
     const updatedPages = [...lesson.pages];
     updatedPages[activePageIndex].blocks = updatedPages[activePageIndex].blocks.filter((_, i) => i !== blockIdx);
@@ -139,35 +160,47 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
 
   return (
     <div className="space-y-6">
+      {/* HEADER BAR & METADATA INPUTS */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-          <h2 className="text-xl font-extrabold text-slate-900">🧩 Visual Lego Lesson Builder</h2>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
-            <button onClick={onCancel} className="btn-secondary">Cancel</button>
-            <button onClick={() => onSaveLesson({ ...lesson, id: lesson.id || 'lesson-' + Date.now() })} className="btn-success">
+            <span className="text-2xl">🧩</span>
+            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Visual Lego Lesson Builder</h2>
+          </div>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button
+              onClick={onCancel}
+              className="flex-1 sm:flex-initial px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-sm transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onSaveLesson({ ...lesson, id: lesson.id || 'lesson-' + Date.now() })}
+              className="flex-1 sm:flex-initial px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl text-sm shadow-md transition cursor-pointer"
+            >
               💾 Save Lesson
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2">
-            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Lesson Title</label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+          <div className="md:col-span-2 space-y-1.5">
+            <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">Lesson Title</label>
             <input
               type="text"
               value={lesson.title}
               onChange={e => setLesson(prev => ({ ...prev, title: e.target.value }))}
-              className="input-modern font-bold text-base"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-bold text-slate-900 outline-none transition shadow-2xs"
               placeholder="e.g. Travel Vocabulary & Past Simple"
             />
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Level & Topic</label>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">Level & Topic</label>
             <div className="flex gap-2">
               <select
                 value={lesson.level}
                 onChange={e => setLesson(prev => ({ ...prev, level: e.target.value }))}
-                className="input-modern w-28 font-bold"
+                className="w-28 px-3 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-bold text-slate-900 outline-none transition shadow-2xs cursor-pointer"
               >
                 <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
               </select>
@@ -175,7 +208,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
                 type="text"
                 value={lesson.topic}
                 onChange={e => setLesson(prev => ({ ...prev, topic: e.target.value }))}
-                className="input-modern"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-medium text-slate-900 outline-none transition shadow-2xs"
                 placeholder="Topic..."
               />
             </div>
@@ -204,26 +237,44 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             </div>
           ) : (
             activePage.blocks.map((block, idx) => (
-              <div key={block.id || idx} className="card-editable group">
+              <div
+                key={block.id || idx}
+                draggable
+                onDragStart={() => handleDragStart(idx)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleDropOnBlock(idx)}
+                className={`bg-white p-6 rounded-3xl border transition-all duration-200 shadow-xs hover:shadow-md relative group ${
+                  draggedBlockIdx === idx ? 'opacity-40 border-dashed border-indigo-500 scale-98' : 'border-slate-200/90 hover:border-indigo-300'
+                }`}
+              >
                 <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
+                    <span
+                      className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-600 font-bold px-1 text-base select-none"
+                      title="Drag to reorder block"
+                    >
+                      ⣿
+                    </span>
                     <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">
                       #{idx + 1}
                     </span>
-                    <span className="font-bold text-xs uppercase tracking-wider text-slate-600">
-                      {block.type.replace('_', ' ')}
+                    <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">
+                      {block.type.replace(/_/g, ' ')}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
                     {(block.type === 'video' || block.type === 'text' || block.type === 'flashcards') && (
-                      <button onClick={() => handleOpenAiModal(block, idx)} className="btn-ai">
+                      <button
+                        onClick={() => handleOpenAiModal(block, idx)}
+                        className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl shadow-xs transition text-xs flex items-center gap-1.5 cursor-pointer"
+                      >
                         <span>✨ Generate Exercises with AI</span>
                       </button>
                     )}
-                    <button onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30">▲</button>
-                    <button onClick={() => handleMoveBlock(idx, 1)} disabled={idx === activePage.blocks.length - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30">▼</button>
-                    <button onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg">🗑️</button>
+                    <button onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▲</button>
+                    <button onClick={() => handleMoveBlock(idx, 1)} disabled={idx === activePage.blocks.length - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
+                    <button onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Delete block">🗑️</button>
                   </div>
                 </div>
 
