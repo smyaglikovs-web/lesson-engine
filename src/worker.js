@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - GRAMMAR BINDING & CONTEXT-AWARE TASK GENERATOR
+// CLOUDFLARE WORKER BACKEND - GEMINI x-goog-api-key HEADER + WORKERS AI ACTIVE MODELS
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -123,110 +123,67 @@ function cleanAndParseJson(rawText) {
 
 // BULLETPROOF CASCADE AI PIPELINE
 async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
-  // 1. TIER 1: GOOGLE GEMINI 1.5/2.0 FLASH REST API
+  // 1. TIER 1: GOOGLE AI STUDIO (GEMINI 2.5 / 3.5 FLASH VIA x-goog-api-key HEADER)
   if (env.GEMINI_API_KEY) {
-    const geminiModels = ['gemini-1.5-flash', 'gemini-2.0-flash'];
+    const geminiModels = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-2.0-flash'];
     for (const gModel of geminiModels) {
       try {
-        const gRestUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${env.GEMINI_API_KEY}`;
-        const gRestRes = await fetch(gRestUrl, {
+        const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent`;
+        const gRes = await fetch(gUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': env.GEMINI_API_KEY.trim()
+          },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
+            contents: [{ parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
             generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
           })
         });
 
-        if (gRestRes.ok) {
-          const gData = await gRestRes.json();
+        if (gRes.ok) {
+          const gData = await gRes.json();
           const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
           const gParsed = cleanAndParseJson(gRawText);
           if (gParsed) return gParsed;
         } else {
-          console.warn(`Gemini model ${gModel} returned status ${gRestRes.status}, cascading to Workers AI...`);
+          console.warn(`Gemini model ${gModel} returned status ${gRes.status}`);
         }
-      } catch (eGemini) {
-        console.warn(`Gemini call for ${gModel} failed:`, eGemini);
+      } catch (eG) {
+        console.warn(`Gemini API call for ${gModel} failed:`, eG);
       }
     }
   }
 
-  // 2. TIER 2: WORKERS AI META LLAMA 3.3 70B FAST
+  // 2. TIER 2: WORKERS AI ACTIVE MODELS CASCADE
   if (env.AI) {
-    try {
-      const resL3 = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent }
-        ],
-        temperature: 0.2,
-        max_tokens: maxTokens
-      });
+    const cfModels = [
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      '@cf/meta/llama-3.1-8b-instruct-fast',
+      '@cf/qwen/qwen2.5-72b-instruct'
+    ];
 
-      const rawL3 = resL3?.response || resL3?.choices?.[0]?.message?.content;
-      const parsedL3 = cleanAndParseJson(rawL3);
-      if (parsedL3) return parsedL3;
-    } catch (eL3) {
-      console.warn('Llama 3.3 70B Fast failed, cascading to DeepSeek R1...', eL3);
-    }
+    for (const cfModel of cfModels) {
+      try {
+        const resCf = await env.AI.run(cfModel, {
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent }
+          ],
+          temperature: 0.2,
+          max_tokens: maxTokens
+        });
 
-    // 3. TIER 3: WORKERS AI DEEPSEEK R1 DISTILL QWEN 32B
-    try {
-      const resDs = await env.AI.run('@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', {
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent }
-        ],
-        temperature: 0.2,
-        max_tokens: maxTokens
-      });
-
-      const rawDs = resDs?.response || resDs?.choices?.[0]?.message?.content;
-      const parsedDs = cleanAndParseJson(rawDs);
-      if (parsedDs) return parsedDs;
-    } catch (eDs) {
-      console.warn('DeepSeek R1 failed, cascading to Llama 3.1 8B...', eDs);
-    }
-
-    // 4. TIER 4: WORKERS AI META LLAMA 3.1 8B (ULTRA-FAST 100% RELIABLE)
-    try {
-      const resL8 = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-        messages: [
-          { role: 'system', content: systemPrompt + '\nSTRICT RULE: Output 100% valid JSON.' },
-          { role: 'user', content: userContent }
-        ],
-        temperature: 0.1,
-        max_tokens: maxTokens
-      });
-
-      const rawL8 = resL8?.response || resL8?.choices?.[0]?.message?.content;
-      const parsedL8 = cleanAndParseJson(rawL8);
-      if (parsedL8) return parsedL8;
-    } catch (eL8) {
-      console.warn('Llama 3.1 8B failed, cascading to Qwen 2.5 72B...', eL8);
-    }
-
-    // 5. TIER 5: WORKERS AI QWEN 2.5 72B (STRICT JSON FALLBACK)
-    try {
-      const resQwen = await env.AI.run('@cf/qwen/qwen2.5-72b-instruct', {
-        messages: [
-          { role: 'system', content: systemPrompt + '\nSTRICT RULE: Output 100% valid JSON with zero conversational text.' },
-          { role: 'user', content: userContent }
-        ],
-        temperature: 0.1,
-        max_tokens: maxTokens
-      });
-
-      const rawQwen = resQwen?.response || resQwen?.choices?.[0]?.message?.content;
-      const parsedQwen = cleanAndParseJson(rawQwen);
-      if (parsedQwen) return parsedQwen;
-    } catch (eQwen) {
-      console.error('All AI models in cascade failed:', eQwen);
+        const rawCf = resCf?.response || resCf?.choices?.[0]?.message?.content;
+        const parsedCf = cleanAndParseJson(rawCf);
+        if (parsedCf) return parsedCf;
+      } catch (eCf) {
+        console.warn(`Workers AI model ${cfModel} failed:`, eCf);
+      }
     }
   }
 
-  throw new Error('AI Generation failed on all cascade tiers. Please try again.');
+  throw new Error('AI Generation failed on all cascade tiers. Please check API Key or try again.');
 }
 
 async function ensureTables(db) {
@@ -408,7 +365,6 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
 
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-        // SMART CONTEXT EXTRACTION: BIND GRAMMAR CARD CONTENT IF SOURCE IS A GRAMMAR CARD
         let contextData = '';
         if (sourceBlock.type === 'grammar_card') {
           contextData = `Grammar Topic Name: ${sourceBlock.title || ''}\nFormula: ${sourceBlock.formula || ''}\nExplanation: ${sourceBlock.explanation || ''}\nExamples: ${(sourceBlock.examples || []).join('; ')}`;
@@ -475,7 +431,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
-        // DYNAMIC TASK PROMPT CONSTRUCTION (STRICTLY ONLY GENERATES REQUESTED TASKS)
+        // DYNAMIC TASK PROMPT CONSTRUCTION
         let taskInstructions = '';
         if (actions.includes('listening')) {
           taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
