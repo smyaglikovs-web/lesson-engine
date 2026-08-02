@@ -13,21 +13,39 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [studentName, setStudentName] = useState('');
   const [hasStartedHomework, setHasStartedHomework] = useState(false);
 
+  // AUTO-NORMALIZE LESSON STRUCTURE (Handles flat block arrays & multi-page arrays)
   const normalizedPages = React.useMemo(() => {
     if (!activeLesson) return [{ id: 'p1', title: 'Part 1', blocks: [] }];
-    if (activeLesson.pages && Array.isArray(activeLesson.pages) && activeLesson.pages.length > 0) {
-      return activeLesson.pages;
+
+    let rawPages = activeLesson.pages;
+
+    if (Array.isArray(rawPages) && rawPages.length > 0) {
+      // Check if rawPages is actually a flat array of block objects (blocks have 'type' property but no 'blocks' array)
+      if (rawPages[0] && rawPages[0].type && !Array.isArray(rawPages[0].blocks)) {
+        return [{ id: 'p1', title: activeLesson.topic || activeLesson.title || 'Part 1', blocks: rawPages }];
+      }
+
+      return rawPages.map((p, idx) => ({
+        id: p.id || `p${idx + 1}`,
+        title: p.title || `Part ${idx + 1}`,
+        blocks: Array.isArray(p.blocks) ? p.blocks : (Array.isArray(p.items) ? p.items : [])
+      }));
     }
-    if (activeLesson.blocks && Array.isArray(activeLesson.blocks)) {
-      return [{ id: 'p1', title: activeLesson.topic || 'Part 1', blocks: activeLesson.blocks }];
+
+    if (Array.isArray(activeLesson.blocks) && activeLesson.blocks.length > 0) {
+      return [{ id: 'p1', title: activeLesson.topic || activeLesson.title || 'Part 1', blocks: activeLesson.blocks }];
     }
+
     return [{ id: 'p1', title: 'Part 1', blocks: [] }];
   }, [activeLesson]);
 
   const totalPages = normalizedPages.length;
-  const activePage = normalizedPages[currentPageIdx] || normalizedPages[0] || { blocks: [] };
-  const pageBlocks = activePage.blocks || activePage.items || [];
-  const progressPct = Math.round(((currentPageIdx + 1) / totalPages) * 100);
+
+  // Safe page index bounds checking
+  const safePageIdx = Math.min(currentPageIdx, totalPages - 1);
+  const activePage = normalizedPages[safePageIdx] || { blocks: [] };
+  const pageBlocks = activePage.blocks || [];
+  const progressPct = Math.round(((safePageIdx + 1) / totalPages) * 100);
 
   useEffect(() => {
     if (!roomId) return;
@@ -82,8 +100,9 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   };
 
   const handlePageChange = (newIdx) => {
-    setCurrentPageIdx(newIdx);
-    syncRoomState(newIdx, userAnswers);
+    const safeIdx = Math.max(0, Math.min(newIdx, totalPages - 1));
+    setCurrentPageIdx(safeIdx);
+    syncRoomState(safeIdx, userAnswers);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -96,7 +115,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
       updated = { ...userAnswers, [blockId]: newVal };
     }
     setUserAnswers(updated);
-    syncRoomState(currentPageIdx, updated);
+    syncRoomState(safePageIdx, updated);
 
     try {
       localStorage.setItem(`student_answers_${roomId}`, JSON.stringify(updated));
@@ -128,7 +147,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     let score = 0;
     let total = 0;
 
-    // Comprehensive multi-task scoring across all 6 interactive block types
     normalizedPages.forEach(p => {
       p.blocks?.forEach(b => {
         const studentAns = userAnswers[b.id];
@@ -288,7 +306,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
               {/* PROGRESS BAR */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
                 <div className="flex justify-between items-center text-xs font-extrabold text-slate-700">
-                  <span>Страница {currentPageIdx + 1} из {totalPages}: <strong className="text-indigo-600">{activePage.title || 'Раздел'}</strong></span>
+                  <span>Страница {safePageIdx + 1} из {totalPages}: <strong className="text-indigo-600">{activePage.title || 'Раздел'}</strong></span>
                   <span>{progressPct}%</span>
                 </div>
                 <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
@@ -306,7 +324,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                   </div>
                 ) : (
                   pageBlocks.map((b, idx) => {
-                    const uniqueBlockId = b.id || `p${currentPageIdx}-b${idx}`;
+                    const uniqueBlockId = b.id || `p${safePageIdx}-b${idx}`;
                     return (
                       <BlockRenderer
                         key={uniqueBlockId}
@@ -323,16 +341,16 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
               {/* PAGE NAVIGATION CONTROLS */}
               <div className="flex justify-between items-center pt-2">
                 <button
-                  disabled={currentPageIdx === 0}
-                  onClick={() => handlePageChange(currentPageIdx - 1)}
+                  disabled={safePageIdx === 0}
+                  onClick={() => handlePageChange(safePageIdx - 1)}
                   className="px-6 py-3 border border-slate-200 text-slate-700 font-extrabold rounded-2xl disabled:opacity-30 hover:bg-slate-100 text-sm transition cursor-pointer"
                 >
                   ← Назад
                 </button>
 
-                {currentPageIdx < totalPages - 1 ? (
+                {safePageIdx < totalPages - 1 ? (
                   <button
-                    onClick={() => handlePageChange(currentPageIdx + 1)}
+                    onClick={() => handlePageChange(safePageIdx + 1)}
                     className="px-8 py-3 bg-indigo-600 text-white font-extrabold rounded-2xl hover:bg-indigo-700 text-sm shadow-md transition cursor-pointer"
                   >
                     Далее →
