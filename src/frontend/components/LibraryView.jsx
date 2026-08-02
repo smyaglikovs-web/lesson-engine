@@ -3,7 +3,7 @@ import { Button } from './ui/Button.jsx';
 import { Card, CardContent } from './ui/Card.jsx';
 import { Badge } from './ui/Badge.jsx';
 
-export const LibraryView = ({ lessons, loading, onOpenLesson, onCreateNew, onDeleteLesson, onViewSubmissions }) => (
+export const LibraryView = ({ lessons, loading, onOpenLesson, onCreateNew, onDeleteLesson, onViewSubmissions, onEditLesson }) => (
   <div className="space-y-8">
     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div>
@@ -11,7 +11,7 @@ export const LibraryView = ({ lessons, loading, onOpenLesson, onCreateNew, onDel
         <p className="text-slate-500 text-sm mt-1">Управление интерактивными уроками и результатами учеников</p>
       </div>
       <Button variant="primary" onClick={onCreateNew}>
-        + Создать урок (JSON)
+        + Создать урок
       </Button>
     </div>
 
@@ -33,7 +33,10 @@ export const LibraryView = ({ lessons, loading, onOpenLesson, onCreateNew, onDel
               <div className="flex justify-between items-center">
                 <Badge variant="brand">{l.level || 'A2-B1'}</Badge>
                 <div className="flex items-center gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => onViewSubmissions(l)}>
+                  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); onEditLesson(l); }} title="Редактировать урок">
+                    ✏️ Редактировать
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); onViewSubmissions(l); }}>
                     📊 Ответы ДЗ
                   </Button>
                   <Button variant="danger" size="sm" onClick={(e) => onDeleteLesson(l.id, e)} title="Удалить урок">
