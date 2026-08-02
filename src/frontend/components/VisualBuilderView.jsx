@@ -26,7 +26,10 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
   const [activePageIndex, setActivePageIndex] = useState(0);
 
   const [aiModalTarget, setAiModalTarget] = useState(null);
+  const [selectedSourceId, setSelectedSourceId] = useState('');
   const [selectedTasks, setSelectedTasks] = useState(['listening', 'quiz']);
+  const [matchingType, setMatchingType] = useState('synonym');
+  const [flashcardType, setFlashcardType] = useState('russian');
   const [aiGenerating, setAiGenerating] = useState(false);
 
   const [draggedBlockIdx, setDraggedBlockIdx] = useState(null);
@@ -42,18 +45,36 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         }
       }
       setLesson(normalized);
-      setActivePageIndex(0); // ALWAYS RESET TO PAGE 1 ON NEW LESSON LOAD
+      setActivePageIndex(0);
     }
   }, [initialLesson]);
 
   const activePage = lesson.pages?.[activePageIndex] || lesson.pages?.[0] || { blocks: [] };
 
-  const extractLessonContext = () => {
+  // Collect all available anchor source blocks (text, video, audio, grammar_card) in the lesson
+  const availableSourceBlocks = React.useMemo(() => {
+    const list = [];
+    lesson.pages?.forEach(p => {
+      p.blocks?.forEach(b => {
+        if (b.type === 'text' || b.type === 'video' || b.type === 'audio' || b.type === 'grammar_card') {
+          list.push(b);
+        }
+      });
+    });
+    return list;
+  }, [lesson]);
+
+  const extractLessonContext = (overrideBlockId) => {
+    if (overrideBlockId) {
+      const found = availableSourceBlocks.find(b => b.id === overrideBlockId);
+      if (found) return found.text || found.transcript || found.explanation || JSON.stringify(found);
+    }
     let contextText = '';
     lesson.pages?.forEach(page => {
       page.blocks?.forEach(b => {
         if (b.type === 'text' && b.text) contextText += b.text + '\n';
         if (b.type === 'video' && b.transcript) contextText += b.transcript + '\n';
+        if (b.type === 'grammar_card' && b.explanation) contextText += `Grammar Rule (${b.title}): ${b.formula} - ${b.explanation}\n`;
       });
     });
     return contextText || lesson.title || 'General English Practice';
@@ -163,7 +184,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         body: JSON.stringify({
           actions: selectedTasks,
           sourceBlock: aiModalTarget.block,
-          lessonContext: extractLessonContext(),
+          sourceText: extractLessonContext(selectedSourceId),
+          matchingType,
+          flashcardType,
           level: lesson.level || 'B1'
         })
       });
@@ -173,8 +196,15 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
         const blocksWithIds = data.newBlocks.map((b, i) => ({ ...b, id: `ai-b-${Date.now()}-${i}` }));
         const updatedPages = [...(lesson.pages || [])];
         const currentBlocks = updatedPages[activePageIndex].blocks;
-        const insertIdx = aiModalTarget.blockIdx + 1;
-        currentBlocks.splice(insertIdx, 0, ...blocksWithIds);
+
+        if (selectedTasks.includes('fill_this_block') && blocksWithIds.length > 0) {
+          // Replace current block in-place
+          currentBlocks[aiModalTarget.blockIdx] = { ...blocksWithIds[0], id: aiModalTarget.block.id };
+        } else {
+          // Insert new blocks below
+          const insertIdx = aiModalTarget.blockIdx + 1;
+          currentBlocks.splice(insertIdx, 0, ...blocksWithIds);
+        }
 
         setLesson(prev => ({ ...prev, pages: updatedPages }));
         setAiModalTarget(null);
@@ -315,8 +345,15 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => 
 
       <BuilderAiModal
         aiModalTarget={aiModalTarget}
+        availableSourceBlocks={availableSourceBlocks}
+        selectedSourceId={selectedSourceId}
+        setSelectedSourceId={setSelectedSourceId}
         selectedTasks={selectedTasks}
         toggleTaskSelection={toggleTaskSelection}
+        matchingType={matchingType}
+        setMatchingType={setMatchingType}
+        flashcardType={flashcardType}
+        setFlashcardType={setFlashcardType}
         onExecute={handleExecuteBlockAi}
         onClose={() => setAiModalTarget(null)}
         aiGenerating={aiGenerating}
