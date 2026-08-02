@@ -15,7 +15,6 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
   const instruction = block.instruction || '🧩 Заполните пропуски словами из банка:';
   const distractors = block.distractors || [];
 
-  // Extract text segments and correct answers inside [brackets]
   const { segments, correctAnswers } = useMemo(() => {
     const parts = text.split(/\[(.*?)\]/);
     const segs = [];
@@ -30,7 +29,6 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
     return { segments: segs, correctAnswers: ans };
   }, [text]);
 
-  // Shuffled Word Bank Pool
   const wordBank = useMemo(() => {
     const allWords = [...correctAnswers, ...distractors];
     return shuffleArray(allWords.map((w, idx) => ({ id: `w-${idx}`, text: w })));
@@ -40,11 +38,21 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
   const submitted = value?.submitted || false;
   const [draggedWord, setDraggedWord] = useState(null);
 
-  const usedWordIds = Object.values(placedSlots).map(w => w?.id);
+  const usedWordIds = Object.values(placedSlots).map(w => w?.id).filter(Boolean);
 
   const handlePlaceWordInSlot = (gapIdx, wordObj) => {
-    if (submitted) return;
-    const updated = { ...placedSlots, [gapIdx]: wordObj };
+    if (submitted || !wordObj) return;
+
+    const updated = { ...placedSlots };
+    
+    // Clear word from previous slot if it was already placed elsewhere
+    Object.keys(updated).forEach(sIdx => {
+      if (updated[sIdx]?.id === wordObj.id) {
+        delete updated[sIdx];
+      }
+    });
+
+    updated[gapIdx] = wordObj;
     onChange({ placedSlots: updated, submitted: false });
   };
 
@@ -57,7 +65,6 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
 
   const handleBankWordClick = (wordObj) => {
     if (submitted) return;
-    // Auto-fill first empty slot
     for (let i = 0; i < correctAnswers.length; i++) {
       if (!placedSlots[i]) {
         handlePlaceWordInSlot(i, wordObj);
@@ -104,7 +111,11 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
               onClick={() => handleBankWordClick(w)}
               draggable={!isUsed && !submitted}
               onDragStart={() => setDraggedWord(w)}
-              className={`px-3 py-1.5 rounded-lg border font-bold text-xs transition ${isUsed ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-white border-slate-300 text-indigo-700 hover:border-indigo-500 shadow-2xs hover:scale-105 cursor-pointer'}`}
+              className={`px-3 py-1.5 rounded-lg border font-bold text-xs transition ${
+                isUsed 
+                  ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' 
+                  : 'bg-white border-slate-300 text-indigo-700 hover:border-indigo-500 shadow-2xs hover:scale-105 cursor-pointer'
+              }`}
             >
               {w.text}
             </button>
@@ -152,20 +163,19 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
         })}
       </div>
 
-      {/* Action Controls */}
       {!submitted ? (
         <div className="flex gap-2">
-          <button disabled={!isAllSlotsFilled} onClick={handleSubmit} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl disabled:opacity-40 hover:bg-indigo-700 transition">
+          <button disabled={!isAllSlotsFilled} onClick={handleSubmit} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl disabled:opacity-40 hover:bg-indigo-700 transition cursor-pointer">
             Проверить
           </button>
-          <button onClick={handleReset} className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50">
+          <button onClick={handleReset} className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50 cursor-pointer">
             Сбросить
           </button>
         </div>
       ) : (
         <div className="flex justify-between items-center p-3 bg-slate-100 rounded-xl">
           <span className="text-xs font-bold text-slate-700">Задание завершено!</span>
-          <button onClick={handleReset} className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700">
+          <button onClick={handleReset} className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 cursor-pointer">
             Попробовать снова 🔄
           </button>
         </div>
