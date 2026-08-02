@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - VERIFIED ULTRA-RELIABLE CASCADE AI PIPELINE
+// CLOUDFLARE WORKER BACKEND - ACTIVE 2026 MODEL CASCADE (GEMINI + LLAMA 3.3 + DEEPSEEK R1 + QWEN 2.5)
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -123,29 +123,32 @@ function cleanAndParseJson(rawText) {
 
 // BULLETPROOF CASCADE AI PIPELINE
 async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
-  // 1. TIER 1: GOOGLE GEMINI 1.5 FLASH (Native Google AI REST Endpoint)
+  // 1. TIER 1: GOOGLE GEMINI 1.5/2.0 FLASH REST API
   if (env.GEMINI_API_KEY) {
-    try {
-      const gRestUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
-      const gRestRes = await fetch(gRestUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-        })
-      });
+    const geminiModels = ['gemini-1.5-flash', 'gemini-2.0-flash'];
+    for (const gModel of geminiModels) {
+      try {
+        const gRestUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${env.GEMINI_API_KEY}`;
+        const gRestRes = await fetch(gRestUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+          })
+        });
 
-      if (gRestRes.ok) {
-        const gData = await gRestRes.json();
-        const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-        const gParsed = cleanAndParseJson(gRawText);
-        if (gParsed) return gParsed;
-      } else {
-        console.warn(`Gemini REST API status ${gRestRes.status}, cascading to Cloudflare...`);
+        if (gRestRes.ok) {
+          const gData = await gRestRes.json();
+          const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          const gParsed = cleanAndParseJson(gRawText);
+          if (gParsed) return gParsed;
+        } else {
+          console.warn(`Gemini model ${gModel} returned status ${gRestRes.status}, cascading to Workers AI...`);
+        }
+      } catch (eGemini) {
+        console.warn(`Gemini call for ${gModel} failed:`, eGemini);
       }
-    } catch (eGemini) {
-      console.warn('Gemini API call failed, cascading to Workers AI...', eGemini);
     }
   }
 
@@ -165,12 +168,12 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
       const parsedL3 = cleanAndParseJson(rawL3);
       if (parsedL3) return parsedL3;
     } catch (eL3) {
-      console.warn('Llama 3.3 70B Fast failed, cascading to Llama 3.1 70B...', eL3);
+      console.warn('Llama 3.3 70B Fast failed, cascading to DeepSeek R1...', eL3);
     }
 
-    // 3. TIER 3: WORKERS AI META LLAMA 3.1 70B
+    // 3. TIER 3: WORKERS AI DEEPSEEK R1 DISTILL QWEN 32B
     try {
-      const resL31 = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
+      const resDs = await env.AI.run('@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', {
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent }
@@ -179,11 +182,11 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
         max_tokens: maxTokens
       });
 
-      const rawL31 = resL31?.response || resL31?.choices?.[0]?.message?.content;
-      const parsedL31 = cleanAndParseJson(rawL31);
-      if (parsedL31) return parsedL31;
-    } catch (eL31) {
-      console.warn('Llama 3.1 70B failed, cascading to Llama 3.1 8B...', eL31);
+      const rawDs = resDs?.response || resDs?.choices?.[0]?.message?.content;
+      const parsedDs = cleanAndParseJson(rawDs);
+      if (parsedDs) return parsedDs;
+    } catch (eDs) {
+      console.warn('DeepSeek R1 failed, cascading to Llama 3.1 8B...', eDs);
     }
 
     // 4. TIER 4: WORKERS AI META LLAMA 3.1 8B (ULTRA-FAST 100% RELIABLE)
@@ -201,7 +204,25 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
       const parsedL8 = cleanAndParseJson(rawL8);
       if (parsedL8) return parsedL8;
     } catch (eL8) {
-      console.error('All Workers AI models failed:', eL8);
+      console.warn('Llama 3.1 8B failed, cascading to Qwen 2.5 72B...', eL8);
+    }
+
+    // 5. TIER 5: WORKERS AI QWEN 2.5 72B (STRICT JSON GUARD FALLBACK)
+    try {
+      const resQwen = await env.AI.run('@cf/qwen/qwen2.5-72b-instruct', {
+        messages: [
+          { role: 'system', content: systemPrompt + '\nSTRICT RULE: Output 100% valid JSON with zero conversational text.' },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 0.1,
+        max_tokens: maxTokens
+      });
+
+      const rawQwen = resQwen?.response || resQwen?.choices?.[0]?.message?.content;
+      const parsedQwen = cleanAndParseJson(rawQwen);
+      if (parsedQwen) return parsedQwen;
+    } catch (eQwen) {
+      console.error('All AI models in cascade failed:', eQwen);
     }
   }
 
@@ -395,7 +416,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
 
 Target Length: ~${targetWords}.
 CEFR Level ${level} Target: ${cefrRules}
-STRICT QUOTE RULE: Use single quotes (') for quotes inside text.
+STRICT QUOTE RULE: Use single quotes (') for quotes or speech inside text.
 RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
 [
   {
@@ -414,7 +435,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
           const grammarSystemPrompt = `You are a master ELT Methodologist. Generate a comprehensive Grammar Presentation Card for the grammar topic provided for CEFR Level ${level}.
 
 CEFR Level ${level} Target: ${cefrRules}
-STRICT QUOTE RULE: Use single quotes (') for quotes inside text strings.
+STRICT QUOTE RULE: Use single quotes (') for quotes or speech inside text strings.
 RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
 [
   {
@@ -485,7 +506,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
 STRICT RULES:
 1. ONLY generate the specific block(s) requested below. Do NOT generate any unrequested extra blocks!
 2. All exercise items MUST be 100% full and populated with rich English content based on context.
-3. Use single quotes (') for quotes inside string values. No unescaped double quotes!
+3. Use single quotes (') inside string values. No unescaped double quotes!
 4. 100% English target language policy (except Russian translations if explicitly requested).
 5. CEFR Level ${level} Target: ${cefrRules}
 
