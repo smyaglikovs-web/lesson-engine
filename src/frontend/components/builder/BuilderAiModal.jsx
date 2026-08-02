@@ -41,7 +41,7 @@ export const BuilderAiModal = ({
           <div className="flex items-center gap-2">
             <span className="text-2xl">✨</span>
             <h3 className="font-extrabold text-slate-900 text-lg">
-              AI Assistant for Block #{aiModalTarget.blockIdx + 1} ({blockType.replace(/_/g, ' ')})
+              AI Assistant for Block #{aiModalTarget.blockIdx + 1} ({blockType?.replace(/_/g, ' ') || 'block'})
             </h3>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1 cursor-pointer">✕</button>
@@ -70,16 +70,16 @@ export const BuilderAiModal = ({
 
         {/* SOURCE BLOCK SELECTOR FOR LIGHTWEIGHT TASK BLOCKS */}
         {!isHeavyAnchor && availableSourceBlocks.length > 0 && (
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2">
-            <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
-              📌 Select Source Context for AI Generation:
+          <div className="bg-indigo-50/80 p-4 rounded-2xl border border-indigo-200 space-y-2">
+            <label className="block text-xs font-extrabold text-indigo-900 uppercase tracking-wider">
+              📌 Select Source Anchor Context for AI Generation:
             </label>
             <select
               value={selectedSourceId || ''}
               onChange={(e) => setSelectedSourceId(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              className="w-full p-2.5 bg-white border border-indigo-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
             >
-              <option value="">-- Use Whole Lesson Reading Passage --</option>
+              <option value="">-- Use Whole Lesson Context --</option>
               {availableSourceBlocks.map((sb, i) => (
                 <option key={sb.id || i} value={sb.id}>
                   {sb.type === 'grammar_card' ? `📘 Grammar Rule: ${sb.title || 'Rule'}` : `📄 Text: ${sb.text?.substring(0, 35) || 'Passage'}...`}
@@ -163,7 +163,7 @@ export const BuilderAiModal = ({
               disabled={aiGenerating}
               className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-xs transition cursor-pointer"
             >
-              {aiGenerating ? '⌛ Filling block...' : `✨ Auto-Fill THIS ${blockType.toUpperCase()} Block`}
+              {aiGenerating ? '⌛ Filling block...' : `✨ Auto-Fill THIS ${blockType?.toUpperCase() || 'BLOCK'}`}
             </button>
           </div>
         )}
