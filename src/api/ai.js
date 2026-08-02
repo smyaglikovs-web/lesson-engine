@@ -1,4 +1,4 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH FULL TEXT REFINEMENT
+// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH GRAMMAR DRILL GENERATION
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, articles. Target Vocabulary: Everyday basics. Sentences: Short (5-10 words).',
@@ -89,7 +89,7 @@ export function cleanAndParseJson(rawText, topic = '', level = 'B1') {
 // MULTI-PROVIDER AI SYNERGY CASCADE
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3500, topic = '', level = 'B1') {
   
-  // TIER 1: GROQ API (Llama 3.3 70B & DeepSeek R1 70B - Fast 14.4k RPD)
+  // TIER 1: GROQ API
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     const groqModels = ['llama-3.3-70b-versatile', 'deepseek-r1-distill-llama-70b', 'llama-3.1-8b-instant'];
@@ -117,27 +117,15 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           const data = await res.json();
           const content = data?.choices?.[0]?.message?.content;
           const parsed = cleanAndParseJson(content, topic, level);
-          if (parsed) {
-            console.log(`Generated using Groq model: ${model}`);
-            return parsed;
-          }
-        } else {
-          console.warn(`Groq model ${model} HTTP status: ${res.status}`);
+          if (parsed) return parsed;
         }
-      } catch (e) {
-        console.warn(`Groq call failed for ${model}:`, e.message);
-      }
+      } catch (e) {}
     }
   }
 
-  // TIER 2: OPENROUTER API (DeepSeek R1 Free & Qwen 2.5 72B Free)
+  // TIER 2: OPENROUTER API
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
-    const freeModels = [
-      'deepseek/deepseek-r1:free',
-      'qwen/qwen-2.5-72b-instruct:free',
-      'meta-llama/llama-3.3-70b-instruct:free'
-    ];
-
+    const freeModels = ['deepseek/deepseek-r1:free', 'qwen/qwen-2.5-72b-instruct:free', 'meta-llama/llama-3.3-70b-instruct:free'];
     for (const model of freeModels) {
       try {
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -148,10 +136,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           },
           body: JSON.stringify({
             model: model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userContent }
-            ]
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }]
           })
         });
 
@@ -159,18 +144,13 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           const data = await res.json();
           const content = data?.choices?.[0]?.message?.content;
           const parsed = cleanAndParseJson(content, topic, level);
-          if (parsed) {
-            console.log(`Generated using OpenRouter model: ${model}`);
-            return parsed;
-          }
+          if (parsed) return parsed;
         }
-      } catch (e) {
-        console.warn(`OpenRouter model ${model} failed:`, e.message);
-      }
+      } catch (e) {}
     }
   }
 
-  // TIER 3: GEMINI API (SKIP INSTANTLY ON 429 RATE LIMIT)
+  // TIER 3: GEMINI API
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
@@ -190,50 +170,29 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
         const gData = await gRes.json();
         const gText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
         const gParsed = cleanAndParseJson(gText, topic, level);
-        if (gParsed) {
-          console.log('Generated using Gemini 1.5 Flash');
-          return gParsed;
-        }
-      } else if (gRes.status === 429) {
-        console.warn('Gemini 429 Rate Limit hit. Bypassing Gemini to Workers AI.');
+        if (gParsed) return gParsed;
       }
-    } catch (eG) {
-      console.warn('Gemini API call failed:', eG.message);
-    }
+    } catch (eG) {}
   }
 
-  // TIER 4: CLOUDFLARE WORKERS AI (NATIVE DIRECT FALLBACK)
+  // TIER 4: WORKERS AI
   if (env.AI) {
-    const cfModels = [
-      '@cf/meta/llama-3.1-8b-instruct',
-      '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
-      '@cf/meta/llama-3.1-70b-instruct'
-    ];
-
+    const cfModels = ['@cf/meta/llama-3.1-8b-instruct', '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', '@cf/meta/llama-3.1-70b-instruct'];
     for (const cfModel of cfModels) {
       try {
         const resCf = await env.AI.run(cfModel, {
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userContent }
-          ],
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
           temperature: 0.2,
           max_tokens: maxTokens
         });
 
         const rawCf = resCf?.response || resCf?.choices?.[0]?.message?.content;
         const parsedCf = cleanAndParseJson(rawCf, topic, level);
-        if (parsedCf) {
-          console.log(`Generated using Workers AI model: ${cfModel}`);
-          return parsedCf;
-        }
-      } catch (eCf) {
-        console.warn(`Workers AI model ${cfModel} failed:`, eCf.message);
-      }
+        if (parsedCf) return parsedCf;
+      } catch (eCf) {}
     }
   }
 
-  // TIER 5: GUARANTEED LOCAL FALLBACK
   return createFallbackLesson(topic, level);
 }
 
@@ -287,9 +246,7 @@ async function fetchLyricsForSong(title = '') {
       const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(song)}`, { headers: BROWSER_HEADERS });
       if (res.ok) {
         const data = await res.json();
-        if (data.lyrics && data.lyrics.length > 50) {
-          return data.lyrics.slice(0, 3500);
-        }
+        if (data.lyrics && data.lyrics.length > 50) return data.lyrics.slice(0, 3500);
       }
     }
   } catch(e) {}
@@ -310,9 +267,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
         const apiRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`);
         if (apiRes.ok) {
           const apiData = await apiRes.json();
-          if (apiData.items && apiData.items.length > 0) {
-            title = apiData.items[0].snippet?.title || '';
-          }
+          if (apiData.items && apiData.items.length > 0) title = apiData.items[0].snippet?.title || '';
         }
       } catch(e) {}
     }
@@ -412,7 +367,6 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   }
 }
 
-// FULL 5-PAGE CELTA/DELTA PPP LESSON GENERATOR
 export async function generateFullLessonWithAI(env, payload) {
   const { text = '', level = 'B1', topic = 'General English' } = payload;
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
@@ -484,7 +438,7 @@ RETURN ONLY VALID JSON MATCHING THIS TEMPLATE:
   }
 }
 
-// CONTEXTUAL SINGLE BLOCK ASSISTANT & TEXT REFINEMENT ENGINE
+// CONTEXTUAL SINGLE BLOCK ASSISTANT & GRAMMAR DRILL GENERATION
 export async function transformBlockWithAI(env, payload) {
   const { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (actions.length === 0) return { error: 'Выберите задание.' };
@@ -493,7 +447,7 @@ export async function transformBlockWithAI(env, payload) {
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  // 1. GENERATE BRAND NEW READING TEXT PASSAGE FROM TOPIC IN BUILDER
+  // 1. GENERATE TEXT PASSAGE
   if (actions.includes('generate_text_passage')) {
     const textSystemPrompt = `You are a master ELT Materials Writer. Write an engaging, educational reading story/passage on the topic provided for CEFR Level ${level} (~${targetLength} words).\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY A VALID JSON OBJECT WITH A "text" PROPERTY:\n{ "text": "Full educational reading story passage..." }`;
     try {
@@ -505,7 +459,7 @@ export async function transformBlockWithAI(env, payload) {
     }
   }
 
-  // 2. GENERATE GRAMMAR CARD FROM TOPIC
+  // 2. GENERATE GRAMMAR CARD
   if (actions.includes('generate_grammar_card')) {
     const grammarSystemPrompt = `Generate a Grammar Card JSON array object for CEFR Level ${level}:\n[ { "type": "grammar_card", "title": "${safeContextData}", "formula": "Subject + Verb", "explanation": "Rule explanation", "examples": ["Example 1", "Example 2"] } ]`;
     try {
@@ -516,15 +470,11 @@ export async function transformBlockWithAI(env, payload) {
     }
   }
 
-  // 3. TEXT REFINEMENT TOOLS (EXPAND, SHORTEN, REWRITE FOR LEVEL)
+  // 3. TEXT REFINEMENT TOOLS
   if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
     let textInstruction = `Expand this text into a detailed, rich, 350-400 word educational story passage matching CEFR Level ${level}.`;
-    
-    if (actions.includes('shorten_text')) {
-      textInstruction = `Shorten this text into a concise, clear summary (~150 words) matching CEFR Level ${level}.`;
-    } else if (actions.includes('refine_level')) {
-      textInstruction = `Rewrite this reading text strictly adapting vocabulary and grammar structures to CEFR Level ${level}.`;
-    }
+    if (actions.includes('shorten_text')) textInstruction = `Shorten this text into a concise, clear summary (~150 words) matching CEFR Level ${level}.`;
+    else if (actions.includes('refine_level')) textInstruction = `Rewrite this reading text strictly adapting vocabulary and grammar structures to CEFR Level ${level}.`;
 
     const textSystemPrompt = `You are an expert ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY A VALID JSON OBJECT WITH A "text" PROPERTY:\n{ "text": "Full rewritten reading story text..." }`;
 
@@ -537,21 +487,43 @@ export async function transformBlockWithAI(env, payload) {
     }
   }
 
-  // 4. TASK GENERATION (QUIZ, FLASHCARDS, GAP FILL, MATCHING, DISCUSSION)
+  // 4. TASK & GRAMMAR DRILL GENERATION
   let taskInstructions = '';
-  if (actions.includes('listening')) taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
-  if (actions.includes('flashcards')) taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words from context. Template:\n[ { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "sentence" } ] } ]\n`;
-  if (actions.includes('true_false')) taskInstructions += `- Generate 1 "multiple_choice" block with 4 True/False questions based on context. Template:\n[ { "type": "multiple_choice", "question": "True or False?", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Reason" } ]\n`;
-  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) taskInstructions += `- Generate 1 "gap_fill" block with 4 sentences, separated by newlines \\n, putting target words in brackets [word]. Template:\n[ { "type": "gap_fill", "instruction": "Complete the sentences:", "text": "1. First sentence [word1].\\n2. Second sentence [word2].", "answers": ["word1", "word2"] } ]\n`;
-  if (actions.includes('gap_fill_bank')) taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] in brackets and 3 distractors.\n`;
-  if (actions.includes('matching')) taskInstructions += `- Generate 1 "matching" block with 6 pairs [{ left, right }] configured as "${matchingType}".\n`;
-  if (actions.includes('discussion')) taskInstructions += `- Generate 1 "open_input" block with 3 speaking discussion prompts.\n`;
-  if (actions.includes('grammar_quiz')) taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${safeContextData}".\n`;
+  if (actions.includes('listening')) {
+    taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing understanding of context. Template: [ { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
+  }
+  if (actions.includes('flashcards')) {
+    taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words from context. Template: [ { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "sentence" } ] } ]\n`;
+  }
+  if (actions.includes('true_false')) {
+    taskInstructions += `- Generate 1 "multiple_choice" block with 4 True/False questions based on context.\n`;
+  }
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
+    taskInstructions += `- Generate 1 "gap_fill" block with 4 sentences separated by newlines \\n, putting target grammar/words in brackets [word]. Example: "1. The company [started] yesterday.\\n2. They [met] at a party."\n`;
+  }
+  if (actions.includes('gap_fill_bank')) {
+    taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] in brackets and 3 distractors.\n`;
+  }
+  if (actions.includes('matching')) {
+    taskInstructions += `- Generate 1 "matching" block with 6 pairs [{ left, right }] configured as "${matchingType}".\n`;
+  }
+  if (actions.includes('discussion')) {
+    taskInstructions += `- Generate 1 "open_input" block with 3 speaking discussion prompts.\n`;
+  }
+  if (actions.includes('grammar_quiz')) {
+    taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${safeContextData}". Write real questions testing correct grammar usage vs distractors! DO NOT write placeholders!\n`;
+  }
 
-  const systemPrompt = `You are an expert ELT Materials Designer. Generate ONLY the requested exercise block(s) for CEFR Level ${level} based on context. Return JSON Array.\n${taskInstructions}`;
+  const systemPrompt = `You are an expert ELT Materials Designer. Generate ONLY the requested exercise block(s) for CEFR Level ${level} based on context. 
+
+CRITICAL RULE FOR GRAMMAR CONTEXT:
+- If context is a Grammar Rule, generate real practice questions, options, and gap-fills that directly drill and test that specific grammar rule! NEVER return placeholder text like "Question?" or "Option A"!
+
+RETURN VALID JSON ARRAY OF REQUESTED BLOCK OBJECTS:
+[ { "type": "multiple_choice", "question": "...", "options": [...], "correct": 0, "explanation": "..." } ]\n${taskInstructions}`;
 
   try {
-    const parsedBlocks = await runAiPipeline(env, systemPrompt, `Context:\n${safeContextData}`, 2500);
+    const parsedBlocks = await runAiPipeline(env, systemPrompt, `Source Context:\n${safeContextData}`, 2500);
     return { success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] };
   } catch (err) {
     return { error: 'AI transformation failed: ' + err.message };
