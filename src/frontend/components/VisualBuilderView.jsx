@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BuilderPagesBar } from './builder/BuilderPagesBar.jsx';
 import { BuilderPalette } from './builder/BuilderPalette.jsx';
 import { EditableBlockCard } from './builder/EditableBlockCard.jsx';
@@ -21,8 +21,8 @@ const DEFAULT_LESSON = {
   ]
 };
 
-export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
-  const [lesson, setLesson] = useState(DEFAULT_LESSON);
+export const VisualBuilderView = ({ initialLesson, onSaveLesson, onCancel }) => {
+  const [lesson, setLesson] = useState(initialLesson || DEFAULT_LESSON);
   const [activePageIndex, setActivePageIndex] = useState(0);
 
   const [aiModalTarget, setAiModalTarget] = useState(null);
@@ -31,23 +31,29 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
 
   const [draggedBlockIdx, setDraggedBlockIdx] = useState(null);
 
-  const activePage = lesson.pages[activePageIndex] || lesson.pages[0];
+  useEffect(() => {
+    if (initialLesson) {
+      setLesson(initialLesson);
+    }
+  }, [initialLesson]);
+
+  const activePage = lesson.pages?.[activePageIndex] || lesson.pages?.[0] || { blocks: [] };
 
   const handleAddPage = () => {
-    const newPage = { id: 'page-' + Date.now(), title: `Part ${lesson.pages.length + 1}`, blocks: [] };
-    setLesson(prev => ({ ...prev, pages: [...prev.pages, newPage] }));
-    setActivePageIndex(lesson.pages.length);
+    const newPage = { id: 'page-' + Date.now(), title: `Part ${(lesson.pages?.length || 0) + 1}`, blocks: [] };
+    setLesson(prev => ({ ...prev, pages: [...(prev.pages || []), newPage] }));
+    setActivePageIndex(lesson.pages?.length || 0);
   };
 
   const handleDeletePage = (idx) => {
-    if (lesson.pages.length <= 1) return;
+    if ((lesson.pages?.length || 0) <= 1) return;
     const updatedPages = lesson.pages.filter((_, i) => i !== idx);
     setLesson(prev => ({ ...prev, pages: updatedPages }));
     setActivePageIndex(Math.max(0, idx - 1));
   };
 
   const handleUpdatePageTitle = (newTitle) => {
-    const updatedPages = [...lesson.pages];
+    const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex] = { ...updatedPages[activePageIndex], title: newTitle };
     setLesson(prev => ({ ...prev, pages: updatedPages }));
   };
@@ -65,19 +71,22 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     else if (type === 'matching') { newBlock.instruction = 'Match pairs:'; newBlock.pairs = [{ left: 'Word', right: 'Match' }]; }
     else if (type === 'open_input') { newBlock.prompt = 'Discussion question?'; newBlock.placeholder = 'Type here...'; }
 
-    const updatedPages = [...lesson.pages];
+    const updatedPages = [...(lesson.pages || [])];
+    if (!updatedPages[activePageIndex]) {
+      updatedPages[activePageIndex] = { id: 'p1', title: 'Part 1', blocks: [] };
+    }
     updatedPages[activePageIndex].blocks.push(newBlock);
     setLesson(prev => ({ ...prev, pages: updatedPages }));
   };
 
   const handleUpdateBlock = (blockIdx, updatedBlock) => {
-    const updatedPages = [...lesson.pages];
+    const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex].blocks[blockIdx] = updatedBlock;
     setLesson(prev => ({ ...prev, pages: updatedPages }));
   };
 
   const handleMoveBlock = (blockIdx, direction) => {
-    const blocks = [...activePage.blocks];
+    const blocks = [...(activePage.blocks || [])];
     const targetIdx = blockIdx + direction;
     if (targetIdx < 0 || targetIdx >= blocks.length) return;
 
@@ -85,7 +94,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
     blocks[blockIdx] = blocks[targetIdx];
     blocks[targetIdx] = temp;
 
-    const updatedPages = [...lesson.pages];
+    const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex].blocks = blocks;
     setLesson(prev => ({ ...prev, pages: updatedPages }));
   };
@@ -96,21 +105,20 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
 
   const handleDropOnBlock = (targetIdx) => {
     if (draggedBlockIdx === null || draggedBlockIdx === targetIdx) return;
-    const blocks = [...activePage.blocks];
+    const blocks = [...(activePage.blocks || [])];
     const draggedItem = blocks[draggedBlockIdx];
     
-    // Remove from old position and insert into new position
     blocks.splice(draggedBlockIdx, 1);
     blocks.splice(targetIdx, 0, draggedItem);
 
-    const updatedPages = [...lesson.pages];
+    const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex].blocks = blocks;
     setLesson(prev => ({ ...prev, pages: updatedPages }));
     setDraggedBlockIdx(null);
   };
 
   const handleDeleteBlock = (blockIdx) => {
-    const updatedPages = [...lesson.pages];
+    const updatedPages = [...(lesson.pages || [])];
     updatedPages[activePageIndex].blocks = updatedPages[activePageIndex].blocks.filter((_, i) => i !== blockIdx);
     setLesson(prev => ({ ...prev, pages: updatedPages }));
   };
@@ -141,7 +149,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
       const data = await res.json();
       if (res.ok && data.success && Array.isArray(data.newBlocks)) {
         const blocksWithIds = data.newBlocks.map((b, i) => ({ ...b, id: `ai-b-${Date.now()}-${i}` }));
-        const updatedPages = [...lesson.pages];
+        const updatedPages = [...(lesson.pages || [])];
         const currentBlocks = updatedPages[activePageIndex].blocks;
         const insertIdx = aiModalTarget.blockIdx + 1;
         currentBlocks.splice(insertIdx, 0, ...blocksWithIds);
@@ -188,7 +196,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">Lesson Title</label>
             <input
               type="text"
-              value={lesson.title}
+              value={lesson.title || ''}
               onChange={e => setLesson(prev => ({ ...prev, title: e.target.value }))}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-bold text-slate-900 outline-none transition shadow-2xs"
               placeholder="e.g. Travel Vocabulary & Past Simple"
@@ -198,7 +206,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
             <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">Level & Topic</label>
             <div className="flex gap-2">
               <select
-                value={lesson.level}
+                value={lesson.level || 'B1'}
                 onChange={e => setLesson(prev => ({ ...prev, level: e.target.value }))}
                 className="w-28 px-3 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-bold text-slate-900 outline-none transition shadow-2xs cursor-pointer"
               >
@@ -206,7 +214,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
               </select>
               <input
                 type="text"
-                value={lesson.topic}
+                value={lesson.topic || ''}
                 onChange={e => setLesson(prev => ({ ...prev, topic: e.target.value }))}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-medium text-slate-900 outline-none transition shadow-2xs"
                 placeholder="Topic..."
@@ -217,7 +225,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
       </div>
 
       <BuilderPagesBar
-        pages={lesson.pages}
+        pages={lesson.pages || []}
         activePageIndex={activePageIndex}
         setActivePageIndex={setActivePageIndex}
         onAddPage={handleAddPage}
@@ -229,14 +237,14 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
         <BuilderPalette onAddBlock={handleAddBlock} />
 
         <div className="lg:col-span-3 space-y-4">
-          {activePage.blocks.length === 0 ? (
+          {(activePage.blocks || []).length === 0 ? (
             <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center space-y-3">
               <span className="text-4xl block">🧩</span>
               <p className="font-bold text-slate-600">This page is currently empty.</p>
               <p className="text-slate-400 text-xs">Click any block from the left palette to add content!</p>
             </div>
           ) : (
-            activePage.blocks.map((block, idx) => (
+            (activePage.blocks || []).map((block, idx) => (
               <div
                 key={block.id || idx}
                 draggable
@@ -273,7 +281,7 @@ export const VisualBuilderView = ({ onSaveLesson, onCancel }) => {
                       </button>
                     )}
                     <button onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▲</button>
-                    <button onClick={() => handleMoveBlock(idx, 1)} disabled={idx === activePage.blocks.length - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
+                    <button onClick={() => handleMoveBlock(idx, 1)} disabled={idx === (activePage.blocks?.length || 1) - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
                     <button onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Delete block">🗑️</button>
                   </div>
                 </div>
