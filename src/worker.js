@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - MULTI-LINE GAP FILL FORMATTER & GEMINI CASCADE
+// CLOUDFLARE WORKER BACKEND - SAFE CONTEXT PROMPT SANITIZATION & CASCADE AI
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -55,6 +55,7 @@ function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
+// ULTRA-RESILIENT JSON PARSER
 function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -362,12 +363,15 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
 
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-        let contextData = '';
+        // SANITIZE CONTEXT DATA TO STRIP UNESCAPED NEWLINES AND DOUBLE QUOTES
+        let rawContext = '';
         if (sourceBlock.type === 'grammar_card') {
-          contextData = `Grammar Topic Name: ${sourceBlock.title || ''}\nFormula: ${sourceBlock.formula || ''}\nExplanation: ${sourceBlock.explanation || ''}\nExamples: ${(sourceBlock.examples || []).join('; ')}`;
+          rawContext = `Grammar Topic: ${sourceBlock.title || ''} | Formula: ${sourceBlock.formula || ''} | Explanation: ${sourceBlock.explanation || ''} | Examples: ${(sourceBlock.examples || []).join('; ')}`;
         } else {
-          contextData = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
+          rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
         }
+
+        const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
         // IN-BLOCK AI TEXT PASSAGE AUTO-WRITER
         if (actions.includes('generate_text_passage')) {
@@ -385,7 +389,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
   }
 ]`;
 
-          const parsedBlocks = await runAiPipeline(env, textSystemPrompt, `Topic/Hint for Reading Text: ${contextData}`, 3000);
+          const parsedBlocks = await runAiPipeline(env, textSystemPrompt, `Topic/Hint for Reading Text: ${safeContextData}`, 3000);
           const newStoryText = Array.isArray(parsedBlocks) ? (parsedBlocks[0]?.text || JSON.stringify(parsedBlocks[0])) : (parsedBlocks.text || JSON.stringify(parsedBlocks));
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
@@ -400,14 +404,14 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
 [
   {
     "type": "grammar_card",
-    "title": "${contextData}",
+    "title": "${safeContextData}",
     "formula": "Rule Formula (e.g. Subject + had + V3 + would have + V3)",
     "explanation": "Clear CEFR Level ${level} explanation of when and how to use this grammar rule.",
     "examples": [ "Example sentence 1.", "Example sentence 2.", "Example sentence 3." ]
   }
 ]`;
 
-          const fallbackParsed = await runAiPipeline(env, grammarSystemPrompt, `Grammar Topic Name: ${contextData}`, 1500);
+          const fallbackParsed = await runAiPipeline(env, grammarSystemPrompt, `Grammar Topic Name: ${safeContextData}`, 1500);
           return jsonResponse({ success: true, newBlocks: Array.isArray(fallbackParsed) ? fallbackParsed : [fallbackParsed] });
         }
 
@@ -423,12 +427,12 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
 
           const textSystemPrompt = `You are a master ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nSTRICT QUOTE RULE: Use single quotes (') for quotes inside text.\nRETURN ONLY A VALID JSON OBJECT WITH "text":\n{ "text": "Full rewritten reading story text here..." }`;
 
-          const parsedObj = await runAiPipeline(env, textSystemPrompt, `Original Text:\n${contextData}`, 3000);
+          const parsedObj = await runAiPipeline(env, textSystemPrompt, `Original Text:\n${safeContextData}`, 3000);
           const newStoryText = parsedObj.text || (Array.isArray(parsedObj) ? parsedObj[0]?.text : JSON.stringify(parsedObj));
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
-        // DYNAMIC TASK PROMPT CONSTRUCTION (WITH NEWLINE MULTI-SENTENCE TEMPLATES)
+        // DYNAMIC TASK PROMPT CONSTRUCTION (WITH FEW-SHOT TEMPLATES FOR ZERO ERRORS)
         let taskInstructions = '';
         if (actions.includes('listening')) {
           taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
@@ -443,7 +447,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           taskInstructions += `- Generate 1 "gap_fill" block with 4 separate sentences, separated by newlines \\n, putting target words in brackets [word]. Template:\n[ { "type": "gap_fill", "instruction": "Complete the sentences using correct form:", "text": "1. Sentence one with [word1].\\n2. Sentence two with [word2].\\n3. Sentence three with [word3].", "answers": ["word1", "word2", "word3"] } ]\n`;
         }
         if (actions.includes('gap_fill_bank')) {
-          taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] and 3 distractors.\n`;
+          taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] in brackets and 3 distractors.\n`;
         }
         if (actions.includes('matching')) {
           taskInstructions += `- Generate 1 "matching" block with 6 pairs [{ left, right }] configured as "${matchingType}".\n`;
@@ -452,7 +456,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           taskInstructions += `- Generate 1 "open_input" block with 3 speaking discussion prompts.\n`;
         }
         if (actions.includes('grammar_quiz')) {
-          taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${contextData}".\n`;
+          taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${safeContextData}". Template:\n[ { "type": "multiple_choice", "question": "Which sentence correctly uses the grammar rule?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
         }
         if (actions.includes('fill_this_block')) {
           taskInstructions += `- Generate 1 100% full, non-empty block of type "${sourceBlock.type}".\n`;
@@ -474,7 +478,7 @@ ${taskInstructions}
 RETURN ONLY A VALID JSON ARRAY OF THE REQUESTED BLOCK OBJECT(S):
 [ { "type": "${sourceBlock.type || 'multiple_choice'}", ... } ]`;
 
-        const userContent = `CEFR Level: ${level}\nSource Context:\n${contextData}`;
+        const userContent = `CEFR Level: ${level}\nSource Context:\n${safeContextData}`;
 
         const parsedBlocks = await runAiPipeline(env, systemPrompt, userContent, 2500);
         return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
