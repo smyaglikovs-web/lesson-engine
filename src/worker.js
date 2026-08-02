@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH AUTO-NORMALIZATION & CEFR MATRIX
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH AUTO-REPAIRING JSON PARSER
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -55,43 +55,71 @@ function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
+// ULTRA-RESILIENT AUTO-REPAIRING JSON PARSER
 function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-  
+
   const start = clean.indexOf('{');
-  const end = clean.lastIndexOf('}');
-  if (start !== -1 && end !== -1 && end > start) {
-    clean = clean.substring(start, end + 1);
+  if (start === -1) {
+    const arrStart = clean.indexOf('[');
+    if (arrStart !== -1) clean = clean.substring(arrStart);
+    else throw new Error('No JSON structure found in AI output.');
   } else {
-    const arrayStart = clean.indexOf('[');
-    const arrayEnd = clean.lastIndexOf(']');
-    if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
-      clean = clean.substring(arrayStart, arrayEnd + 1);
-    }
+    clean = clean.substring(start);
   }
 
+  // Attempt 1: Direct Parse
   try {
     return JSON.parse(clean);
-  } catch (err) {
-    try {
-      let fixed = '';
-      let inString = false;
-      for (let i = 0; i < clean.length; i++) {
-        const c = clean[i];
-        if (c === '"' && (i === 0 || clean[i - 1] !== '\\')) {
-          inString = !inString;
-          fixed += c;
-        } else if (inString && (c === '\n' || c === '\r')) {
-          fixed += '\\n';
-        } else {
-          fixed += c;
-        }
+  } catch (e1) {
+    // Attempt 2: Fix unescaped newlines and control characters inside string values
+    let fixed = '';
+    let inString = false;
+    for (let i = 0; i < clean.length; i++) {
+      const c = clean[i];
+      if (c === '"' && (i === 0 || clean[i - 1] !== '\\')) {
+        inString = !inString;
+        fixed += c;
+      } else if (inString && (c === '\n' || c === '\r')) {
+        fixed += '\\n';
+      } else if (inString && c === '\t') {
+        fixed += '\\t';
+      } else {
+        fixed += c;
       }
+    }
+
+    try {
       return JSON.parse(fixed);
     } catch (e2) {
-      console.error('JSON Parse Error:', err, 'Raw:', rawText);
-      throw new Error('AI generated invalid JSON: ' + err.message);
+      // Attempt 3: Auto-repair truncated JSON brackets if response hit token limits
+      let stack = [];
+      let repaired = '';
+      let insideStr = false;
+
+      for (let i = 0; i < clean.length; i++) {
+        const char = clean[i];
+        if (char === '"' && (i === 0 || clean[i - 1] !== '\\')) {
+          insideStr = !insideStr;
+        }
+        repaired += char;
+        if (!insideStr) {
+          if (char === '{') stack.push('}');
+          else if (char === '[') stack.push(']');
+          else if (char === '}' || char === ']') stack.pop();
+        }
+      }
+
+      if (insideStr) repaired += '"';
+      while (stack.length > 0) repaired += stack.pop();
+
+      try {
+        return JSON.parse(repaired);
+      } catch (e3) {
+        console.error('JSON Repair Final Error:', e3, 'Raw:', rawText);
+        throw new Error('AI JSON was incomplete. Please click Generate again.');
+      }
     }
   }
 }
@@ -179,19 +207,19 @@ export default {
 
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-        const systemPrompt = `You are a world-class CELTA ELT Methodologist. Generate a complete 5-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
+        const systemPrompt = `You are a CELTA ELT Methodologist. Generate a complete 5-PAGE interactive English lesson strictly matching CEFR level ${level}.
 
-STRICT RULES:
-1. 100% Target Language Policy: All instructions, questions, texts MUST be in English.
-2. CEFR Level ${level} Target: ${cefrRules}
-3. EVERY SINGLE FIELD MUST BE FULLY POPULATED WITH HIGH-QUALITY ENGLISH TEXT. NO EMPTY STRINGS OR PLACEHOLDERS!
+STRICT JSON QUOTE RULE:
+- Use single quotes (') for any quotes or speech inside text string values. NEVER use unescaped double quotes (") inside JSON string values!
+- 100% Target Language Policy: All instructions, questions, texts MUST be in English.
+- CEFR Level ${level} Target: ${cefrRules}
 
 LESSON STRUCTURE:
 Page 1: Lead-in & Core Reading Passage
 - "heading": Lesson Title
 - "open_input": 2 Lead-in discussion questions
-- "flashcards": 6 key vocabulary cards ({ front, back, example })
-- "text": A complete 200-word reading passage strictly matching CEFR ${level}.
+- "flashcards": 5 vocabulary cards ({ front, back, example })
+- "text": A complete 180-word reading passage strictly matching CEFR ${level}.
 
 Page 2: Comprehension
 - "multiple_choice": 1 main idea question
@@ -237,7 +265,7 @@ RETURN ONLY VALID JSON FORMAT:
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userContent }
           ],
-          temperature: 0.3,
+          temperature: 0.2,
           max_tokens: 3800
         });
 
@@ -255,19 +283,19 @@ RETURN ONLY VALID JSON FORMAT:
         const systemPrompt = `You are an expert ELT Materials Designer. Generate complete interactive exercise blocks based on the provided Reading Passage/Context for CEFR Level ${level}.
 
 STRICT RULES:
-1. 100% English target language policy.
-2. EVERY ITEM MUST BE 100% POPULATED WITH RICH TEXT. NO EMPTY PLACEHOLDERS!
+1. Use single quotes (') inside string values. No unescaped double quotes!
+2. 100% English target language policy.
 3. CEFR Level ${level} Target: ${cefrRules}
 
 REQUESTED ACTION TASKS (${actions.join(', ')}):
 Generate JSON block objects for requested task types:
 
 - "listening": multiple_choice block with 4 comprehension questions ({ question, options [3], correct, explanation }).
-- "flashcards": flashcards block with 6 items ({ cards: [{ front, back, example }] }).
+- "flashcards": flashcards block with 5 items ({ cards: [{ front, back, example }] }).
 - "true_false": multiple_choice block with 4 True/False questions.
-- "gap_fill": gap_fill block with 5 sentences containing [answer] in brackets.
+- "gap_fill": gap_fill block with 4 sentences containing [answer] in brackets.
 - "gap_fill_bank": gap_fill_bank block with text containing [answers] and 3 distractors.
-- "matching": matching block with 6 pairs [{ left, right }].
+- "matching": matching block with 5 pairs [{ left, right }].
 - "discussion": open_input block with 3 speaking discussion prompts.
 - "grammar": grammar_card block with CEFR ${level} rule ({ title, formula, explanation, examples }).
 
@@ -281,7 +309,7 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userContent }
           ],
-          temperature: 0.3,
+          temperature: 0.2,
           max_tokens: 2500
         });
 
@@ -307,7 +335,7 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
         return jsonResponse({ success: false, message: 'Paste transcripts manually if unavailable.' });
       }
 
-      // LESSONS CRUD (WITH AUTO-NORMALIZATION FOR PAGES)
+      // LESSONS CRUD
       if (path === '/api/lessons' && request.method === 'GET') {
         const { results } = await env.DB.prepare('SELECT id, title, level, topic, description, created_at FROM lessons ORDER BY created_at DESC').all();
         return jsonResponse(results || []);
@@ -323,7 +351,6 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
           parsedData = JSON.parse(record.pages_json || '[]');
         } catch (e) {}
 
-        // Auto-normalize flat block arrays into page structure
         let pages = [];
         if (Array.isArray(parsedData) && parsedData.length > 0) {
           if (parsedData[0].type && !parsedData[0].blocks) {
