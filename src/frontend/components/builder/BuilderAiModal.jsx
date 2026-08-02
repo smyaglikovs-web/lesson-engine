@@ -11,6 +11,8 @@ export const BuilderAiModal = ({
   setMatchingType,
   flashcardType,
   setFlashcardType,
+  modalLevel,
+  setModalLevel,
   onExecute,
   onClose,
   aiGenerating
@@ -44,6 +46,27 @@ export const BuilderAiModal = ({
             </h3>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1 cursor-pointer">✕</button>
+        </div>
+
+        {/* CEFR LEVEL SELECTOR */}
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2">
+          <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+            🎚️ Target CEFR Language Level:
+          </label>
+          <div className="flex gap-2">
+            {['A1', 'A2', 'B1', 'B2', 'C1'].map(lvl => (
+              <button
+                key={lvl}
+                type="button"
+                onClick={() => setModalLevel(lvl)}
+                className={`flex-1 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                  modalLevel === lvl ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {lvl}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* SOURCE BLOCK SELECTOR FOR LIGHTWEIGHT TASK BLOCKS */}
@@ -149,7 +172,7 @@ export const BuilderAiModal = ({
         {isTextBlock && (
           <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
             <p className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">📜 Text Refinement Tools:</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 onClick={() => { toggleTaskSelection('expand_text'); onExecute(); }}
                 disabled={aiGenerating}
@@ -164,11 +187,18 @@ export const BuilderAiModal = ({
               >
                 ✂️ Shorten Text (~150 words)
               </button>
+              <button
+                onClick={() => { toggleTaskSelection('refine_level'); onExecute(); }}
+                disabled={aiGenerating}
+                className="p-2.5 bg-indigo-50 border border-indigo-200 hover:border-indigo-500 rounded-xl text-xs font-bold text-indigo-900 transition cursor-pointer text-left"
+              >
+                🎚️ Rewrite for Level [{modalLevel}]
+              </button>
             </div>
           </div>
         )}
 
-        {/* MULTI-TASK CHECKLIST FOR HEAVY ANCHORS (TEXT / VIDEO / AUDIO / GRAMMAR CARD) */}
+        {/* MULTI-TASK CHECKLIST FOR HEAVY ANCHORS */}
         {isHeavyAnchor && (
           <div className="space-y-2.5">
             <p className="text-xs text-slate-500 font-medium">Select 1 or more practice tasks to generate based on this anchor content:</p>
