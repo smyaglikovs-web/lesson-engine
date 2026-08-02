@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - HYBRID AI TEAM (LLAMA 3.3 + DEEPSEEK R1 + QWEN 2.5 FALLBACK)
+// CLOUDFLARE WORKER BACKEND - PRIMARY GOOGLE GEMINI FLASH + CLOUDFLARE LLAMA 4 CASCADE
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -120,47 +120,90 @@ function cleanAndParseJson(rawText) {
   }
 }
 
-// HYBRID AI PIPELINE (LLAMA 3.3 PRIMARY + QWEN 2.5 STRICT FALLBACK RELAY)
+// PRIMARY LEADER: GEMINI FLASH ➔ FALLBACK: LLAMA 4 SCOUT ➔ LLAMA 3.3 ➔ QWEN 2.5
 async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
-  if (!env.AI) {
-    throw new Error('Cloudflare Workers AI binding (AI) is not configured.');
+  // 1. PRIMARY LEADER: GOOGLE GEMINI FLASH (1M Token Context & Native JSON Mode)
+  if (env.GEMINI_API_KEY) {
+    try {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
+      const geminiRes = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+        })
+      });
+
+      if (geminiRes.ok) {
+        const gData = await geminiRes.json();
+        const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const gParsed = cleanAndParseJson(gRawText);
+        if (gParsed) return gParsed;
+      } else {
+        console.warn('Gemini API quota/error, cascading to Workers AI:', geminiRes.status);
+      }
+    } catch (eGemini) {
+      console.warn('Gemini API call failed, cascading to Workers AI...', eGemini);
+    }
   }
 
-  // 1. PRIMARY LEADER: Llama 3.3 70B (Best for native ELT English & Pedagogy)
-  try {
-    const res1 = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8', {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent }
-      ],
-      temperature: 0.2,
-      max_tokens: maxTokens
-    });
+  // 2. TIER 2: META LLAMA 4 SCOUT (Workers AI Latest Multimodal Model)
+  if (env.AI) {
+    try {
+      const resL4 = await env.AI.run('@cf/meta/llama-4-scout-17b-16e-instruct', {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 0.2,
+        max_tokens: maxTokens
+      });
 
-    const rawText1 = res1?.response || res1?.choices?.[0]?.message?.content;
-    const parsed = cleanAndParseJson(rawText1);
-    if (parsed) return parsed;
-  } catch (e1) {
-    console.warn('Primary AI (Llama 3.3 70B) failed/timed out, switching to Fallback AI (Qwen 2.5 72B)...', e1);
+      const rawL4 = resL4?.response || resL4?.choices?.[0]?.message?.content;
+      const parsedL4 = cleanAndParseJson(rawL4);
+      if (parsedL4) return parsedL4;
+    } catch (eL4) {
+      console.warn('Llama 4 Scout failed, trying Llama 3.3 70B...', eL4);
+    }
+
+    // 3. TIER 3: META LLAMA 3.3 70B
+    try {
+      const resL3 = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 0.2,
+        max_tokens: maxTokens
+      });
+
+      const rawL3 = resL3?.response || resL3?.choices?.[0]?.message?.content;
+      const parsedL3 = cleanAndParseJson(rawL3);
+      if (parsedL3) return parsedL3;
+    } catch (eL3) {
+      console.warn('Llama 3.3 70B failed, cascading to Qwen 2.5 72B...', eL3);
+    }
+
+    // 4. TIER 4: QWEN 2.5 72B (Strict JSON Fallback)
+    try {
+      const resQwen = await env.AI.run('@cf/qwen/qwen2.5-72b-instruct', {
+        messages: [
+          { role: 'system', content: systemPrompt + '\nSTRICT RULE: Output 100% valid JSON with zero conversational text.' },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 0.1,
+        max_tokens: maxTokens
+      });
+
+      const rawQwen = resQwen?.response || resQwen?.choices?.[0]?.message?.content;
+      return cleanAndParseJson(rawQwen);
+    } catch (eQwen) {
+      console.error('All AI models in cascade failed:', eQwen);
+    }
   }
 
-  // 2. FALLBACK RELAY: Qwen 2.5 72B (World-class Strict JSON Enforcement)
-  try {
-    const res2 = await env.AI.run('@cf/qwen/qwen2.5-72b-instruct', {
-      messages: [
-        { role: 'system', content: systemPrompt + '\nSTRICT RULE: Output 100% valid JSON with zero markdown or conversational wrapper.' },
-        { role: 'user', content: userContent }
-      ],
-      temperature: 0.1,
-      max_tokens: maxTokens
-    });
-
-    const rawText2 = res2?.response || res2?.choices?.[0]?.message?.content;
-    return cleanAndParseJson(rawText2);
-  } catch (e2) {
-    console.error('Fallback AI (Qwen 2.5 72B) also failed:', e2);
-    throw new Error('AI Generation failed on all models. Please click Generate again.');
-  }
+  throw new Error('AI Generation failed on all cascade tiers. Please try again.');
 }
 
 async function ensureTables(db) {
@@ -244,7 +287,7 @@ export default {
         return jsonResponse({ error: 'Invalid password' }, 401);
       }
 
-      // FULL AI LESSON GENERATOR (PRIMARY: LLAMA 3.3 70B ➔ FALLBACK: QWEN 2.5 72B)
+      // FULL AI LESSON GENERATOR
       if (path === '/api/ai/generate' && request.method === 'POST') {
         const { text, level = 'B1', topic = 'General English' } = await request.json();
 
@@ -328,7 +371,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
         return jsonResponse({ success: true, jsonText: JSON.stringify(parsedJson, null, 2) });
       }
 
-      // SINGLE BLOCK & CONTEXTUAL AI ASSISTANT (PRIMARY: DEEPSEEK R1 / LLAMA 3.3)
+      // SINGLE BLOCK & CONTEXTUAL AI ASSISTANT
       if (path === '/api/ai/transform-block' && request.method === 'POST') {
         const {
           actions = [],
@@ -364,7 +407,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
-        // SPECIAL CASE: IN-BLOCK AI GRAMMAR RULE AUTO-BUILDER (USES DEEPSEEK R1 FOR REASONING)
+        // SPECIAL CASE: IN-BLOCK AI GRAMMAR RULE AUTO-BUILDER
         if (actions.includes('generate_grammar_card')) {
           const grammarSystemPrompt = `You are a master ELT Methodologist. Generate a comprehensive Grammar Presentation Card for the grammar topic provided for CEFR Level ${level}.
 
