@@ -28,6 +28,10 @@ export const EditableBlockCard = ({ block, onChange }) => {
   const [subtitleStatus, setSubtitleStatus] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  // Grammar Card State
+  const [grammarTopicInput, setGrammarTopicInput] = useState(block.title || '');
+  const [generatingGrammar, setGeneratingGrammar] = useState(false);
+
   if (!block || typeof block !== 'object') {
     return <p className="text-xs text-slate-400 font-medium">Invalid block data.</p>;
   }
@@ -79,44 +83,101 @@ export const EditableBlockCard = ({ block, onChange }) => {
     const addExample = () => onChange({ ...block, examples: [...examples, 'Example sentence'] });
     const removeExample = (idx) => onChange({ ...block, examples: examples.filter((_, i) => i !== idx) });
 
+    const handleAiAutoBuildRule = async () => {
+      if (!grammarTopicInput.trim()) return alert('Type a grammar topic name first (e.g. Third Conditional)');
+      setGeneratingGrammar(true);
+      try {
+        const res = await fetch('/api/ai/transform-block', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            actions: ['generate_grammar_card'],
+            sourceText: grammarTopicInput.trim(),
+            level: 'B1'
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.newBlocks?.[0]) {
+          const rule = data.newBlocks[0];
+          onChange({
+            ...block,
+            title: rule.title || grammarTopicInput,
+            formula: rule.formula || '',
+            explanation: rule.explanation || '',
+            examples: Array.isArray(rule.examples) ? rule.examples : ['Example sentence']
+          });
+        }
+      } catch (e) {
+        alert('Error auto-building grammar card');
+      } finally {
+        setGeneratingGrammar(false);
+      }
+    };
+
     return (
-      <div className="space-y-3 bg-gradient-to-r from-indigo-50/50 to-blue-50/50 p-4 rounded-2xl border border-indigo-100">
-        <input
-          type="text"
-          value={block.title || ''}
-          onChange={e => onChange({ ...block, title: e.target.value })}
-          placeholder="Grammar Rule Title (e.g., Third Conditional)..."
-          className="p-2.5 border rounded-xl text-sm font-bold w-full bg-white"
-        />
-        <input
-          type="text"
-          value={block.formula || ''}
-          onChange={e => onChange({ ...block, formula: e.target.value })}
-          placeholder="Formula (e.g., Subject + had + V3 + would have + V3)..."
-          className="p-2.5 border rounded-xl text-xs font-mono w-full bg-white text-indigo-900 font-bold"
-        />
-        <textarea
-          rows="2"
-          value={block.explanation || ''}
-          onChange={e => onChange({ ...block, explanation: e.target.value })}
-          placeholder="Explanation of rule usage..."
-          className="p-2.5 border rounded-xl text-xs w-full leading-relaxed bg-white"
-        ></textarea>
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-bold text-slate-500 uppercase">Examples:</label>
-          {examples.map((ex, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <input
-                type="text"
-                value={ex}
-                onChange={e => updateExample(i, e.target.value)}
-                className="p-2 border rounded-xl text-xs flex-1 bg-white font-medium"
-              />
-              {examples.length > 1 && <button onClick={() => removeExample(i)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>}
-            </div>
-          ))}
+      <div className="space-y-4 bg-gradient-to-r from-indigo-50/70 to-blue-50/70 p-5 rounded-3xl border border-indigo-100">
+        {/* IN-BLOCK AI RULE BUILDER BAR */}
+        <div className="bg-white p-3.5 rounded-2xl border border-indigo-100 space-y-2 shadow-2xs">
+          <label className="block text-[11px] font-extrabold text-indigo-900 uppercase tracking-wider">
+            🪄 AI Rule Auto-Builder: Type topic name and let AI construct the rule card
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={grammarTopicInput}
+              onChange={e => setGrammarTopicInput(e.target.value)}
+              placeholder="e.g. Third Conditional, Used to vs Would, Inversion..."
+              className="flex-1 p-2.5 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button
+              type="button"
+              disabled={generatingGrammar || !grammarTopicInput.trim()}
+              onClick={handleAiAutoBuildRule}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-xs transition disabled:opacity-40 cursor-pointer"
+            >
+              {generatingGrammar ? '⌛ Building...' : '🪄 AI Build Rule'}
+            </button>
+          </div>
         </div>
-        <button onClick={addExample} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold cursor-pointer">+ Add Example</button>
+
+        <div className="space-y-3">
+          <input
+            type="text"
+            value={block.title || ''}
+            onChange={e => onChange({ ...block, title: e.target.value })}
+            placeholder="Grammar Rule Title (e.g., Third Conditional)..."
+            className="p-2.5 border rounded-xl text-sm font-bold w-full bg-white"
+          />
+          <input
+            type="text"
+            value={block.formula || ''}
+            onChange={e => onChange({ ...block, formula: e.target.value })}
+            placeholder="Formula (e.g., Subject + had + V3 + would have + V3)..."
+            className="p-2.5 border rounded-xl text-xs font-mono w-full bg-white text-indigo-900 font-bold"
+          />
+          <textarea
+            rows="2"
+            value={block.explanation || ''}
+            onChange={e => onChange({ ...block, explanation: e.target.value })}
+            placeholder="Explanation of rule usage..."
+            className="p-2.5 border rounded-xl text-xs w-full leading-relaxed bg-white font-medium"
+          ></textarea>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-slate-500 uppercase">Context Example Sentences:</label>
+            {examples.map((ex, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={ex}
+                  onChange={e => updateExample(i, e.target.value)}
+                  className="p-2 border rounded-xl text-xs flex-1 bg-white font-medium"
+                />
+                {examples.length > 1 && <button onClick={() => removeExample(i)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>}
+              </div>
+            ))}
+          </div>
+          <button onClick={addExample} className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer">+ Add Example</button>
+        </div>
       </div>
     );
   }
