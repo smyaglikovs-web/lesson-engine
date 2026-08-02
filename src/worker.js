@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - ACTIVE 2026 GEMINI 2.5/3.5 FLASH + WORKERS AI CASCADE
+// CLOUDFLARE WORKER BACKEND - GRAMMAR BINDING & CONTEXT-AWARE TASK GENERATOR
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -121,12 +121,12 @@ function cleanAndParseJson(rawText) {
   }
 }
 
-// BULLETPROOF CASCADE AI PIPELINE (GEMINI 2.5 / 3.5 FLASH ➔ WORKERS AI)
+// BULLETPROOF CASCADE AI PIPELINE
 async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
-  // 1. TIER 1: GOOGLE GEMINI ACTIVE 2026 MODELS (Gemini 2.5 Flash, 2.5 Flash Lite, 3.5 Flash Lite)
+  // 1. TIER 1: GOOGLE GEMINI 1.5/2.0 FLASH REST API
   if (env.GEMINI_API_KEY) {
-    const activeGeminiModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
-    for (const gModel of activeGeminiModels) {
+    const geminiModels = ['gemini-1.5-flash', 'gemini-2.0-flash'];
+    for (const gModel of geminiModels) {
       try {
         const gRestUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${env.GEMINI_API_KEY}`;
         const gRestRes = await fetch(gRestUrl, {
@@ -144,7 +144,7 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
           const gParsed = cleanAndParseJson(gRawText);
           if (gParsed) return gParsed;
         } else {
-          console.warn(`Gemini model ${gModel} returned status ${gRestRes.status}, trying next Gemini model...`);
+          console.warn(`Gemini model ${gModel} returned status ${gRestRes.status}, cascading to Workers AI...`);
         }
       } catch (eGemini) {
         console.warn(`Gemini call for ${gModel} failed:`, eGemini);
@@ -189,7 +189,7 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
       console.warn('DeepSeek R1 failed, cascading to Llama 3.1 8B...', eDs);
     }
 
-    // 4. TIER 4: WORKERS AI META LLAMA 3.1 8B
+    // 4. TIER 4: WORKERS AI META LLAMA 3.1 8B (ULTRA-FAST 100% RELIABLE)
     try {
       const resL8 = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
         messages: [
@@ -407,7 +407,14 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
         } = await request.json();
 
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
-        const contextData = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
+
+        // SMART CONTEXT EXTRACTION: BIND GRAMMAR CARD CONTENT IF SOURCE IS A GRAMMAR CARD
+        let contextData = '';
+        if (sourceBlock.type === 'grammar_card') {
+          contextData = `Grammar Topic Name: ${sourceBlock.title || ''}\nFormula: ${sourceBlock.formula || ''}\nExplanation: ${sourceBlock.explanation || ''}\nExamples: ${(sourceBlock.examples || []).join('; ')}`;
+        } else {
+          contextData = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
+        }
 
         // IN-BLOCK AI TEXT PASSAGE AUTO-WRITER
         if (actions.includes('generate_text_passage')) {
@@ -468,7 +475,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
         }
 
-        // DYNAMIC TASK PROMPT CONSTRUCTION
+        // DYNAMIC TASK PROMPT CONSTRUCTION (STRICTLY ONLY GENERATES REQUESTED TASKS)
         let taskInstructions = '';
         if (actions.includes('listening')) {
           taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
@@ -492,10 +499,10 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           taskInstructions += `- Generate 1 "open_input" block with 3 speaking discussion prompts.\n`;
         }
         if (actions.includes('grammar_transform')) {
-          taskInstructions += `- Generate 1 "gap_fill" block with 4 sentence transformations targeting grammar.\n`;
+          taskInstructions += `- Generate 1 "gap_fill" block with 4 sentence transformations targeting the grammar rule: "${contextData}".\n`;
         }
         if (actions.includes('grammar_quiz')) {
-          taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing grammar.\n`;
+          taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${contextData}".\n`;
         }
         if (actions.includes('fill_this_block')) {
           taskInstructions += `- Generate 1 100% full, non-empty block of type "${sourceBlock.type}".\n`;
