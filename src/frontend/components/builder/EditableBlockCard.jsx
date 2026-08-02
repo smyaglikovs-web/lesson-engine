@@ -53,13 +53,15 @@ export const EditableBlockCard = ({ block, onChange }) => {
 
   if (block.type === 'text') {
     return (
-      <textarea
-        rows="6"
-        value={block.text || ''}
-        onChange={e => onChange({ ...block, text: e.target.value })}
-        placeholder="Enter or paste reading passage / story text..."
-        className="w-full p-3.5 border border-slate-200 rounded-xl text-slate-700 text-sm outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed font-sans"
-      ></textarea>
+      <div className="space-y-2">
+        <textarea
+          rows="6"
+          value={block.text || ''}
+          onChange={e => onChange({ ...block, text: e.target.value })}
+          placeholder="Enter or paste reading passage / story text..."
+          className="w-full p-3.5 border border-slate-200 rounded-xl text-slate-700 text-sm outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed font-sans"
+        ></textarea>
+      </div>
     );
   }
 
