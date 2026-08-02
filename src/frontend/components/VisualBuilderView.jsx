@@ -187,9 +187,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
   const handleOpenAiModal = (block, blockIdx) => {
     setAiModalTarget({ block, blockIdx });
 
-    // SMART SOURCE SELECTION:
-    // If target block is anchor (text, grammar_card, video), select itself.
-    // If target block is exercise (multiple_choice, gap_fill, etc.), auto-select nearest Grammar/Text block!
+    // SMART SOURCE CONTEXT SELECTION:
+    // If target is anchor (text, grammar_card, video), select itself.
+    // If target is lightweight task, auto-select nearest Heavyweight Anchor (Grammar or Text)!
     const isAnchor = block.type === 'text' || block.type === 'grammar_card' || block.type === 'video' || block.type === 'audio';
     if (isAnchor) {
       setSelectedSourceId(block.id);
