@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH CEFR MATRIX & OPTIMIZED TOKEN GENERATION
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH AUTO-NORMALIZATION & CEFR MATRIX
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -247,7 +247,7 @@ RETURN ONLY VALID JSON FORMAT:
         return jsonResponse({ success: true, jsonText: JSON.stringify(parsedJson, null, 2) });
       }
 
-      // SINGLE BLOCK AI TRANSFORMER (USES LESSON CONTEXT TO FILL ANY BLOCK)
+      // SINGLE BLOCK AI TRANSFORMER
       if (path === '/api/ai/transform-block' && request.method === 'POST') {
         const { actions = [], sourceBlock = {}, lessonContext = '', level = 'B1' } = await request.json();
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
@@ -307,7 +307,7 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
         return jsonResponse({ success: false, message: 'Paste transcripts manually if unavailable.' });
       }
 
-      // LESSONS CRUD
+      // LESSONS CRUD (WITH AUTO-NORMALIZATION FOR PAGES)
       if (path === '/api/lessons' && request.method === 'GET') {
         const { results } = await env.DB.prepare('SELECT id, title, level, topic, description, created_at FROM lessons ORDER BY created_at DESC').all();
         return jsonResponse(results || []);
@@ -318,21 +318,37 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
         const record = await env.DB.prepare('SELECT * FROM lessons WHERE id = ?').bind(id).first();
         if (!record) return jsonResponse({ error: 'Lesson not found' }, 404);
 
-        const pages = JSON.parse(record.pages_json || '[]');
+        let parsedData = [];
+        try {
+          parsedData = JSON.parse(record.pages_json || '[]');
+        } catch (e) {}
+
+        // Auto-normalize flat block arrays into page structure
+        let pages = [];
+        if (Array.isArray(parsedData) && parsedData.length > 0) {
+          if (parsedData[0].type && !parsedData[0].blocks) {
+            pages = [{ id: 'p1', title: record.topic || 'Part 1', blocks: parsedData }];
+          } else {
+            pages = parsedData;
+          }
+        } else if (parsedData && typeof parsedData === 'object' && parsedData.blocks) {
+          pages = [{ id: 'p1', title: record.topic || 'Part 1', blocks: parsedData.blocks }];
+        }
+
         return jsonResponse({
           id: record.id,
           title: record.title,
           level: record.level,
           topic: record.topic,
           description: record.description,
-          pages
+          pages: pages.length > 0 ? pages : [{ id: 'p1', title: 'Part 1', blocks: [] }]
         });
       }
 
       if (path === '/api/lessons' && request.method === 'POST') {
         const lesson = await request.json();
         const id = lesson.id || 'lesson-' + Date.now();
-        const pagesJson = JSON.stringify(lesson.pages || []);
+        const pagesJson = JSON.stringify(lesson.pages || lesson.blocks || []);
 
         await env.DB.prepare(`
           INSERT INTO lessons (id, title, level, topic, description, pages_json)
