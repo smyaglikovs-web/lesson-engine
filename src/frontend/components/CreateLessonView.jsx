@@ -46,16 +46,104 @@ const cleanAndParseJson = (val) => {
   }
 };
 
+// AUTO-SANITIZE LESSON BLOCKS TO PREVENT REACT RENDERING CRASHES
+function sanitizeLessonStructure(lessonObj) {
+  if (!lessonObj || typeof lessonObj !== 'object') return DEFAULT_NEW_JSON;
+
+  let pages = Array.isArray(lessonObj.pages) ? lessonObj.pages : [];
+  if (pages.length === 0) {
+    if (Array.isArray(lessonObj.blocks)) {
+      pages = [{ id: 'p1', title: 'Part 1: Lesson Content', blocks: lessonObj.blocks }];
+    } else {
+      pages = [{ id: 'p1', title: 'Part 1: Lesson Content', blocks: [] }];
+    }
+  }
+
+  const sanitizedPages = pages.map((p, pIdx) => {
+    const rawBlocks = Array.isArray(p.blocks) ? p.blocks : [];
+    const sanitizedBlocks = rawBlocks.map((b, bIdx) => {
+      if (!b || typeof b !== 'object') {
+        return { id: `b-${pIdx}-${bIdx}`, type: 'heading', level: 2, text: 'Section' };
+      }
+      const blockId = b.id || `b-${pIdx}-${bIdx}-${Date.now()}`;
+      
+      if (b.type === 'multiple_choice') {
+        return {
+          ...b,
+          id: blockId,
+          question: b.question || 'Question?',
+          options: Array.isArray(b.options) && b.options.length > 0 ? b.options : ['Option A', 'Option B'],
+          correct: typeof b.correct === 'number' ? b.correct : 0
+        };
+      }
+      if (b.type === 'matching') {
+        return {
+          ...b,
+          id: blockId,
+          instruction: b.instruction || 'Match pairs:',
+          pairs: Array.isArray(b.pairs) && b.pairs.length > 0 ? b.pairs : [{ left: 'Word', right: 'Match' }]
+        };
+      }
+      if (b.type === 'flashcards') {
+        return {
+          ...b,
+          id: blockId,
+          title: b.title || 'Vocabulary',
+          cards: Array.isArray(b.cards) && b.cards.length > 0 ? b.cards : [{ front: 'Word', back: 'Translation' }]
+        };
+      }
+      if (b.type === 'grammar_card') {
+        return {
+          ...b,
+          id: blockId,
+          title: b.title || 'Grammar Rule',
+          formula: b.formula || '',
+          explanation: b.explanation || '',
+          examples: Array.isArray(b.examples) ? b.examples : ['Example sentence']
+        };
+      }
+      if (b.type === 'gap_fill_bank') {
+        return {
+          ...b,
+          id: blockId,
+          instruction: b.instruction || 'Fill the gaps:',
+          text: b.text || 'Text with [answers] in brackets.',
+          distractors: Array.isArray(b.distractors) ? b.distractors : []
+        };
+      }
+
+      return { ...b, id: blockId };
+    });
+
+    return {
+      ...p,
+      id: p.id || `p${pIdx + 1}`,
+      title: p.title || `Part ${pIdx + 1}`,
+      blocks: sanitizedBlocks
+    };
+  });
+
+  return {
+    ...lessonObj,
+    title: lessonObj.title || 'Interactive English Lesson',
+    level: lessonObj.level || 'B1',
+    topic: lessonObj.topic || 'General',
+    description: lessonObj.description || '',
+    pages: sanitizedPages
+  };
+}
+
 export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
   const [createMode, setCreateMode] = useState('visual'); // 'visual' | 'ai' | 'json'
-  const [currentLesson, setCurrentLesson] = useState(initialLesson || null);
+  const [currentLesson, setCurrentLesson] = useState(initialLesson ? sanitizeLessonStructure(initialLesson) : null);
   const [successBanner, setSuccessBanner] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (initialLesson) {
-      setCurrentLesson(initialLesson);
-      setJsonText(JSON.stringify(initialLesson, null, 2));
+      const sanitized = sanitizeLessonStructure(initialLesson);
+      setCurrentLesson(sanitized);
+      setJsonText(JSON.stringify(sanitized, null, 2));
     }
   }, [initialLesson]);
 
@@ -114,19 +202,10 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
 
       if (data.success && data.jsonText) {
         let generatedLessonObj = cleanAndParseJson(data.jsonText);
+        const sanitizedObj = sanitizeLessonStructure(generatedLessonObj);
 
-        if (generatedLessonObj) {
-          if (!generatedLessonObj.pages || !Array.isArray(generatedLessonObj.pages) || generatedLessonObj.pages.length === 0) {
-            if (generatedLessonObj.blocks && Array.isArray(generatedLessonObj.blocks)) {
-              generatedLessonObj.pages = [{ id: 'p1', title: 'Part 1: Lesson Content', blocks: generatedLessonObj.blocks }];
-            } else {
-              generatedLessonObj.pages = [{ id: 'p1', title: 'Part 1: Lesson Content', blocks: [] }];
-            }
-          }
-        }
-
-        setCurrentLesson(generatedLessonObj);
-        setJsonText(JSON.stringify(generatedLessonObj, null, 2));
+        setCurrentLesson(sanitizedObj);
+        setJsonText(JSON.stringify(sanitizedObj, null, 2));
         setCreateMode('visual'); // OPEN IMMEDIATELY IN VISUAL LEGO BUILDER!
         setSuccessBanner('🎉 Lesson generated by AI! You can now edit, tweak, and drag-and-drop blocks.');
       } else {
