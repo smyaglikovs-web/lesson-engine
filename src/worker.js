@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH TYPE-STRICT JSON TEMPLATES
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH AI TEXT AUTO-WRITER
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -263,8 +263,8 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
       "id": "p4",
       "title": "Part 4: Practice & Transformation",
       "blocks": [
-        { "type": "gap_fill_bank", "instruction": "Fill gaps from the reading passage:", "text": "Paragraph with [answers] in brackets.", "distractors": ["extra1"] },
-        { "type": "gap_fill", "instruction": "Transform sentence:", "text": "Sentence with [answer].", "answers": ["answer"] }
+        { "type": "gap_fill_bank", "instruction": "Fill gaps:", "text": "Paragraph with [target] words.", "distractors": ["extra1"] },
+        { "type": "gap_fill", "instruction": "Transform sentence:", "text": "Sentence with [correct_form].", "answers": ["correct_form"] }
       ]
     },
     {
@@ -306,6 +306,7 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
           actions = [],
           sourceBlock = {},
           sourceText = '',
+          targetLength = '250',
           matchingType = 'synonym',
           flashcardType = 'russian',
           level = 'B1'
@@ -313,6 +314,44 @@ RETURN ONLY VALID JSON MATCHING THIS EXACT TEMPLATE:
 
         const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
         const contextData = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
+
+        // IN-BLOCK AI TEXT PASSAGE AUTO-WRITER (GENERATES FULL READING PASSAGE ON TOPIC)
+        if (actions.includes('generate_text_passage')) {
+          const targetWords = targetLength + ' words';
+          const textSystemPrompt = `You are a master ELT Materials Writer. Write an engaging, educational reading story/passage on the topic provided for CEFR Level ${level}.
+
+Target Length: ~${targetWords}.
+CEFR Level ${level} Target: ${cefrRules}
+STRICT QUOTE RULE: Use single quotes (') for quotes or speech inside text.
+RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE TEXT BLOCK OBJECT:
+[
+  {
+    "type": "text",
+    "text": "Full educational reading passage story written strictly for CEFR Level ${level}..."
+  }
+]`;
+
+          const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
+            messages: [
+              { role: 'system', content: textSystemPrompt },
+              { role: 'user', content: `Topic/Hint for Reading Text: ${contextData}` }
+            ],
+            temperature: 0.3,
+            max_tokens: 3000
+          });
+
+          const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
+          let newStoryText = '';
+
+          try {
+            const parsedObj = cleanAndParseJson(rawText);
+            newStoryText = parsedObj.text || parsedObj[0]?.text || rawText;
+          } catch (eFallback) {
+            newStoryText = rawText.replace(/```json/gi, '').replace(/```/g, '').replace(/^{"text":\s*"/i, '').replace(/"}$/, '').trim();
+          }
+
+          return jsonResponse({ success: true, newBlocks: [{ type: 'text', text: newStoryText }] });
+        }
 
         // SPECIAL CASE: IN-BLOCK AI GRAMMAR RULE AUTO-BUILDER
         if (actions.includes('generate_grammar_card')) {
@@ -345,7 +384,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
           return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
         }
 
-        // UNBREAKABLE TEXT REFINEMENT
+        // UNBREAKABLE TEXT REFINEMENT (Expand, Shorten, Change Level)
         if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
           let textInstruction = 'Expand this reading passage into a richer, longer, more detailed story (350-450 words) with CEFR Level ' + level + ' vocabulary.';
           
@@ -422,156 +461,4 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
           max_tokens: 2500
         });
 
-        const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.content;
-        const parsedBlocks = cleanAndParseJson(rawText);
-
-        return jsonResponse({ success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] });
-      }
-
-      // YOUTUBE TRANSCRIPT
-      if (path === '/api/youtube/transcript' && request.method === 'POST') {
-        const { url: ytUrl } = await request.json();
-        if (!ytUrl) return jsonResponse({ error: 'No URL provided' }, 400);
-
-        try {
-          const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(ytUrl)}&format=json`);
-          if (oembedRes.ok) {
-            const oembedData = await oembedRes.json();
-            return jsonResponse({ success: true, transcript: `Video Title: ${oembedData.title}. Author: ${oembedData.author_name}.` });
-          }
-        } catch (e) {}
-
-        return jsonResponse({ success: false, message: 'Paste transcripts manually if unavailable.' });
-      }
-
-      // LESSONS CRUD
-      if (path === '/api/lessons' && request.method === 'GET') {
-        const { results } = await env.DB.prepare('SELECT id, title, level, topic, description, created_at FROM lessons ORDER BY created_at DESC').all();
-        return jsonResponse(results || []);
-      }
-
-      if (path.startsWith('/api/lessons/') && request.method === 'GET') {
-        const id = path.split('/')[3];
-        const record = await env.DB.prepare('SELECT * FROM lessons WHERE id = ?').bind(id).first();
-        if (!record) return jsonResponse({ error: 'Lesson not found' }, 404);
-
-        let parsedData = [];
-        try {
-          parsedData = JSON.parse(record.pages_json || '[]');
-        } catch (e) {}
-
-        let pages = [];
-        if (Array.isArray(parsedData) && parsedData.length > 0) {
-          if (parsedData[0].type && !parsedData[0].blocks) {
-            pages = [{ id: 'p1', title: record.topic || 'Part 1', blocks: parsedData }];
-          } else {
-            pages = parsedData;
-          }
-        } else if (parsedData && typeof parsedData === 'object' && parsedData.blocks) {
-          pages = [{ id: 'p1', title: record.topic || 'Part 1', blocks: parsedData.blocks }];
-        }
-
-        return jsonResponse({
-          id: record.id,
-          title: record.title,
-          level: record.level,
-          topic: record.topic,
-          description: record.description,
-          pages: pages.length > 0 ? pages : [{ id: 'p1', title: 'Part 1', blocks: [] }]
-        });
-      }
-
-      if (path === '/api/lessons' && request.method === 'POST') {
-        const lesson = await request.json();
-        const id = lesson.id || 'lesson-' + Date.now();
-        const pagesJson = JSON.stringify(lesson.pages || lesson.blocks || []);
-
-        try {
-          await env.DB.prepare(`
-            INSERT INTO lessons (id, title, level, topic, description, pages_json)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              title=excluded.title,
-              level=excluded.level,
-              topic=excluded.topic,
-              description=excluded.description,
-              pages_json=excluded.pages_json
-          `).bind(id, lesson.title || 'Untitled', lesson.level || 'B1', lesson.topic || 'General', lesson.description || '', pagesJson).run();
-        } catch (e1) {
-          await env.DB.prepare(`
-            INSERT INTO lessons (id, title, level, topic, description)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              title=excluded.title,
-              level=excluded.level,
-              topic=excluded.topic,
-              description=excluded.description
-          `).bind(id, lesson.title || 'Untitled', lesson.level || 'B1', lesson.topic || 'General', lesson.description || '').run();
-        }
-
-        return jsonResponse({ success: true, id });
-      }
-
-      if (path.startsWith('/api/lessons/') && request.method === 'DELETE') {
-        const id = path.split('/')[3];
-        await env.DB.prepare('DELETE FROM lessons WHERE id = ?').bind(id).run();
-        return jsonResponse({ success: true });
-      }
-
-      // HOMEWORK SUBMISSIONS
-      if (path === '/api/homework/submit' && request.method === 'POST') {
-        const { lessonId, studentName, score = 0, totalQuestions = 0, answers = {} } = await request.json();
-        const id = 'sub-' + Date.now();
-
-        await env.DB.prepare(`
-          INSERT INTO homework_submissions (id, lesson_id, student_name, score, total_questions, answers)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(id, lessonId, studentName, score, totalQuestions, JSON.stringify(answers)).run();
-
-        return jsonResponse({ success: true, id });
-      }
-
-      if (path.startsWith('/api/homework/') && request.method === 'GET') {
-        const lessonId = path.split('/')[3];
-        const { results } = await env.DB.prepare('SELECT * FROM homework_submissions WHERE lesson_id = ? ORDER BY created_at DESC').bind(lessonId).all();
-        return jsonResponse(results || []);
-      }
-
-      // REALTIME ROOM STATE SYNC
-      if (path.match(/\/api\/rooms\/[^/]+\/state/) && request.method === 'GET') {
-        const roomId = path.split('/')[3];
-        const record = await env.DB.prepare('SELECT * FROM room_states WHERE room_id = ?').bind(roomId).first();
-        if (!record) {
-          return jsonResponse({ isOnline: false, page_idx: 0, student_answers: {} });
-        }
-        return jsonResponse({
-          isOnline: true,
-          page_idx: record.page_idx,
-          student_answers: JSON.parse(record.student_answers || '{}')
-        });
-      }
-
-      if (path.match(/\/api\/rooms\/[^/]+\/state/) && request.method === 'POST') {
-        const roomId = path.split('/')[3];
-        const { pageIdx = 0, answers = {} } = await request.json();
-
-        await env.DB.prepare(`
-          INSERT INTO room_states (room_id, page_idx, student_answers, updated_at)
-          VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(room_id) DO UPDATE SET
-            page_idx=excluded.page_idx,
-            student_answers=excluded.student_answers,
-            updated_at=CURRENT_TIMESTAMP
-        `).bind(roomId, pageIdx, JSON.stringify(answers)).run();
-
-        return jsonResponse({ success: true });
-      }
-
-      return jsonResponse({ error: 'Endpoint not found: ' + path }, 404);
-
-    } catch (err) {
-      console.error('Worker Router Error:', err);
-      return jsonResponse({ error: err.message || 'Internal Server Error' }, 500);
-    }
-  }
-};
+        const rawText = aiResponse?.response || aiResponse?.choices?.[0]?.message?.co
