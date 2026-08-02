@@ -13,6 +13,23 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [studentName, setStudentName] = useState('');
   const [hasStartedHomework, setHasStartedHomework] = useState(false);
 
+  // AUTO-NORMALIZE LESSON STRUCTURE (Supports both paged and flat formats)
+  const normalizedPages = React.useMemo(() => {
+    if (!activeLesson) return [{ id: 'p1', title: 'Part 1', blocks: [] }];
+    if (activeLesson.pages && Array.isArray(activeLesson.pages) && activeLesson.pages.length > 0) {
+      return activeLesson.pages;
+    }
+    if (activeLesson.blocks && Array.isArray(activeLesson.blocks)) {
+      return [{ id: 'p1', title: activeLesson.topic || 'Part 1', blocks: activeLesson.blocks }];
+    }
+    return [{ id: 'p1', title: 'Part 1', blocks: [] }];
+  }, [activeLesson]);
+
+  const totalPages = normalizedPages.length;
+  const activePage = normalizedPages[currentPageIdx] || normalizedPages[0] || { blocks: [] };
+  const pageBlocks = activePage.blocks || activePage.items || [];
+  const progressPct = Math.round(((currentPageIdx + 1) / totalPages) * 100);
+
   // AUTO-RESUME: Restore answers & student name from localStorage on refresh
   useEffect(() => {
     if (!roomId) return;
@@ -114,8 +131,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     let score = 0;
     let total = 0;
 
-    // Calculate score for quiz & gap fill questions
-    activeLesson.pages?.forEach(p => {
+    normalizedPages.forEach(p => {
       p.blocks?.forEach(b => {
         if (b.type === 'multiple_choice') {
           total++;
@@ -162,10 +178,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }
   };
 
-  const activePage = activeLesson?.pages?.[currentPageIdx] || { blocks: activeLesson?.blocks || [] };
-  const totalPages = activeLesson?.pages?.length || 1;
-  const progressPct = Math.round(((currentPageIdx + 1) / totalPages) * 100);
-
   const copyStudentLink = () => {
     const link = `${window.location.origin}/?room=${roomId}&role=student`;
     navigator.clipboard.writeText(link);
@@ -174,7 +186,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      {/* STUDENT INITIAL NAME PROMPT */}
       {!isTeacher && !hasStartedHomework && (
         <div className="bg-white p-8 sm:p-10 rounded-3xl border border-slate-200 shadow-xl text-center space-y-4 my-8">
           <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto text-3xl font-extrabold">🏠</div>
@@ -259,18 +270,26 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
 
               {/* ACTIVE PAGE BLOCKS */}
               <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs space-y-6">
-                {(activePage.blocks || []).map((b, idx) => {
-                  const uniqueBlockId = b.id || `p${currentPageIdx}-b${idx}`;
-                  return (
-                    <BlockRenderer
-                      key={uniqueBlockId}
-                      block={{ ...b, id: uniqueBlockId }}
-                      value={userAnswers[uniqueBlockId]}
-                      onChange={(val) => handleAnswerChange(uniqueBlockId, val)}
-                      isTeacher={isTeacher}
-                    />
-                  );
-                })}
+                {pageBlocks.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 font-semibold space-y-2">
+                    <span className="text-3xl block">📄</span>
+                    <p>На этой странице пока нет блоков с упражнениями.</p>
+                    <p className="text-xs text-slate-400">Нажмите "Выйти" ➔ "✏️ Редактировать", чтобы добавить блоки в Lego Конструкторе!</p>
+                  </div>
+                ) : (
+                  pageBlocks.map((b, idx) => {
+                    const uniqueBlockId = b.id || `p${currentPageIdx}-b${idx}`;
+                    return (
+                      <BlockRenderer
+                        key={uniqueBlockId}
+                        block={{ ...b, id: uniqueBlockId }}
+                        value={userAnswers[uniqueBlockId]}
+                        onChange={(val) => handleAnswerChange(uniqueBlockId, val)}
+                        isTeacher={isTeacher}
+                      />
+                    );
+                  })
+                )}
               </div>
 
               {/* PAGE NAVIGATION CONTROLS */}
