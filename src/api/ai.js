@@ -1,5 +1,4 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE
-// (GROQ [Llama 3.3 / DeepSeek R1] -> OPENROUTER [Qwen 2.5 / DeepSeek] -> GEMINI -> WORKERS AI -> LOCAL)
+// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE WITH FULL TEXT REFINEMENT
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, articles. Target Vocabulary: Everyday basics. Sentences: Short (5-10 words).',
@@ -255,7 +254,7 @@ function createFallbackLesson(topic = 'General Practice', level = 'B1') {
             { front: 'Key Concept', back: 'Основное понятие', example: `Understanding ${topic} is important.` },
             { front: 'Practice', back: 'Практика', example: 'We need to practice every day.' }
           ]},
-          { id: 'b4', type: 'text', text: `Welcome to this interactive lesson on ${topic}. Read through all parts and complete the interactive exercises.` }
+          { id: 'b4', type: 'text', text: `${topic} is a widely discussed subject in English learning. Studying this topic helps improve reading comprehension, vocabulary retention, and natural conversation skills. In this lesson, we will explore key concepts, practice relevant grammar structures, and apply them in interactive tasks.` }
         ]
       },
       {
@@ -389,7 +388,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
                   .replace(/&amp;/g, '&')
                   .replace(/&lt;/g, '<')
                   .replace(/&gt;/g, '>')
-                  .replace(/&#39;/g, "'")
+                  .replace(/&#39;/g,="'")
                   .replace(/&quot;/g, '"')
                   .trim();
                 if (decodedText) fullText += decodedText + ' ';
@@ -413,6 +412,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   }
 }
 
+// FULL 5-PAGE CELTA/DELTA PPP LESSON GENERATOR
 export async function generateFullLessonWithAI(env, payload) {
   const { text = '', level = 'B1', topic = 'General English' } = payload;
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
@@ -420,6 +420,9 @@ export async function generateFullLessonWithAI(env, payload) {
   const systemPrompt = `You are a CELTA ELT Methodologist. Generate a 5-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
 
 BLOCK KEYS: "heading", "text", "open_input", "flashcards", "multiple_choice", "matching", "grammar_card", "gap_fill_bank", "gap_fill".
+
+MANDATORY READING TEXT RULE:
+- On Page 1, write a complete, rich, 220-word educational reading story passage matching CEFR Level ${level}. DO NOT write short 1-sentence or 2-sentence summaries!
 
 RETURN ONLY VALID JSON MATCHING THIS TEMPLATE:
 {
@@ -435,7 +438,7 @@ RETURN ONLY VALID JSON MATCHING THIS TEMPLATE:
         { "type": "heading", "level": 1, "text": "${topic}" },
         { "type": "open_input", "prompt": "What do you know about ${topic}?" },
         { "type": "flashcards", "title": "Vocabulary", "cards": [ { "front": "word", "back": "translation", "example": "sentence" } ] },
-        { "type": "text", "text": "Short reading passage..." }
+        { "type": "text", "text": "Write a full 220-word educational story passage about ${topic} strictly for CEFR Level ${level}..." }
       ]
     },
     {
@@ -481,6 +484,7 @@ RETURN ONLY VALID JSON MATCHING THIS TEMPLATE:
   }
 }
 
+// CONTEXTUAL SINGLE BLOCK ASSISTANT & TEXT REFINEMENT ENGINE
 export async function transformBlockWithAI(env, payload) {
   const { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (actions.length === 0) return { error: 'Выберите задание.' };
@@ -489,39 +493,65 @@ export async function transformBlockWithAI(env, payload) {
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
+  // 1. GENERATE BRAND NEW READING TEXT PASSAGE FROM TOPIC IN BUILDER
   if (actions.includes('generate_text_passage')) {
-    const textSystemPrompt = `Write a reading passage on the topic for CEFR Level ${level} (~${targetLength} words). Return JSON object with "text": { "text": "story..." }`;
+    const textSystemPrompt = `You are a master ELT Materials Writer. Write an engaging, educational reading story/passage on the topic provided for CEFR Level ${level} (~${targetLength} words).\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY A VALID JSON OBJECT WITH A "text" PROPERTY:\n{ "text": "Full educational reading story passage..." }`;
     try {
-      const parsedBlocks = await runAiPipeline(env, textSystemPrompt, `Topic: ${safeContextData}`, 3000);
-      const textVal = parsedBlocks.text || (Array.isArray(parsedBlocks) ? parsedBlocks[0]?.text : JSON.stringify(parsedBlocks));
+      const parsedObj = await runAiPipeline(env, textSystemPrompt, `Topic/Hint: ${safeContextData}`, 3000);
+      const textVal = parsedObj.text || (Array.isArray(parsedObj) ? parsedObj[0]?.text : JSON.stringify(parsedObj));
       return { success: true, newBlocks: [{ type: 'text', text: textVal }] };
     } catch (e) {
-      return { error: 'Failed: ' + e.message };
+      return { error: 'Failed to generate text passage: ' + e.message };
     }
   }
 
+  // 2. GENERATE GRAMMAR CARD FROM TOPIC
   if (actions.includes('generate_grammar_card')) {
-    const grammarSystemPrompt = `Generate a Grammar Card object for ${level}: [{ "type": "grammar_card", "title": "${safeContextData}", "formula": "...", "explanation": "...", "examples": ["..."] }]`;
+    const grammarSystemPrompt = `Generate a Grammar Card JSON array object for CEFR Level ${level}:\n[ { "type": "grammar_card", "title": "${safeContextData}", "formula": "Subject + Verb", "explanation": "Rule explanation", "examples": ["Example 1", "Example 2"] } ]`;
     try {
-      const fallbackParsed = await runAiPipeline(env, grammarSystemPrompt, `Topic: ${safeContextData}`, 1500);
+      const fallbackParsed = await runAiPipeline(env, grammarSystemPrompt, `Grammar Topic: ${safeContextData}`, 1500);
       return { success: true, newBlocks: Array.isArray(fallbackParsed) ? fallbackParsed : [fallbackParsed] };
     } catch (e) {
-      return { error: 'Failed: ' + e.message };
+      return { error: 'Failed to generate grammar card: ' + e.message };
     }
   }
 
-  let taskInstructions = '';
-  if (actions.includes('listening')) taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions.\n`;
-  if (actions.includes('flashcards')) taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words.\n`;
-  if (actions.includes('true_false')) taskInstructions += `- Generate 1 "multiple_choice" block with 4 True/False questions.\n`;
-  if (actions.includes('gap_fill')) taskInstructions += `- Generate 1 "gap_fill" block with 4 sentences containing [word].\n`;
-  if (actions.includes('matching')) taskInstructions += `- Generate 1 "matching" block with 6 pairs.\n`;
-  if (actions.includes('discussion')) taskInstructions += `- Generate 1 "open_input" block with 3 questions.\n`;
+  // 3. TEXT REFINEMENT TOOLS (EXPAND, SHORTEN, REWRITE FOR LEVEL)
+  if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
+    let textInstruction = `Expand this text into a detailed, rich, 350-400 word educational story passage matching CEFR Level ${level}.`;
+    
+    if (actions.includes('shorten_text')) {
+      textInstruction = `Shorten this text into a concise, clear summary (~150 words) matching CEFR Level ${level}.`;
+    } else if (actions.includes('refine_level')) {
+      textInstruction = `Rewrite this reading text strictly adapting vocabulary and grammar structures to CEFR Level ${level}.`;
+    }
 
-  const systemPrompt = `Generate requested exercise block(s) for CEFR Level ${level} based on context. Return JSON Array.\n${taskInstructions}`;
+    const textSystemPrompt = `You are an expert ELT Materials Writer. ${textInstruction}\nCEFR Level ${level} Target: ${cefrRules}\nRETURN ONLY A VALID JSON OBJECT WITH A "text" PROPERTY:\n{ "text": "Full rewritten reading story text..." }`;
+
+    try {
+      const parsedObj = await runAiPipeline(env, textSystemPrompt, `Original Text:\n${safeContextData}`, 3000);
+      const newStoryText = parsedObj.text || (Array.isArray(parsedObj) ? parsedObj[0]?.text : JSON.stringify(parsedObj));
+      return { success: true, newBlocks: [{ type: 'text', text: newStoryText }] };
+    } catch (e) {
+      return { error: 'Failed to refine text: ' + e.message };
+    }
+  }
+
+  // 4. TASK GENERATION (QUIZ, FLASHCARDS, GAP FILL, MATCHING, DISCUSSION)
+  let taskInstructions = '';
+  if (actions.includes('listening')) taskInstructions += `- Generate 1 "multiple_choice" block with 4 comprehension questions based on context. Template:\n[ { "type": "multiple_choice", "question": "Question 1?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]\n`;
+  if (actions.includes('flashcards')) taskInstructions += `- Generate 1 "flashcards" block with 6 target vocabulary words from context. Template:\n[ { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "sentence" } ] } ]\n`;
+  if (actions.includes('true_false')) taskInstructions += `- Generate 1 "multiple_choice" block with 4 True/False questions based on context. Template:\n[ { "type": "multiple_choice", "question": "True or False?", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Reason" } ]\n`;
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) taskInstructions += `- Generate 1 "gap_fill" block with 4 sentences, separated by newlines \\n, putting target words in brackets [word]. Template:\n[ { "type": "gap_fill", "instruction": "Complete the sentences:", "text": "1. First sentence [word1].\\n2. Second sentence [word2].", "answers": ["word1", "word2"] } ]\n`;
+  if (actions.includes('gap_fill_bank')) taskInstructions += `- Generate 1 "gap_fill_bank" block with text containing [answers] in brackets and 3 distractors.\n`;
+  if (actions.includes('matching')) taskInstructions += `- Generate 1 "matching" block with 6 pairs [{ left, right }] configured as "${matchingType}".\n`;
+  if (actions.includes('discussion')) taskInstructions += `- Generate 1 "open_input" block with 3 speaking discussion prompts.\n`;
+  if (actions.includes('grammar_quiz')) taskInstructions += `- Generate 1 "multiple_choice" block with 4 questions testing the grammar rule: "${safeContextData}".\n`;
+
+  const systemPrompt = `You are an expert ELT Materials Designer. Generate ONLY the requested exercise block(s) for CEFR Level ${level} based on context. Return JSON Array.\n${taskInstructions}`;
 
   try {
-    const parsedBlocks = await runAiPipeline(env, systemPrompt, `Context: ${safeContextData}`, 2500);
+    const parsedBlocks = await runAiPipeline(env, systemPrompt, `Context:\n${safeContextData}`, 2500);
     return { success: true, newBlocks: Array.isArray(parsedBlocks) ? parsedBlocks : [parsedBlocks] };
   } catch (err) {
     return { error: 'AI transformation failed: ' + err.message };
