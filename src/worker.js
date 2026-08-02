@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - STRICT DYNAMIC TASK PROMPTING (ZERO EXTRA BLOCKS)
+// CLOUDFLARE WORKER BACKEND - GEMINI 2.5 FLASH REST + LLAMA 3.3 FAST + QWEN 2.5 CASCADE
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -55,6 +55,7 @@ function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
+// ULTRA-RESILIENT JSON PARSER
 function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -122,32 +123,12 @@ function cleanAndParseJson(rawText) {
 
 // UNBREAKABLE CASCADE AI PIPELINE
 async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
+  // 1. TIER 1: GOOGLE GEMINI FLASH VIA REST API
   if (env.GEMINI_API_KEY) {
-    try {
-      const gRes = await fetch('https://generativelanguage.googleapis.com/v1beta/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${env.GEMINI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gemini-2.5-flash',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userContent }
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.2
-        })
-      });
-
-      if (gRes.ok) {
-        const gData = await gRes.json();
-        const gRawText = gData?.choices?.[0]?.message?.content;
-        const gParsed = cleanAndParseJson(gRawText);
-        if (gParsed) return gParsed;
-      } else {
-        const gRestUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
+    const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    for (const gModel of geminiModels) {
+      try {
+        const gRestUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${env.GEMINI_API_KEY}`;
         const gRestRes = await fetch(gRestUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -158,35 +139,21 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
         });
 
         if (gRestRes.ok) {
-          const gData2 = await gRestRes.json();
-          const gRawText2 = gData2?.candidates?.[0]?.content?.parts?.[0]?.text;
-          const gParsed2 = cleanAndParseJson(gRawText2);
-          if (gParsed2) return gParsed2;
+          const gData = await gRestRes.json();
+          const gRawText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          const gParsed = cleanAndParseJson(gRawText);
+          if (gParsed) return gParsed;
+        } else {
+          console.warn(`Gemini model ${gModel} returned status ${gRestRes.status}, trying next model...`);
         }
+      } catch (eGemini) {
+        console.warn(`Gemini call for ${gModel} failed:`, eGemini);
       }
-    } catch (eGemini) {
-      console.warn('Gemini API call failed, cascading to Workers AI...', eGemini);
     }
   }
 
+  // 2. TIER 2: WORKERS AI META LLAMA 3.3 70B FAST
   if (env.AI) {
-    try {
-      const resL4 = await env.AI.run('@cf/meta/llama-4-scout-17b-16e-instruct', {
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent }
-        ],
-        temperature: 0.2,
-        max_tokens: maxTokens
-      });
-
-      const rawL4 = resL4?.response || resL4?.choices?.[0]?.message?.content;
-      const parsedL4 = cleanAndParseJson(rawL4);
-      if (parsedL4) return parsedL4;
-    } catch (eL4) {
-      console.warn('Llama 4 Scout failed, trying Llama 3.3 70B...', eL4);
-    }
-
     try {
       const resL3 = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
         messages: [
@@ -204,6 +171,7 @@ async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3800) {
       console.warn('Llama 3.3 70B failed, cascading to Qwen 2.5 72B...', eL3);
     }
 
+    // 3. TIER 3: WORKERS AI QWEN 2.5 72B (STRICT JSON FALLBACK)
     try {
       const resQwen = await env.AI.run('@cf/qwen/qwen2.5-72b-instruct', {
         messages: [
@@ -498,7 +466,7 @@ RETURN ONLY A VALID JSON ARRAY CONTAINING A SINGLE GRAMMAR_CARD BLOCK OBJECT:
 STRICT RULES:
 1. ONLY generate the specific block(s) requested below. Do NOT generate any unrequested or extra blocks!
 2. All exercise items MUST be 100% full and populated with rich English content based on the source context.
-3. Use single quotes (') for quotes inside text values. No unescaped double quotes!
+3. Use single quotes (') inside string values. No unescaped double quotes!
 4. 100% English target language policy (except Russian translations if explicitly requested).
 5. CEFR Level ${level} Target: ${cefrRules}
 
@@ -506,7 +474,7 @@ REQUESTED EXERCISE TASK(S) TO GENERATE:
 ${taskInstructions}
 
 RETURN ONLY A VALID JSON ARRAY OF THE REQUESTED BLOCK OBJECT(S):
-[ { "type": "multiple_choice", ... } ]`;
+[ { "type": "${sourceBlock.type || 'multiple_choice'}", ... } ]`;
 
         const userContent = `CEFR Level: ${level}\nSource Context:\n${contextData}`;
 
