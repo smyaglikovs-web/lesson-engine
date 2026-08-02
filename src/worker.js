@@ -1,4 +1,4 @@
-// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH CEFR MATRIX & PPP METHODOLOGY
+// CLOUDFLARE WORKER BACKEND - LESSON ENGINE WITH CEFR MATRIX, PPP & D1 FIX
 
 const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, will/going to, Past Simple of be, articles (a/an/the), personal pronouns, modals (can/must). Target Vocabulary: Basic A1 core everyday vocabulary. Sentence Structure: Short, direct sentences (5-10 words).',
@@ -6,6 +6,42 @@ const CEFR_MATRIX = {
   'B1': 'Target Grammar: Past Continuous, Past Perfect, Conditionals 1 & 2, Passive Voice, Reported Speech, Relative Clauses (who/which/that), Present Perfect vs Past Simple, will/should/might. Target Vocabulary: Intermediate work, feelings, environment, education, media. Sentence Structure: Varied clause structures.',
   'B2': 'Target Grammar: Conditionals 3 & Mixed Conditionals, Future Perfect & Future Continuous, Past Modals (should have/could have), Non-defining relative clauses, wish/if only, Gerund vs Infinitive nuances. Target Vocabulary: Upper-intermediate abstract concepts, business, tech, subtle idioms. Sentence Structure: Complex with linking devices (however, despite, nevertheless).',
   'C1': 'Target Grammar: Inversion (Not only did..., Hardly had I...), Inversion in Conditionals (Had I known...), Cleft sentences (It was X that...), Advanced Passive, Past Perfect Continuous, Advanced Past Modals. Target Vocabulary: Advanced C1 academic, sophisticated idioms, subtle nuances. Sentence Structure: Sophisticated, highly varied narrative prose.'
+};
+
+const DEFAULT_STARTER_LESSON = {
+  id: 'lesson-sample-b1',
+  title: 'B1 Grammar & Video Lesson: Present Continuous',
+  level: 'B1',
+  topic: 'Grammar & Video',
+  description: 'Sample interactive ESL lesson with YouTube video, grammar rule card, multiple choice quiz, matching pairs, and homework.',
+  pages: [
+    {
+      id: 'p1',
+      title: 'Part 1: Video & Rule',
+      blocks: [
+        { id: 'b1', type: 'heading', level: 1, text: 'Present Continuous in English' },
+        { id: 'b2', type: 'video', title: 'Watch the learning video:', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
+        { id: 'b3', type: 'grammar_card', title: 'Formation Rule', formula: 'Subject + am / is / are + Verb-ing', explanation: 'Used for actions happening now or planned future arrangements.', examples: ['I am meeting my friends tonight.', 'She is flying to London tomorrow.'] }
+      ]
+    },
+    {
+      id: 'p2',
+      title: 'Part 2: Interactive Practice',
+      blocks: [
+        { id: 'b4', type: 'multiple_choice', question: 'Which option is correct for a planned meeting tomorrow?', options: ['I meet my doctor tomorrow', 'I am meeting my doctor tomorrow', 'I met my doctor tomorrow'], correct: 1, explanation: 'For planned future arrangements, use Present Continuous (am meeting).' },
+        { id: 'b5', type: 'matching', instruction: 'Match the verb forms:', pairs: [{ left: 'Fly', right: 'Flying' }, { left: 'Run', right: 'Running' }, { left: 'Make', right: 'Making' }] },
+        { id: 'b6', type: 'open_input', prompt: 'Write your plans for tomorrow (2 sentences):', placeholder: 'Tomorrow I am...' }
+      ]
+    },
+    {
+      id: 'p3',
+      title: 'Part 3: Homework Practice',
+      blocks: [
+        { id: 'b7', type: 'heading', level: 2, text: 'Homework: Vocabulary & Grammar Practice' },
+        { id: 'b8', type: 'gap_fill', instruction: 'Fill the gap with the correct verb form:', text: 'She [is flying] to London tomorrow morning.', answers: ['is flying'] }
+      ]
+    }
+  ]
 };
 
 const JSON_HEADERS = {
@@ -23,7 +59,6 @@ function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   let clean = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
   
-  // Find first { and last }
   const start = clean.indexOf('{');
   const end = clean.lastIndexOf('}');
   if (start !== -1 && end !== -1 && end > start) {
@@ -39,7 +74,6 @@ function cleanAndParseJson(rawText) {
   try {
     return JSON.parse(clean);
   } catch (err) {
-    // Attempt emergency escape fix for unescaped newlines inside quotes
     try {
       let fixed = '';
       let inString = false;
@@ -64,32 +98,57 @@ function cleanAndParseJson(rawText) {
 
 async function ensureTables(db) {
   if (!db) return;
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS lessons (
-      id TEXT PRIMARY KEY,
-      title TEXT,
-      level TEXT,
-      topic TEXT,
-      description TEXT,
-      pages_json TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS homework_submissions (
-      id TEXT PRIMARY KEY,
-      lesson_id TEXT,
-      student_name TEXT,
-      score INTEGER,
-      total_questions INTEGER,
-      answers TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS room_states (
-      room_id TEXT PRIMARY KEY,
-      page_idx INTEGER DEFAULT 0,
-      student_answers TEXT,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS lessons (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        level TEXT,
+        topic TEXT,
+        description TEXT,
+        pages_json TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS homework_submissions (
+        id TEXT PRIMARY KEY,
+        lesson_id TEXT,
+        student_name TEXT,
+        score INTEGER,
+        total_questions INTEGER,
+        answers TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS room_states (
+        room_id TEXT PRIMARY KEY,
+        page_idx INTEGER DEFAULT 0,
+        student_answers TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    const countRecord = await db.prepare('SELECT COUNT(*) as count FROM lessons').first();
+    if (!countRecord || countRecord.count === 0) {
+      await db.prepare(`
+        INSERT INTO lessons (id, title, level, topic, description, pages_json)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        DEFAULT_STARTER_LESSON.id,
+        DEFAULT_STARTER_LESSON.title,
+        DEFAULT_STARTER_LESSON.level,
+        DEFAULT_STARTER_LESSON.topic,
+        DEFAULT_STARTER_LESSON.description,
+        JSON.stringify(DEFAULT_STARTER_LESSON.pages)
+      ).run();
+    }
+  } catch (e) {
+    console.error('D1 Tables Init Warning:', e);
+  }
 }
 
 export default {
@@ -239,7 +298,6 @@ RETURN ONLY VALID JSON ARRAY OF BLOCK OBJECTS:
         const { url: ytUrl } = await request.json();
         if (!ytUrl) return jsonResponse({ error: 'No URL provided' }, 400);
 
-        // Attempt fetching oembed details
         try {
           const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(ytUrl)}&format=json`);
           if (oembedRes.ok) {
