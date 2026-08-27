@@ -126,6 +126,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     else if (type === 'audio') { newBlock.title = 'Прослушайте аудиозапись:'; newBlock.url = ''; newBlock.transcript = ''; }
     else if (type === 'image') { newBlock.caption = ''; newBlock.images = []; }
     else if (type === 'grammar_card') { newBlock.title = 'Правило грамматики'; newBlock.formula = 'Subject + Verb'; newBlock.explanation = 'Объяснение правила...'; newBlock.examples = ['Пример использования']; }
+    else if (type === 'teacher_notes') { newBlock.aim = 'To introduce target collocations...'; newBlock.speech = 'Look at these sentences and choose the best option.'; }
+    else if (type === 'inline_select') { newBlock.instruction = 'Выберите правильный вариант из выпадающего списка:'; newBlock.text = '1. We can [stop over* | set off] at Brussels.\n2. I like traveling [off the beaten path* | steer clear of].'; }
+    else if (type === 'spinning_wheel') { newBlock.title = '🎡 Speaking Warm-Up Wheel'; newBlock.instruction = 'Крутите колесо и ответьте на выпавший вопрос!'; newBlock.items = ['What is your favorite travel memory?', 'Have you ever been lost in a city?', 'What country would you visit tomorrow?', 'Do you prefer beach or mountains?']; newBlock.eliminateMode = false; }
     else if (type === 'flashcards') { newBlock.title = 'Словарный запас'; newBlock.cards = [{ front: 'Word', back: 'Перевод', example: 'Пример предложения' }]; }
     else if (type === 'multiple_choice') { newBlock.question = 'Вопрос по материалу?'; newBlock.options = ['Вариант A', 'Вариант B', 'Вариант C']; newBlock.correct = 0; }
     else if (type === 'gap_fill') { newBlock.instruction = 'Вставьте пропущенное слово:'; newBlock.text = '1. Yesterday she [went] home.'; newBlock.answers = ['went']; }
