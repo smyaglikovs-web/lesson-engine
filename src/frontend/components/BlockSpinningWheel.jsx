@@ -1,21 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { playCorrectSound, triggerConfetti } from '../utils/sounds.js';
 
-// VIBRANT PREMIUM PALETTE (SKYENG & WORDWALL STYLE)
-const WHEEL_PALETTE = [
-  { fill: '#7c3aed', text: '#ffffff' }, // Electric Violet
-  { fill: '#0284c7', text: '#ffffff' }, // Sky Blue
-  { fill: '#f43f5e', text: '#ffffff' }, // Coral Pink
-  { fill: '#f59e0b', text: '#271907' }, // Warm Amber
-  { fill: '#10b981', text: '#ffffff' }, // Emerald Mint
-  { fill: '#4f46e5', text: '#ffffff' }, // Royal Indigo
-  { fill: '#ea580c', text: '#ffffff' }, // Sunset Orange
-  { fill: '#ec4899', text: '#ffffff' }, // Hot Pink
-  { fill: '#0d9488', text: '#ffffff' }, // Deep Teal
-  { fill: '#8b5cf6', text: '#ffffff' }  // Purple
+// SKYENG / DUOLINGO MODERN VIBRANT PALETTE (HIGH-CONTRAST & CRISP)
+const MODERN_WHEEL_PALETTE = [
+  '#4f46e5', // Royal Indigo
+  '#10b981', // Emerald Mint
+  '#8b5cf6', // Electric Violet
+  '#0284c7', // Sky Blue
+  '#f43f5e', // Coral Rose
+  '#f59e0b', // Warm Amber
+  '#0d9488', // Deep Teal
+  '#ea580c', // Sunset Orange
+  '#ec4899', // Berry Pink
+  '#2563eb'  // Ocean Blue
 ];
 
-// Synthesized Realistic Wheel Ticking Click
+// Synthesized Realistic Mechanical Ticking Sound
 const playWheelTick = () => {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -25,16 +25,16 @@ const playWheelTick = () => {
     const gain = ctx.createGain();
     
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(420, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.03);
+    osc.frequency.setValueAtTime(480, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(140, ctx.currentTime + 0.025);
     
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
+    gain.gain.setValueAtTime(0.09, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.025);
     
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
-    osc.stop(ctx.currentTime + 0.035);
+    osc.stop(ctx.currentTime + 0.03);
   } catch(e) {}
 };
 
@@ -62,8 +62,8 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
   const numItems = items.length;
   const arcSize = (2 * Math.PI) / numItems;
 
-  // SMART WORD WRAPPING ALGORITHM FOR SLICES
-  const wrapTextToLines = (text, maxCharsPerLine = 16) => {
+  // SMART MULTI-LINE TEXT WRAPPER
+  const wrapTextToLines = (text, maxCharsPerLine = 15) => {
     const words = text.split(' ');
     const lines = [];
     let currentLine = '';
@@ -77,127 +77,130 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
       }
     });
     if (currentLine) lines.push(currentLine);
-    return lines.slice(0, 3); // Max 3 clean lines per slice
+    return lines.slice(0, 3); // Max 3 clean lines
   };
 
-  // HIGH-END 3D CANVAS WHEEL RENDERER
+  // 🎨 CRISP MODERN WHEEL RENDERER (AUTO-FLIPS TEXT & ELIMINATES SMUDGES)
   const drawWheel = (currentAngle) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const size = canvas.width;
     const center = size / 2;
-    const outerRadius = center - 14;
-    const innerRadius = 38;
+    const outerRadius = center - 16;
+    const hubRadius = 36;
 
     ctx.clearRect(0, 0, size, size);
 
-    // 1. OUTER METALLIC BEZEL (SHADOW & GLOW)
+    // 1. SLEEK OUTER RIM BEZEL (LIGHTWEIGHT AMBIENT SHADOW)
     ctx.save();
     ctx.beginPath();
-    ctx.arc(center, center, outerRadius + 6, 0, 2 * Math.PI);
-    const bezelGrad = ctx.createLinearGradient(0, 0, size, size);
-    bezelGrad.addColorStop(0, '#334155');
-    bezelGrad.addColorStop(0.5, '#64748b');
-    bezelGrad.addColorStop(1, '#1e293b');
-    ctx.fillStyle = bezelGrad;
-    ctx.shadowColor = 'rgba(15, 23, 42, 0.35)';
-    ctx.shadowBlur = 18;
+    ctx.arc(center, center, outerRadius + 5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.12)';
+    ctx.shadowBlur = 16;
     ctx.shadowOffsetY = 6;
     ctx.fill();
     ctx.restore();
 
-    // 2. DRAW SLICES WITH VIBRANT CURATED PALETTE
+    // 2. SLICES WITH CRISP 3PX WHITE BORDERS
     for (let i = 0; i < numItems; i++) {
       const angle = currentAngle + i * arcSize;
-      const colorScheme = WHEEL_PALETTE[i % WHEEL_PALETTE.length];
+      const sliceColor = MODERN_WHEEL_PALETTE[i % MODERN_WHEEL_PALETTE.length];
 
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(center, center);
       ctx.arc(center, center, outerRadius, angle, angle + arcSize);
       ctx.lineTo(center, center);
-      ctx.fillStyle = colorScheme.fill;
+      ctx.fillStyle = sliceColor;
       ctx.fill();
 
-      // Slice Divider Stroke
+      // Clean White Divider
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 3;
       ctx.stroke();
-
-      // Slice Inner Radial Depth Highlight
-      const depthGrad = ctx.createRadialGradient(center, center, innerRadius, center, center, outerRadius);
-      depthGrad.addColorStop(0, 'rgba(255, 255, 255, 0.22)');
-      depthGrad.addColorStop(0.7, 'transparent');
-      depthGrad.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
-      ctx.fillStyle = depthGrad;
-      ctx.fill();
       ctx.restore();
 
-      // 3. SMART RADIUS TEXT RENDERING (MULTI-LINE)
+      // 3. AUTO-FLIPPED HIGH-CONTRAST TYPOGRAPHY
+      const midAngle = angle + arcSize / 2;
+      const normalizedMid = (midAngle % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      const isLeftHalf = normalizedMid > Math.PI / 2 && normalizedMid < (3 * Math.PI) / 2;
+
       ctx.save();
       ctx.translate(center, center);
-      ctx.rotate(angle + arcSize / 2);
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = colorScheme.text;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-      ctx.shadowBlur = 4;
+      ctx.rotate(midAngle);
 
       const rawLabel = items[i];
-      const maxChars = numItems > 8 ? 13 : 18;
+      const maxChars = numItems > 8 ? 12 : 16;
       const textLines = wrapTextToLines(rawLabel, maxChars);
       const fontSize = numItems > 8 ? 11 : 13;
-      ctx.font = `bold ${fontSize}px "Plus Jakarta Sans", Arial, sans-serif`;
+      
+      ctx.font = `800 ${fontSize}px "Plus Jakarta Sans", -apple-system, sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+      ctx.shadowBlur = 3;
 
-      const lineHeight = fontSize + 3;
-      const totalTextHeight = (textLines.length - 1) * lineHeight;
-      const textRadiusOffset = outerRadius - 16;
+      const lineHeight = fontSize + 4;
+      const totalHeight = (textLines.length - 1) * lineHeight;
 
-      textLines.forEach((lineText, lineIdx) => {
-        const yOffset = (lineIdx * lineHeight) - (totalTextHeight / 2);
-        ctx.fillText(lineText, textRadiusOffset, yOffset);
-      });
+      if (isLeftHalf) {
+        // FLIP 180 DEGREES: Text on the left is always readable from left to right!
+        ctx.rotate(Math.PI);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        const startX = -outerRadius + 18;
+
+        textLines.forEach((line, lineIdx) => {
+          const yPos = (lineIdx * lineHeight) - (totalHeight / 2);
+          ctx.fillText(line, startX, yPos);
+        });
+      } else {
+        // RIGHT SIDE: Standard radial text
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        const startX = outerRadius - 18;
+
+        textLines.forEach((line, lineIdx) => {
+          const yPos = (lineIdx * lineHeight) - (totalHeight / 2);
+          ctx.fillText(line, startX, yPos);
+        });
+      }
 
       ctx.restore();
     }
 
-    // 4. CHROME CENTER HUB CAP
+    // 4. CLEAN MODERN CENTER HUB (SKYENG / DUOLINGO STYLE)
     ctx.save();
     ctx.beginPath();
-    ctx.arc(center, center, innerRadius, 0, 2 * Math.PI);
-    const centerGrad = ctx.createRadialGradient(center - 6, center - 6, 4, center, center, innerRadius);
-    centerGrad.addColorStop(0, '#ffffff');
-    centerGrad.addColorStop(0.4, '#e2e8f0');
-    centerGrad.addColorStop(0.8, '#94a3b8');
-    centerGrad.addColorStop(1, '#64748b');
-    ctx.fillStyle = centerGrad;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-    ctx.shadowBlur = 8;
+    ctx.arc(center, center, hubRadius, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+    ctx.shadowBlur = 10;
     ctx.fill();
 
-    // Center Gold Accent Ring
+    // Inner Hub Button
     ctx.beginPath();
-    ctx.arc(center, center, innerRadius - 8, 0, 2 * Math.PI);
+    ctx.arc(center, center, hubRadius - 8, 0, 2 * Math.PI);
     ctx.fillStyle = '#4f46e5';
     ctx.fill();
 
-    ctx.font = 'bold 18px Arial';
+    ctx.font = 'bold 16px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffffff';
     ctx.fillText('✨', center, center);
     ctx.restore();
 
-    // 5. 3D TOP POINTER WITH SHADOW
+    // 5. SLEEK TOP NEEDLE POINTER
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(center - 14, 4);
-    ctx.lineTo(center + 14, 4);
-    ctx.lineTo(center, 30);
+    ctx.moveTo(center - 13, 6);
+    ctx.lineTo(center + 13, 6);
+    ctx.lineTo(center, 28);
     ctx.closePath();
-    ctx.fillStyle = '#ef4444';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    ctx.fillStyle = '#f43f5e';
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.25)';
     ctx.shadowBlur = 6;
     ctx.shadowOffsetY = 2;
     ctx.fill();
@@ -216,7 +219,7 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
     setSpinning(true);
     setSelectedItem('');
 
-    const extraSpins = 6 + Math.random() * 4; // 6 to 10 full fast spins
+    const extraSpins = 6 + Math.random() * 4;
     const targetAngle = rotationAngleRef.current + extraSpins * 2 * Math.PI + Math.random() * 2 * Math.PI;
     const duration = 4600;
     const startTime = performance.now();
@@ -233,7 +236,7 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
 
       drawWheel(currentAngle);
 
-      // Play authentic mechanical ticking sound when passing slices
+      // Play ticking sound when passing slices
       const currentNormalized = (currentAngle % (2 * Math.PI));
       const currentSliceIdx = Math.floor((currentNormalized / arcSize)) % numItems;
       if (currentSliceIdx !== lastTickIndexRef.current) {
@@ -287,7 +290,7 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
           ref={canvasRef}
           width={420}
           height={420}
-          className="max-w-full h-auto drop-shadow-xl rounded-full"
+          className="max-w-full h-auto drop-shadow-md rounded-full"
         ></canvas>
       </div>
 
@@ -295,14 +298,14 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
         <button
           onClick={handleSpin}
           disabled={spinning}
-          className="px-12 py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-2xl text-sm sm:text-base shadow-lg hover:shadow-indigo-500/25 transition active:scale-95 disabled:opacity-40 cursor-pointer"
+          className="px-12 py-4 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold rounded-2xl text-sm sm:text-base shadow-lg hover:shadow-indigo-500/25 transition disabled:opacity-40 cursor-pointer"
         >
           {spinning ? '🌀 Колесо вращается...' : '🎡 КРУТИТЬ КОЛЕСО'}
         </button>
       </div>
 
       {selectedItem && (
-        <div className="p-6 bg-gradient-to-br from-indigo-50/90 via-purple-50/80 to-pink-50/90 border-2 border-indigo-500 rounded-3xl space-y-3 max-w-xl mx-auto shadow-lg animate-fade-in">
+        <div className="p-6 bg-indigo-50/90 border-2 border-indigo-500 rounded-3xl space-y-3 max-w-xl mx-auto shadow-md animate-fade-in">
           <span className="px-3.5 py-1 bg-indigo-600 text-white text-[11px] font-extrabold rounded-full uppercase tracking-wider inline-block shadow-2xs">
             🎯 Выбранный вопрос
           </span>
