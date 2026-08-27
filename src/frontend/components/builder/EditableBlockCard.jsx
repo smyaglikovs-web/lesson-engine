@@ -215,7 +215,114 @@ const GrammarCardEditor = ({ block, onChange }) => {
   );
 };
 
-// 3. VIDEO BLOCK EDITOR
+// 3. TEACHER NOTES EDITOR
+const TeacherNotesEditor = ({ block, onChange }) => (
+  <div className="space-y-3 bg-amber-50/80 p-4 rounded-2xl border border-amber-200">
+    <div className="flex items-center gap-2">
+      <span className="text-base">👨‍🏫</span>
+      <h5 className="font-extrabold text-amber-950 text-xs uppercase tracking-wider">
+        Заметки для Учителя (Скрыты от учеников)
+      </h5>
+    </div>
+    <div>
+      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">🎯 Цель этапа (Stage Aim):</label>
+      <input
+        type="text"
+        value={block.aim || ''}
+        onChange={e => onChange({ ...block, aim: e.target.value })}
+        placeholder="например: To practice target collocations in context..."
+        className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-xs font-medium"
+      />
+    </div>
+    <div>
+      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">💬 You can say (Речевой скрипт для учителя):</label>
+      <textarea
+        rows="3"
+        value={block.speech || ''}
+        onChange={e => onChange({ ...block, speech: e.target.value })}
+        placeholder="например: Look at these sentences and choose the best option..."
+        className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-xs font-medium"
+      ></textarea>
+    </div>
+  </div>
+);
+
+// 4. INLINE SELECT EDITOR
+const InlineSelectEditor = ({ block, onChange }) => (
+  <div className="space-y-3">
+    <input
+      type="text"
+      value={block.instruction || ''}
+      onChange={e => onChange({ ...block, instruction: e.target.value })}
+      placeholder="Инструкция к заданию..."
+      className="p-2 border rounded-xl text-xs w-full"
+    />
+    <div className="space-y-1">
+      <label className="block text-[10px] font-bold text-indigo-900 uppercase">
+        Предложения с выпадающими списками (Укажите звёздочкой * правильный ответ):
+      </label>
+      <textarea
+        rows="5"
+        value={block.text || ''}
+        onChange={e => onChange({ ...block, text: e.target.value })}
+        placeholder="1. We can [stop over* | set off] at Brussels.
+2. I like traveling [off the beaten path* | steer clear of]."
+        className="w-full p-3 border border-indigo-200 rounded-xl text-xs font-mono bg-slate-900 text-emerald-400 outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed"
+      ></textarea>
+    </div>
+  </div>
+);
+
+// 5. SPINNING WHEEL EDITOR
+const SpinningWheelEditor = ({ block, onChange }) => {
+  const rawItems = Array.isArray(block.items) ? block.items.join('\n') : '';
+
+  return (
+    <div className="space-y-3 bg-purple-50/60 p-4 rounded-2xl border border-purple-200">
+      <div className="flex items-center gap-2">
+        <span className="text-base">🎡</span>
+        <h5 className="font-extrabold text-purple-950 text-xs uppercase tracking-wider">
+          Колесо Вопросов и Слов
+        </h5>
+      </div>
+      <input
+        type="text"
+        value={block.title || ''}
+        onChange={e => onChange({ ...block, title: e.target.value })}
+        placeholder="Заголовок колеса (e.g. Speaking Warm-Up)..."
+        className="w-full p-2 bg-white border rounded-xl text-xs font-bold"
+      />
+      <div>
+        <label className="block text-[10px] font-bold text-purple-900 uppercase mb-1">
+          Вопросы или слова для вращения (по одному на строке):
+        </label>
+        <textarea
+          rows="6"
+          value={rawItems}
+          onChange={e => {
+            const list = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+            onChange({ ...block, items: list });
+          }}
+          placeholder="What is your favorite travel memory?
+Have you ever been disappointed by a famous place?
+Where do you plan to go next?"
+          className="w-full p-2.5 bg-white border border-purple-200 rounded-xl text-xs font-sans"
+        ></textarea>
+      </div>
+      <label className="flex items-center gap-2 text-xs font-bold text-purple-950 cursor-pointer pt-1">
+        <input
+          type="checkbox"
+          checked={block.eliminateMode || false}
+          onChange={e => onChange({ ...block, eliminateMode: e.target.checked })}
+          className="w-4 h-4 accent-purple-600 rounded"
+        />
+        <span>Удалять выпавший вопрос из колеса после ответа</span>
+      </label>
+    </div>
+  );
+};
+
+// 6. VIDEO BLOCK EDITOR
 const VideoBlockEditor = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
   const [subtitleStatus, setSubtitleStatus] = useState('');
@@ -324,7 +431,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 4. IMAGE BLOCK EDITOR
+// 7. IMAGE BLOCK EDITOR
 const ImageBlockEditor = ({ block, onChange }) => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const images = Array.isArray(block.images) ? block.images : (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
@@ -405,7 +512,7 @@ const ImageBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 5. AUDIO BLOCK EDITOR
+// 8. AUDIO BLOCK EDITOR
 const AudioBlockEditor = ({ block, onChange }) => (
   <div className="space-y-3">
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -434,7 +541,7 @@ const AudioBlockEditor = ({ block, onChange }) => (
   </div>
 );
 
-// 6. SENTENCE REORDER EDITOR
+// 9. SENTENCE REORDER EDITOR
 const SentenceReorderEditor = ({ block, onChange }) => {
   const words = (block.sentence || '').trim().split(' ').filter(Boolean);
   return (
@@ -469,7 +576,7 @@ const SentenceReorderEditor = ({ block, onChange }) => {
   );
 };
 
-// 7. CATEGORIZATION / BUCKETS EDITOR
+// 10. CATEGORIZATION / BUCKETS EDITOR
 const CategorizationEditor = ({ block, onChange }) => {
   const categories = block.categories || ['Категория 1', 'Категория 2'];
   const items = block.items || [];
@@ -597,6 +704,18 @@ export const EditableBlockCard = ({ block, onChange }) => {
     return <GrammarCardEditor block={block} onChange={onChange} />;
   }
 
+  if (block.type === 'teacher_notes') {
+    return <TeacherNotesEditor block={block} onChange={onChange} />;
+  }
+
+  if (block.type === 'inline_select') {
+    return <InlineSelectEditor block={block} onChange={onChange} />;
+  }
+
+  if (block.type === 'spinning_wheel') {
+    return <SpinningWheelEditor block={block} onChange={onChange} />;
+  }
+
   if (block.type === 'image') {
     return <ImageBlockEditor block={block} onChange={onChange} />;
   }
@@ -714,7 +833,6 @@ export const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  // 8. GAP FILL (MULTI-GAP PARSER FIX)
   if (block.type === 'gap_fill') {
     return (
       <div className="space-y-2">
