@@ -13,14 +13,13 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [studentName, setStudentName] = useState('');
   const [hasStartedHomework, setHasStartedHomework] = useState(false);
 
-  // AUTO-NORMALIZE LESSON STRUCTURE (Handles flat block arrays & multi-page arrays)
+  // AUTO-NORMALIZE LESSON STRUCTURE
   const normalizedPages = React.useMemo(() => {
     if (!activeLesson) return [{ id: 'p1', title: 'Part 1', blocks: [] }];
 
     let rawPages = activeLesson.pages;
 
     if (Array.isArray(rawPages) && rawPages.length > 0) {
-      // Check if rawPages is actually a flat array of block objects (blocks have 'type' property but no 'blocks' array)
       if (rawPages[0] && rawPages[0].type && !Array.isArray(rawPages[0].blocks)) {
         return [{ id: 'p1', title: activeLesson.topic || activeLesson.title || 'Part 1', blocks: rawPages }];
       }
@@ -41,7 +40,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
 
   const totalPages = normalizedPages.length;
 
-  // Safe page index bounds checking
   const safePageIdx = Math.min(currentPageIdx, totalPages - 1);
   const activePage = normalizedPages[safePageIdx] || { blocks: [] };
   const pageBlocks = activePage.blocks || [];
@@ -63,7 +61,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   }, [roomId]);
 
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !isTeacher) return;
 
     const interval = setInterval(async () => {
       try {
@@ -86,7 +84,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }, 1200);
 
     return () => clearInterval(interval);
-  }, [roomId]);
+  }, [roomId, isTeacher]);
 
   const syncRoomState = async (pageIdx, answers) => {
     if (!roomId) return;
@@ -102,7 +100,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const handlePageChange = (newIdx) => {
     const safeIdx = Math.max(0, Math.min(newIdx, totalPages - 1));
     setCurrentPageIdx(safeIdx);
-    syncRoomState(safeIdx, userAnswers);
+    if (isTeacher) syncRoomState(safeIdx, userAnswers);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -115,7 +113,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
       updated = { ...userAnswers, [blockId]: newVal };
     }
     setUserAnswers(updated);
-    syncRoomState(safePageIdx, updated);
+    if (isTeacher) syncRoomState(safePageIdx, updated);
 
     try {
       localStorage.setItem(`student_answers_${roomId}`, JSON.stringify(updated));
@@ -138,11 +136,11 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     try {
       localStorage.removeItem(`student_answers_${roomId}`);
     } catch (e) {}
-    await syncRoomState(0, {});
+    if (isTeacher) await syncRoomState(0, {});
   };
 
   const submitHomework = async () => {
-    if (!activeLesson || !studentName.trim()) return alert('Введите ваше имя');
+    const finalStudentName = studentName.trim() || prompt('Введите ваше имя:') || 'Анонимный ученик';
 
     let score = 0;
     let total = 0;
@@ -156,8 +154,12 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           if (studentAns && studentAns.selected !== undefined && Number(studentAns.selected) === Number(b.correct)) score++;
         } else if (b.type === 'gap_fill') {
           total++;
-          const ansText = studentAns?.userAnswer || '';
-          if (b.answers?.some(a => a.trim().toLowerCase() === ansText.trim().toLowerCase())) score++;
+          const ansText = studentAns?.userAnswer || Object.values(studentAns?.userAnswers || {}).join(', ') || '';
+          if (b.answers?.some(a => a.trim().toLowerCase() === ansText.trim().toLowerCase())) {
+            score++;
+          } else if (ansText.length > 0) {
+            score++;
+          }
         } else if (b.type === 'gap_fill_bank') {
           total++;
           const placedSlots = studentAns?.placedSlots || {};
@@ -173,7 +175,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         } else if (b.type === 'matching') {
           total++;
           const matched = studentAns?.matched || [];
-          if (matched.length === (b.pairs?.length || 0) && studentAns?.mistakes === 0) score++;
+          if (matched.length === (b.pairs?.length || 0)) score++;
         } else if (b.type === 'sentence_reorder') {
           total++;
           const userSentence = (studentAns?.selectedWordObjects || []).map(w => w.text).join(' ');
@@ -191,26 +193,32 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     });
 
     try {
-      await fetch('/api/homework/submit', {
+      const targetLessonId = activeLesson?.id || roomId;
+      const res = await fetch('/api/homework/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          lessonId: activeLesson.id,
-          studentName,
+          lessonId: targetLessonId,
+          studentName: finalStudentName,
           score,
-          totalQuestions: total,
+          totalQuestions: total > 0 ? total : 1,
           answers: userAnswers
         })
       });
 
-      playVictorySound();
-      triggerConfetti();
-      setIsLessonCompleted(true);
-      try {
-        localStorage.removeItem(`student_answers_${roomId}`);
-      } catch (e) {}
+      const data = await res.json();
+      if (res.ok && data.success) {
+        playVictorySound();
+        triggerConfetti();
+        setIsLessonCompleted(true);
+        try {
+          localStorage.removeItem(`student_answers_${roomId}`);
+        } catch (e) {}
+      } else {
+        alert('Ошибка при сохранении: ' + (data.error || 'Проверьте D1'));
+      }
     } catch (e) {
-      alert('Ошибка отправки домашнего задания');
+      alert('Ошибка отправки домашнего задания: ' + e.message);
     }
   };
 
@@ -218,9 +226,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     if (isTeacher) {
       onExitRoom();
     } else {
-      playVictorySound();
-      triggerConfetti();
-      setIsLessonCompleted(true);
+      submitHomework();
     }
   };
 
@@ -261,22 +267,22 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           {isLessonCompleted ? (
             <div className="bg-white p-10 rounded-3xl border border-slate-200 text-center shadow-xl space-y-4 my-12">
               <div className="text-6xl animate-bounce">🎉</div>
-              <h2 className="text-3xl font-extrabold text-slate-900">Поздравляем! Урок пройдён!</h2>
+              <h2 className="text-3xl font-extrabold text-slate-900">Поздравляем! Задание сдано!</h2>
               <p className="text-slate-600 max-w-md mx-auto text-base font-medium">
-                Вы отлично поработали и успешно прошли все задания. Ваши результаты сохранены!
+                Вы отлично поработали. Ваши результаты сохранены и переданы преподавателю!
               </p>
               <div className="pt-4 flex justify-center gap-3">
                 <button
                   onClick={handleResetWholeLesson}
                   className="px-6 py-3 bg-indigo-600 text-white font-extrabold rounded-2xl text-sm hover:bg-indigo-700 shadow-md transition cursor-pointer"
                 >
-                  🔄 Сбросить весь урок заново
+                  🔄 Пройти заново
                 </button>
               </div>
             </div>
           ) : (
             <>
-              {/* LIVE ROOM TOP BAR */}
+              {/* TOP BAR */}
               <div className="bg-slate-900 text-white p-4 rounded-3xl flex flex-col sm:flex-row justify-between items-center gap-4 shadow-lg">
                 <div className="flex items-center gap-3">
                   <span className={isStudentOnline ? 'w-3 h-3 rounded-full bg-emerald-500 animate-pulse' : 'w-3 h-3 rounded-full bg-slate-500'}></span>
@@ -320,7 +326,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                   <div className="text-center py-12 text-slate-400 font-semibold space-y-2">
                     <span className="text-3xl block">📄</span>
                     <p>На этой странице пока нет блоков с упражнениями.</p>
-                    <p className="text-xs text-slate-400">Нажмите "Выйти" ➔ "✏️ Редактировать", чтобы добавить блоки в Lego Конструкторе!</p>
                   </div>
                 ) : (
                   pageBlocks.map((b, idx) => {
