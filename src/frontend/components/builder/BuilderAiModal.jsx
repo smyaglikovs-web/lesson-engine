@@ -82,7 +82,7 @@ export const BuilderAiModal = ({
               <option value="">-- Use Whole Lesson Context --</option>
               {availableSourceBlocks.map((sb, i) => (
                 <option key={sb.id || i} value={sb.id}>
-                  {sb.type === 'grammar_card' ? `📘 Grammar Rule: ${sb.title || 'Rule'}` : `📄 Text: ${sb.text?.substring(0, 35) || 'Passage'}...`}
+                  {sb.type === 'grammar_card' ? `📘 Grammar: ${sb.title || 'Rule'}` : `📄 Text: ${sb.text?.substring(0, 35) || 'Passage'}...`}
                 </option>
               ))}
             </select>
@@ -153,7 +153,7 @@ export const BuilderAiModal = ({
           </div>
         )}
 
-        {/* 1-CLICK DIRECT BLOCK FILL BUTTON FOR LIGHTWEIGHT BLOCKS */}
+        {/* 1-CLICK DIRECT BLOCK AUTO-FILL BUTTON FOR LIGHTWEIGHT BLOCKS */}
         {!isHeavyAnchor && (
           <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-2xl border border-indigo-100 space-y-2">
             <p className="text-xs font-bold text-indigo-900">🪄 Populate THIS empty block from chosen source context?</p>
@@ -244,6 +244,10 @@ export const BuilderAiModal = ({
                     <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600 rounded" />
                     <span>🔗 Pair Matching</span>
                   </label>
+                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input type="checkbox" checked={selectedTasks.includes('spinning_wheel')} onChange={() => toggleTaskSelection('spinning_wheel')} className="w-4 h-4 accent-indigo-600 rounded" />
+                    <span>🎡 Speaking Discussion Wheel</span>
+                  </label>
                 </>
               )}
             </div>
@@ -255,13 +259,15 @@ export const BuilderAiModal = ({
           <button onClick={onClose} className="px-5 py-2.5 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer">
             Cancel
           </button>
-          <button
-            onClick={() => onExecute()}
-            disabled={taskCount === 0 || aiGenerating}
-            className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-extrabold rounded-2xl text-xs shadow-md disabled:opacity-40 cursor-pointer transition"
-          >
-            {aiGenerating ? '⌛ Generating...' : `🚀 Insert (${taskCount} Tasks)`}
-          </button>
+          {isHeavyAnchor && (
+            <button
+              onClick={() => onExecute()}
+              disabled={taskCount === 0 || aiGenerating}
+              className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-extrabold rounded-2xl text-xs shadow-md disabled:opacity-40 cursor-pointer transition"
+            >
+              {aiGenerating ? '⌛ Generating...' : `🚀 Insert (${taskCount} Tasks)`}
+            </button>
+          )}
         </div>
 
       </div>
