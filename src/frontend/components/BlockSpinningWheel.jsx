@@ -118,7 +118,7 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
       ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
       ctx.shadowBlur = 4;
 
-      // Draw Number Pill
+      // Draw Number
       ctx.fillText(`${i + 1}`, outerRadius - 24, 0);
       ctx.restore();
     }
@@ -174,7 +174,7 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
     setSelectedItem('');
     setSelectedIndex(null);
 
-    const extraSpins = 6 + Math.random() * 4; // 6 to 10 full spins
+    const extraSpins = 6 + Math.random() * 4;
     const targetAngle = rotationAngleRef.current + extraSpins * 2 * Math.PI + Math.random() * 2 * Math.PI;
     const duration = 4600;
     const startTime = performance.now();
