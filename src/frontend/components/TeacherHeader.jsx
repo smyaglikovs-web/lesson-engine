@@ -10,6 +10,7 @@ export const TeacherHeader = ({ view, setView, onLogout }) => (
 
       <nav className="flex items-center gap-1">
         <button onClick={() => { window.history.pushState({}, '', '/'); setView('library'); }} className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'library' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}>Библиотека</button>
+        <button onClick={() => setView('vocab')} className={`px-4 py-2 rounded-lg text-sm font-bold ${view === 'vocab' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-600 hover:bg-indigo-50'}`}>🎴 Vocab Trainer</button>
         <button onClick={() => setView('create')} className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'create' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}>+ Создать урок</button>
         <button onClick={() => setView('prompts')} className={`px-4 py-2 rounded-lg text-sm font-medium ${view === 'prompts' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`}>💡 AI Промпты</button>
         <button onClick={onLogout} className="px-3 py-1.5 text-xs text-slate-400 hover:text-red-600 font-bold ml-2">Выход</button>
