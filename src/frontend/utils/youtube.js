@@ -36,7 +36,7 @@ export const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   return null;
 };
 
-// HIGH-EFFICIENCY LIGHTWEIGHT COMPRESSOR (~40KB PER IMAGE FOR D1 SPEED)
+// HIGH-SPEED LIGHTWEIGHT COMPRESSOR (~40KB PER IMAGE TO PREVENT D1 LAG)
 export const compressAndUploadImage = (file, maxWidth = 800, quality = 0.65) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
