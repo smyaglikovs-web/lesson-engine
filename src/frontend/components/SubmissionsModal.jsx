@@ -9,7 +9,7 @@ const RenderSubmissionBlock = ({ blockId, block, answer }) => {
     );
   }
 
-  // 1. OPEN INPUT (Written Sentences / Production)
+  // 1. OPEN INPUT (Written Response / Production)
   if (block?.type === 'open_input' || answer.text !== undefined) {
     const studentText = answer.text || 'Нет ответа';
     const wordCount = studentText.trim() ? studentText.trim().split(' ').filter(Boolean).length : 0;
@@ -82,7 +82,7 @@ const RenderSubmissionBlock = ({ blockId, block, answer }) => {
           <span className="text-[11px] font-extrabold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full uppercase tracking-wider">🔗 Соединенные пары</span>
           {answer.mistakes > 0 && (
             <span className="text-[11px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-              Ошибок при подборе: {answer.mistakes}
+              Ошибок: {answer.mistakes}
             </span>
           )}
         </div>
@@ -119,8 +119,8 @@ export const SubmissionsModal = ({ lesson, onClose }) => {
     return localStorage.getItem('teacher_pass') || 'teacher123';
   };
 
-  useEffect(() => {
-    // 1. Fetch Submissions with Teacher Password Header
+  const fetchSubmissions = () => {
+    setLoading(true);
     fetch('/api/homework/' + lesson.id, {
       headers: {
         'x-teacher-password': getAuthPassword()
@@ -133,11 +133,14 @@ export const SubmissionsModal = ({ lesson, onClose }) => {
       })
       .catch(() => setLoading(false));
 
-    // 2. Fetch Full Lesson definition to map questions and correct answers
     fetch('/api/lessons/' + lesson.id)
       .then(res => res.json())
       .then(data => { if (data) setFullLesson(data); })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchSubmissions();
   }, [lesson.id]);
 
   const blockMap = {};
@@ -153,15 +156,25 @@ export const SubmissionsModal = ({ lesson, onClose }) => {
             <h3 className="text-xl font-extrabold text-slate-900">Результаты: {fullLesson.title || lesson.title}</h3>
             <p className="text-xs text-slate-500 mt-0.5">Сданные работы учеников</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer">✕</button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={fetchSubmissions} 
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+              title="Обновить список"
+            >
+              🔄 Обновить
+            </button>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer">✕</button>
+          </div>
         </div>
 
         {loading ? (
           <div className="text-center py-12 text-slate-400 font-medium">Загрузка ответов из базы данных...</div>
         ) : submissions.length === 0 ? (
-          <div className="text-center py-12 text-slate-400 font-semibold bg-slate-50/50 rounded-2xl border border-slate-200/80 p-8">
+          <div className="text-center py-12 text-slate-400 font-semibold bg-slate-50/50 rounded-2xl border border-slate-200/80 p-8 space-y-2">
             <span className="text-3xl block mb-2">📋</span>
-            Пока никто из учеников не сдал это задание.
+            <p>Пока никто из учеников не сдал это задание.</p>
+            <p className="text-xs text-slate-400 font-normal">Отправьте ссылку ученику в режиме Инкогнито, чтобы протестировать сдачу.</p>
           </div>
         ) : selectedSub ? (
           <div className="space-y-4">
