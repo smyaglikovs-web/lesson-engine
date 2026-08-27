@@ -3,6 +3,7 @@ import { BlockRenderer } from './BlockRenderer.jsx';
 import { triggerConfetti, playVictorySound } from '../utils/sounds.js';
 
 export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
+  // Teacher always starts strictly on Page 1 (Index 0)
   const [currentPageIdx, setCurrentPageIdx] = useState(0);
   const currentPageIdxRef = useRef(currentPageIdx);
   currentPageIdxRef.current = currentPageIdx;
@@ -60,10 +61,9 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     } catch (e) {}
   }, [roomId]);
 
-  // LIVE ROOM STATE POLLING (WITH SUBMISSION LOCK TO ELIMINATE THE BLINK)
+  // LIVE ROOM SYNC (TEACHER IS THE MASTER DRIVER: SERVER NEVER FORCES PAGE JUMPS ON TEACHER)
   useEffect(() => {
-    // Only run polling in Live Classroom mode
-    if (!roomId || !isTeacher) return;
+    if (!roomId) return;
 
     const interval = setInterval(async () => {
       try {
@@ -72,10 +72,12 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         
         setIsStudentOnline(data.isOnline || false);
 
-        if (typeof data.page_idx === 'number' && data.page_idx !== currentPageIdxRef.current) {
+        // ONLY connected students follow the teacher's page; Teacher is never hijacked by old D1 records!
+        if (!isTeacher && typeof data.page_idx === 'number' && data.page_idx !== currentPageIdxRef.current) {
           setCurrentPageIdx(data.page_idx);
         }
 
+        // Merge student answers safely without wiping local state
         const serverAnswers = data.student_answers;
         if (serverAnswers && Object.keys(serverAnswers).length > 0) {
           setUserAnswers(prev => {
@@ -83,7 +85,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
             Object.keys(serverAnswers).forEach(bId => {
               const localAns = prev[bId];
               const srvAns = serverAnswers[bId];
-              // STATE LOCK: If local answer has submitted: true, NEVER let an unsubmitted server state overwrite it!
+              // If local block is submitted, never let an unsubmitted server state overwrite it
               if (localAns && localAns.submitted && !srvAns?.submitted) {
                 merged[bId] = localAns;
               } else {
@@ -117,7 +119,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // ZERO-LAG ATOMIC ANSWER HANDLER (INSTANT FEEDBACK WITHOUT BLINKING)
+  // ZERO-LAG ATOMIC ANSWER HANDLER
   const handleAnswerChange = (blockId, newVal) => {
     setUserAnswers(prev => {
       let updated;
