@@ -118,19 +118,23 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
+  // FULL DISPATCH FOR ALL 11 LEGO BLOCK TYPES
   const handleAddBlock = (type) => {
     const newBlock = { id: 'b-' + Date.now(), type };
-    if (type === 'heading') { newBlock.level = 2; newBlock.text = 'New Section'; }
-    else if (type === 'text') { newBlock.text = 'Enter paragraph or story text here...'; }
-    else if (type === 'video') { newBlock.title = 'Watch Video'; newBlock.url = ''; }
+    if (type === 'heading') { newBlock.level = 2; newBlock.text = 'Новый раздел'; }
+    else if (type === 'text') { newBlock.text = 'Введите текст статьи или рассказа здесь...'; }
+    else if (type === 'video') { newBlock.title = 'Посмотрите видео:'; newBlock.url = ''; }
+    else if (type === 'audio') { newBlock.title = 'Прослушайте аудиозапись:'; newBlock.url = ''; newBlock.transcript = ''; }
     else if (type === 'image') { newBlock.caption = ''; newBlock.images = []; }
-    else if (type === 'grammar_card') { newBlock.title = 'Target Grammar Rule'; newBlock.formula = 'Formula'; newBlock.explanation = 'Rule explanation...'; newBlock.examples = ['Example sentence']; }
-    else if (type === 'flashcards') { newBlock.title = 'Vocabulary'; newBlock.cards = [{ front: 'Word', back: 'Translation', example: 'Sample sentence' }]; }
-    else if (type === 'multiple_choice') { newBlock.question = 'Question?'; newBlock.options = ['Option A', 'Option B']; newBlock.correct = 0; }
-    else if (type === 'gap_fill') { newBlock.instruction = 'Fill the gap:'; newBlock.text = 'Sentence [answer] here.'; newBlock.answers = ['answer']; }
-    else if (type === 'gap_fill_bank') { newBlock.instruction = 'Choose words:'; newBlock.text = 'Sentence [word].'; newBlock.distractors = ['fake']; }
-    else if (type === 'matching') { newBlock.instruction = 'Match pairs:'; newBlock.pairs = [{ left: 'Word', right: 'Match' }]; }
-    else if (type === 'open_input') { newBlock.prompt = 'Discussion question?'; newBlock.placeholder = 'Type here...'; }
+    else if (type === 'grammar_card') { newBlock.title = 'Правило грамматики'; newBlock.formula = 'Subject + Verb'; newBlock.explanation = 'Объяснение правила...'; newBlock.examples = ['Пример использования']; }
+    else if (type === 'flashcards') { newBlock.title = 'Словарный запас'; newBlock.cards = [{ front: 'Word', back: 'Перевод', example: 'Пример предложения' }]; }
+    else if (type === 'multiple_choice') { newBlock.question = 'Вопрос по материалу?'; newBlock.options = ['Вариант A', 'Вариант B', 'Вариант C']; newBlock.correct = 0; }
+    else if (type === 'gap_fill') { newBlock.instruction = 'Вставьте пропущенное слово:'; newBlock.text = '1. Yesterday she [went] home.'; newBlock.answers = ['went']; }
+    else if (type === 'gap_fill_bank') { newBlock.instruction = 'Заполните пропуски словами из банка:'; newBlock.text = 'Sentence with [word].'; newBlock.distractors = ['fake']; }
+    else if (type === 'matching') { newBlock.instruction = 'Соедините пары:'; newBlock.pairs = [{ left: 'Word', right: 'Перевод' }]; }
+    else if (type === 'sentence_reorder') { newBlock.instruction = '🧩 Соберите предложение из слов:'; newBlock.sentence = 'She had never seen such a dress.'; }
+    else if (type === 'categorization') { newBlock.instruction = '📦 Распределите слова по категориям:'; newBlock.categories = ['Формальный', 'Неформальный']; newBlock.items = [{ id: 'it-1', text: 'Tuxedo', categoryIndex: 0 }, { id: 'it-2', text: 'Hoodie', categoryIndex: 1 }]; }
+    else if (type === 'open_input') { newBlock.prompt = 'Вопрос для обсуждения?'; }
 
     const updatedPages = [...(lesson.pages || [])];
     if (!updatedPages[activePageIndex]) {
@@ -235,11 +239,10 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         const isSingleFill = actionsToRun.includes('fill_this_block') || actionsToRun.includes('expand_text') || actionsToRun.includes('shorten_text') || actionsToRun.includes('refine_level');
 
         if (isSingleFill && blocksWithIds.length > 0) {
-          // STRICT TARGET BLOCK TYPE LOCKING: Force returned block to maintain target block's type!
           const filledBlock = {
             ...blocksWithIds[0],
             id: aiModalTarget.block.id,
-            type: aiModalTarget.block.type // TYPE LOCK!
+            type: aiModalTarget.block.type
           };
           currentBlocks[aiModalTarget.blockIdx] = filledBlock;
         } else {
