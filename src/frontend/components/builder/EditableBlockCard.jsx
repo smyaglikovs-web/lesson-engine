@@ -23,7 +23,7 @@ function cleanVttToSentences(vttText = '') {
     .trim();
 }
 
-// 1. TEXT / READING EDITOR
+// 1. TEXT BLOCK EDITOR
 const TextBlockEditor = ({ block, onChange }) => {
   const [topicInput, setTopicInput] = useState('');
   const [textLength, setTextLength] = useState('250');
@@ -509,7 +509,6 @@ const CategorizationEditor = ({ block, onChange }) => {
         className="p-2 border rounded-xl text-xs w-full"
       />
 
-      {/* Categories */}
       <div className="space-y-2 bg-indigo-50/50 p-3.5 rounded-2xl border border-indigo-100">
         <label className="text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Категории (Коробки):</label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -530,9 +529,8 @@ const CategorizationEditor = ({ block, onChange }) => {
         <button onClick={addCategory} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold cursor-pointer">+ Добавить категорию</button>
       </div>
 
-      {/* Items */}
       <div className="space-y-2">
-        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Слова / Элементы для сортировки:</label>
+        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Слова для сортировки:</label>
         <div className="space-y-2">
           {items.map((it, idx) => (
             <div key={it.id || idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl border">
@@ -716,7 +714,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  // 8. GAP FILL (WITH MULTI-GAP EXTRACTION BUG FIX)
+  // 8. GAP FILL (MULTI-GAP PARSER FIX)
   if (block.type === 'gap_fill') {
     return (
       <div className="space-y-2">
@@ -732,7 +730,6 @@ export const EditableBlockCard = ({ block, onChange }) => {
           value={block.text || ''}
           onChange={e => {
             const textVal = e.target.value;
-            // Robust extraction of ALL bracketed answers across multiple lines
             const matches = [...textVal.matchAll(/\[(.*?)\]/g)].map(m => m[1].trim());
             onChange({ ...block, text: textVal, answers: matches });
           }}
