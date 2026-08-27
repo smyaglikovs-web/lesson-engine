@@ -1,4 +1,4 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI TURBO ENGINE (ACCURATE AUTO-FILL FOR ALL BLOCKS)
+// INDESTRUCTIBLE MULTI-PROVIDER AI TURBO ENGINE (DEFINITIVE ROOT-OBJECT CONTRACT)
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, basic plurals. Short sentences (5-10 words). Everyday basic vocabulary.',
@@ -305,7 +305,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
   return createFallbackLesson(topic, level);
 }
 
-// 5. INSTANT DETERMINISTIC FALLBACK
+// 5. DETERMINISTIC FALLBACK
 function createFallbackLesson(topic = 'General English Practice', level = 'B1') {
   return {
     title: `${topic} (${level})`,
@@ -413,9 +413,10 @@ CEFR Target: ${cefrRules}
 
 BLOCK KEYS: "heading", "text", "open_input", "flashcards", "multiple_choice", "matching", "grammar_card", "gap_fill_bank", "gap_fill", "sentence_reorder", "inline_select", "spinning_wheel".
 
-CRITICAL RULE:
+CRITICAL RULES:
 - On Page 1, write a complete, engaging 180-220 word educational reading passage for CEFR Level ${level}.
 - Never output raw objects inside "options". "options" must be an array of simple strings.
+- RETURN ONLY A VALID ROOT JSON OBJECT.
 
 STRICT JSON SCHEMA:
 {
@@ -481,7 +482,7 @@ STRICT JSON SCHEMA:
   }
 }
 
-// 8. CONTEXTUAL SINGLE & MULTI-BLOCK AI ASSISTANT (COMPLETE DISPATCHER)
+// 8. UNIFIED CONTEXTUAL SINGLE & MULTI-BLOCK AI ASSISTANT (ROOT OBJECT ENFORCEMENT)
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (!actions || actions.length === 0) return { error: 'Выберите хотя бы одно задание.' };
@@ -507,13 +508,14 @@ export async function transformBlockWithAI(env, payload) {
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
+  const isGrammarContext = safeContextData.toLowerCase().includes('grammar rule') || targetBlockType === 'grammar_card' || actions.includes('grammar_quiz') || actions.includes('grammar_transform');
 
   // A. TEXT REFINEMENT TOOLS
   if (actions.includes('generate_text_passage')) {
-    const textPrompt = `You are an ELT Materials Writer. Write an engaging educational reading text for CEFR Level ${level} (~${targetLength} words).\nCEFR Level ${level}: ${cefrRules}\nRETURN JSON OBJECT: { "text": "Full educational story passage..." }`;
+    const textPrompt = `You are an ELT Materials Writer. Write an engaging educational reading story for CEFR Level ${level} (~${targetLength} words).\nCEFR Level ${level}: ${cefrRules}\nRETURN JSON ROOT OBJECT: { "blocks": [ { "type": "text", "text": "Full educational story passage..." } ] }`;
     try {
       const parsedObj = await runAiPipeline(env, textPrompt, `Topic/Context: ${safeContextData}`, 2000);
-      const textVal = parsedObj.text || (Array.isArray(parsedObj) ? parsedObj[0]?.text : JSON.stringify(parsedObj));
+      const textVal = parsedObj.blocks?.[0]?.text || parsedObj.text || JSON.stringify(parsedObj);
       return { success: true, newBlocks: [{ type: 'text', text: textVal }] };
     } catch (e) {
       return { error: 'Failed to generate text: ' + e.message };
@@ -521,14 +523,14 @@ export async function transformBlockWithAI(env, payload) {
   }
 
   if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
-    let instruction = `Expand this text into a detailed 350-400 word educational story matching CEFR Level ${level}.`;
+    let instruction = `Expand this text into a rich 350-400 word educational story matching CEFR Level ${level}.`;
     if (actions.includes('shorten_text')) instruction = `Shorten this text into a concise summary (~150 words) matching CEFR Level ${level}.`;
     else if (actions.includes('refine_level')) instruction = `Rewrite this reading text strictly adapting grammar and vocabulary to CEFR Level ${level}.`;
 
-    const textPrompt = `You are an ELT Materials Writer. ${instruction}\nCEFR Level ${level}: ${cefrRules}\nRETURN JSON OBJECT: { "text": "Full rewritten text..." }`;
+    const textPrompt = `You are an ELT Materials Writer. ${instruction}\nCEFR Level ${level}: ${cefrRules}\nRETURN JSON ROOT OBJECT: { "blocks": [ { "type": "text", "text": "Full rewritten text..." } ] }`;
     try {
       const parsedObj = await runAiPipeline(env, textPrompt, `Original Text:\n${safeContextData}`, 2000);
-      const textVal = parsedObj.text || (Array.isArray(parsedObj) ? parsedObj[0]?.text : JSON.stringify(parsedObj));
+      const textVal = parsedObj.blocks?.[0]?.text || parsedObj.text || JSON.stringify(parsedObj);
       return { success: true, newBlocks: [{ type: 'text', text: textVal }] };
     } catch (e) {
       return { error: 'Failed to refine text: ' + e.message };
@@ -537,11 +539,17 @@ export async function transformBlockWithAI(env, payload) {
 
   // B. GRAMMAR CARD GENERATION
   if (actions.includes('generate_grammar_card')) {
-    const grammarPrompt = `Generate 1 Grammar Card JSON object for CEFR Level ${level}:\n{ "type": "grammar_card", "title": "${safeContextData}", "formula": "Subject + Verb", "explanation": "Rule explanation", "examples": ["Example 1", "Example 2"] }`;
+    const grammarPrompt = `Generate 1 Grammar Card JSON root object for CEFR Level ${level}:\n{ "blocks": [ { "type": "grammar_card", "title": "${safeContextData}", "formula": "Subject + Verb", "explanation": "Rule explanation", "examples": ["Example 1", "Example 2"] } ] }`;
     try {
       const parsed = await runAiPipeline(env, grammarPrompt, `Grammar Topic: ${safeContextData}`, 1000);
-      const clean = sanitizeBlockStructure(parsed);
-      return { success: true, newBlocks: clean };
+      const rawList = parsed?.blocks || (Array.isArray(parsed) ? parsed : [parsed]);
+      let cleanBlocks = [];
+      rawList.forEach(b => {
+        const res = sanitizeBlockStructure(b);
+        if (Array.isArray(res)) cleanBlocks.push(...res);
+        else cleanBlocks.push(res);
+      });
+      return { success: true, newBlocks: cleanBlocks };
     } catch (e) {
       return { error: 'Failed to generate grammar card: ' + e.message };
     }
@@ -550,70 +558,76 @@ export async function transformBlockWithAI(env, payload) {
   // C. MULTI-TASK & BLOCK SPECIFIC SCHEMAS
   let tasksInstructions = '';
 
-  if (actions.includes('listening') || actions.includes('multiple_choice')) {
+  if (actions.includes('grammar_quiz')) {
     tasksInstructions += `
-- GENERATE 1 "multiple_choice" block with 4 comprehension questions based on the text.
-  Schema: { "type": "multiple_choice", "question": "Question text?", "options": ["Option A", "Option B", "Option C", "Option D"], "correct": 0, "explanation": "Why this option is correct based on the text." }`;
+- GENERATE 1 "multiple_choice" block with 4 challenging multiple-choice questions specifically drilling the grammar rule "${safeContextData}" for CEFR Level ${level}.
+  Schema: { "type": "multiple_choice", "question": "Sentence with gap or grammar question?", "options": ["Correct grammar form", "Grammar distractor 1", "Grammar distractor 2", "Grammar distractor 3"], "correct": 0, "explanation": "Detailed grammar explanation of why this form is required by the rule." }`;
+  }
+
+  if (actions.includes('grammar_transform')) {
+    tasksInstructions += `
+- GENERATE 1 "gap_fill" block with 4 sentence transformations specifically testing the target grammar structure: "${safeContextData}".
+  Schema: { "type": "gap_fill", "instruction": "Complete the second sentence so that it has a similar meaning, using the target grammar:", "text": "1. Prompt sentence.\\nTransformation: She [had never seen] such a beautiful dress.\\n2. Prompt sentence.\\nTransformation: Rarely [do we witness] such events.", "answers": ["had never seen", "do we witness"] }`;
+  }
+
+  if (actions.includes('listening') || (actions.includes('multiple_choice') && !actions.includes('grammar_quiz'))) {
+    tasksInstructions += `
+- GENERATE 1 "multiple_choice" block with 4 comprehension questions based directly on the context.
+  Schema: { "type": "multiple_choice", "question": "Comprehension question text?", "options": ["Option A", "Option B", "Option C", "Option D"], "correct": 0, "explanation": "Why this option is correct based on context." }`;
   }
 
   if (actions.includes('true_false')) {
     tasksInstructions += `
-- GENERATE 3 separate "multiple_choice" blocks for True/False questions based on the text.
+- GENERATE 3 separate "multiple_choice" blocks for True/False questions based on the context.
   Schema: { "type": "multiple_choice", "question": "Statement from the story...", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Reference to the text." }`;
   }
 
   if (actions.includes('flashcards')) {
     const backStyle = flashcardType === 'russian' ? 'Russian translation' : 'simple English definition';
     tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 target vocabulary words extracted directly from the text.
-  Schema: { "type": "flashcards", "title": "Key Vocabulary from Story", "cards": [ { "front": "target word", "back": "${backStyle}", "example": "Context sentence from story." } ] }`;
+- GENERATE 1 "flashcards" block with 6 target vocabulary words extracted directly from the context.
+  Schema: { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "target word", "back": "${backStyle}", "example": "Context sentence." } ] }`;
   }
 
-  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
+  if (actions.includes('gap_fill') && !actions.includes('grammar_transform')) {
     tasksInstructions += `
-- GENERATE 1 "gap_fill" block with 4 sentences from the text, putting the target words in brackets [word].
-  Schema: { "type": "gap_fill", "instruction": "Complete the sentences with target words from the story:", "text": "1. Sentence with [word1].\\n2. Sentence with [word2].", "answers": ["word1", "word2"] }`;
+- GENERATE 1 "gap_fill" block with 4 sentences, putting target words in brackets [word].
+  Schema: { "type": "gap_fill", "instruction": "Complete the sentences with target words:", "text": "1. Sentence with [word1].\\n2. Sentence with [word2].", "answers": ["word1", "word2"] }`;
   }
 
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
-- GENERATE 1 "gap_fill_bank" block using a paragraph from the text containing [target words] in brackets and 3 distractor words.
+- GENERATE 1 "gap_fill_bank" block using a paragraph containing [target words] in brackets and 3 distractor words.
   Schema: { "type": "gap_fill_bank", "instruction": "Fill the gaps using words from the bank:", "text": "Paragraph with [word1] and [word2]...", "distractors": ["wrong1", "wrong2", "wrong3"] }`;
   }
 
   if (actions.includes('matching')) {
     tasksInstructions += `
-- GENERATE 1 "matching" block with 6 pairs extracted from the text configured as "${matchingType}".
-  Schema: { "type": "matching", "instruction": "Match the pairs from the story:", "pairs": [ { "left": "word/phrase", "right": "definition/translation" } ] }`;
+- GENERATE 1 "matching" block with 6 pairs configured as "${matchingType}".
+  Schema: { "type": "matching", "instruction": "Match the pairs:", "pairs": [ { "left": "word/phrase", "right": "definition/translation" } ] }`;
   }
 
   if (actions.includes('discussion') || actions.includes('open_input')) {
     tasksInstructions += `
-- GENERATE 1 "open_input" block with 2-3 communicative discussion questions exploring the themes of this text.
-  Schema: { "type": "open_input", "prompt": "Discussion questions based on the story?" }`;
-  }
-
-  if (actions.includes('grammar_quiz')) {
-    tasksInstructions += `
-- GENERATE 1 "multiple_choice" block with 4 questions testing the grammar rule in context.
-  Schema: { "type": "multiple_choice", "question": "Grammar question?", "options": ["Correct form", "Distractor 1", "Distractor 2"], "correct": 0, "explanation": "Rule explanation." }`;
+- GENERATE 1 "open_input" block with 2-3 communicative discussion questions exploring the themes of this context.
+  Schema: { "type": "open_input", "prompt": "Discussion questions based on the material?" }`;
   }
 
   if (actions.includes('inline_select')) {
     tasksInstructions += `
-- GENERATE 1 "inline_select" block with 3-4 sentences from the text containing [correct_option* | wrong_option].
+- GENERATE 1 "inline_select" block with 3-4 sentences containing [correct_option* | wrong_option].
   Schema: { "type": "inline_select", "instruction": "Choose the correct words in context:", "text": "1. Sentence with [correct* | wrong].\\n2. Sentence with [correct* | wrong]." }`;
   }
 
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
-- GENERATE 1 "spinning_wheel" block with 6 engaging discussion questions directly based on this story.
-  Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Discussion Wheel", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"] }`;
+- GENERATE 1 "spinning_wheel" block with 6 engaging speaking questions directly based on this context.
+  Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Discussion Wheel", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"], "eliminateMode": false }`;
   }
 
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
-- GENERATE 1 "sentence_reorder" block with a rich target sentence from the text.
+- GENERATE 1 "sentence_reorder" block with a rich target sentence from the context.
   Schema: { "type": "sentence_reorder", "instruction": "🧩 Reorder the words to form a correct sentence:", "sentence": "Complete target sentence here." }`;
   }
 
@@ -623,18 +637,23 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "teacher_notes", "aim": "Methodological goal...", "speech": "Spoken teacher instructions..." }`;
   }
 
-  const systemPrompt = `You are a CELTA ELT Materials Designer. Generate ONLY a valid JSON array of requested interactive exercise blocks matching CEFR Level ${level} based on the source text provided.
+  const systemPrompt = `You are a CELTA ELT Materials Designer. Generate a root JSON object with a "blocks" array containing ONLY the requested interactive exercise blocks matching CEFR Level ${level} based on the source context.
 
 CRITICAL RULES:
-1. Every generated exercise MUST directly reference and test facts, vocabulary, and grammar from the source text.
-2. "options" MUST be an array of simple plain text strings. Never output objects inside "options".
-3. Return ONLY a valid JSON array containing the requested exercise blocks.
+1. Every generated exercise MUST directly reference and test facts, vocabulary, and grammar from the source context.
+2. "options" MUST be an array of plain text strings like ["Option A", "Option B"]. Never output nested objects inside options!
+3. MANDATORY JSON WRAPPER: You MUST wrap all generated blocks in a root object with key "blocks":
+{
+  "blocks": [
+    ...
+  ]
+}
 
 EXERCISE SPECIFICATIONS:${tasksInstructions}`;
 
   try {
-    const parsedBlocks = await runAiPipeline(env, systemPrompt, `Source Context/Story:\n${safeContextData}`, 2500);
-    const rawList = Array.isArray(parsedBlocks) ? parsedBlocks : (parsedBlocks?.blocks || [parsedBlocks]);
+    const parsedObj = await runAiPipeline(env, systemPrompt, `Source Context:\n${safeContextData}`, 2500);
+    const rawList = parsedObj?.blocks || parsedObj?.newBlocks || parsedObj?.items || parsedObj?.tasks || (Array.isArray(parsedObj) ? parsedObj : [parsedObj]);
     
     let cleanBlocks = [];
     rawList.forEach(b => {
