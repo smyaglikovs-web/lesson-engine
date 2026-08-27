@@ -60,9 +60,9 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     } catch (e) {}
   }, [roomId]);
 
-  // LIVE ROOM STATE POLLING (ONLY in live teacher sessions, NEVER overwrites active answers)
+  // LIVE ROOM STATE POLLING (WITH SUBMISSION LOCK TO ELIMINATE THE BLINK)
   useEffect(() => {
-    // Only run live polling in Teacher Live Classroom sessions
+    // Only run polling in Live Classroom mode
     if (!roomId || !isTeacher) return;
 
     const interval = setInterval(async () => {
@@ -78,7 +78,20 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
 
         const serverAnswers = data.student_answers;
         if (serverAnswers && Object.keys(serverAnswers).length > 0) {
-          setUserAnswers(prev => ({ ...prev, ...serverAnswers }));
+          setUserAnswers(prev => {
+            const merged = { ...prev };
+            Object.keys(serverAnswers).forEach(bId => {
+              const localAns = prev[bId];
+              const srvAns = serverAnswers[bId];
+              // STATE LOCK: If local answer has submitted: true, NEVER let an unsubmitted server state overwrite it!
+              if (localAns && localAns.submitted && !srvAns?.submitted) {
+                merged[bId] = localAns;
+              } else {
+                merged[bId] = srvAns;
+              }
+            });
+            return merged;
+          });
         }
       } catch (e) {}
     }, 1500);
@@ -104,7 +117,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // ZERO-LAG ATOMIC ANSWER HANDLER (Instant response on first click)
+  // ZERO-LAG ATOMIC ANSWER HANDLER (INSTANT FEEDBACK WITHOUT BLINKING)
   const handleAnswerChange = (blockId, newVal) => {
     setUserAnswers(prev => {
       let updated;
