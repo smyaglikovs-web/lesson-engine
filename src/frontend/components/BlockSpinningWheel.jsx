@@ -9,7 +9,7 @@ const PALETTE = [
   '#d97706', // Amber Gold
   '#e11d48', // Velvet Rose
   '#0d9488', // Deep Teal
-  '#2563eb', // Slate Blue
+  '#2563eb', // Slate Blue 
   '#9333ea'  // Plum
 ];
 
