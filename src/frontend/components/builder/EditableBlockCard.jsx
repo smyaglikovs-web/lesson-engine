@@ -23,10 +23,10 @@ function cleanVttToSentences(vttText = '') {
     .trim();
 }
 
-// SUB-COMPONENT FOR TEXT / READING BLOCKS
+// 1. TEXT / READING EDITOR
 const TextBlockEditor = ({ block, onChange }) => {
   const [topicInput, setTopicInput] = useState('');
-  const [textLength, setTextLength] = useState('250'); // 150 | 250 | 400
+  const [textLength, setTextLength] = useState('250');
   const [generatingText, setGeneratingText] = useState(false);
 
   const handleAiAutoBuildText = async () => {
@@ -58,17 +58,16 @@ const TextBlockEditor = ({ block, onChange }) => {
 
   return (
     <div className="space-y-3">
-      {/* IN-BLOCK AI TEXT AUTO-WRITER BAR */}
       <div className="bg-gradient-to-r from-indigo-50/80 to-purple-50/80 p-3.5 rounded-2xl border border-indigo-100 space-y-2">
         <label className="block text-[11px] font-extrabold text-indigo-900 uppercase tracking-wider">
-          🪄 AI Text Auto-Writer: Type a topic or hint and AI will write the reading passage
+          🪄 AI Text Auto-Writer: Type a topic and AI will write the passage
         </label>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             value={topicInput}
             onChange={e => setTopicInput(e.target.value)}
-            placeholder="e.g. History of Twenty One Pilots, Ordering food in a restaurant..."
+            placeholder="e.g. History of Twenty One Pilots, Ordering food..."
             className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
           />
           <div className="flex gap-2">
@@ -87,7 +86,7 @@ const TextBlockEditor = ({ block, onChange }) => {
               onClick={handleAiAutoBuildText}
               className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-xs transition disabled:opacity-40 cursor-pointer flex-shrink-0"
             >
-              {generatingText ? '⌛ Writing...' : '🪄 AI Write Text'}
+              {generatingText ? '⌛ Writing...' : '🪄 AI Write'}
             </button>
           </div>
         </div>
@@ -97,14 +96,14 @@ const TextBlockEditor = ({ block, onChange }) => {
         rows="6"
         value={block.text || ''}
         onChange={e => onChange({ ...block, text: e.target.value })}
-        placeholder="Enter, paste, or AI-generate reading story text..."
+        placeholder="Enter or paste reading story text..."
         className="w-full p-3.5 border border-slate-200 rounded-xl text-slate-700 text-sm outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed font-sans"
       ></textarea>
     </div>
   );
 };
 
-// SUB-COMPONENT FOR GRAMMAR CARDS
+// 2. GRAMMAR CARD EDITOR
 const GrammarCardEditor = ({ block, onChange }) => {
   const [grammarTopicInput, setGrammarTopicInput] = useState(block.title || '');
   const [generatingGrammar, setGeneratingGrammar] = useState(false);
@@ -186,14 +185,14 @@ const GrammarCardEditor = ({ block, onChange }) => {
           type="text"
           value={block.formula || ''}
           onChange={e => onChange({ ...block, formula: e.target.value })}
-          placeholder="Formula..."
+          placeholder="Formula (e.g. Subject + had + V3)..."
           className="p-2.5 border rounded-xl text-xs font-mono w-full bg-white text-indigo-900 font-bold"
         />
         <textarea
           rows="2"
           value={block.explanation || ''}
           onChange={e => onChange({ ...block, explanation: e.target.value })}
-          placeholder="Explanation..."
+          placeholder="Explanation of the rule..."
           className="p-2.5 border rounded-xl text-xs w-full leading-relaxed bg-white font-medium"
         ></textarea>
         <div className="space-y-1.5">
@@ -216,7 +215,7 @@ const GrammarCardEditor = ({ block, onChange }) => {
   );
 };
 
-// SUB-COMPONENT FOR VIDEO BLOCKS
+// 3. VIDEO BLOCK EDITOR
 const VideoBlockEditor = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
   const [subtitleStatus, setSubtitleStatus] = useState('');
@@ -271,7 +270,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
       onChange({ ...block, transcript });
       setSubtitleStatus(`✅ Transcript loaded! (${transcript.split(' ').length} words)`);
     } else {
-      setSubtitleStatus(`ℹ️ Subtitles not fetched automatically. Paste text below.`);
+      setSubtitleStatus(`ℹ️ Subtitles not found automatically. Please paste transcript below.`);
     }
   };
 
@@ -289,7 +288,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
           type="text"
           value={block.url || ''}
           onChange={e => handleUrlChange(e.target.value)}
-          placeholder="YouTube Link (...)"
+          placeholder="YouTube URL..."
           className="p-2.5 border rounded-xl text-xs font-mono"
         />
       </div>
@@ -297,7 +296,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
       <div className="space-y-1.5">
         <div className="flex justify-between items-center">
           <label className="text-[10px] font-bold text-slate-500 uppercase">
-            📝 Video Transcript / Script (For AI Assistant)
+            📝 Video Transcript / Script (Used by AI Assistant)
           </label>
           <button
             type="button"
@@ -325,7 +324,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// SUB-COMPONENT FOR IMAGE BLOCKS
+// 4. IMAGE BLOCK EDITOR
 const ImageBlockEditor = ({ block, onChange }) => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const images = Array.isArray(block.images) ? block.images : (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
@@ -344,7 +343,7 @@ const ImageBlockEditor = ({ block, onChange }) => {
     }
   };
 
-  const handleFileUploadCDN = async (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -398,9 +397,166 @@ const ImageBlockEditor = ({ block, onChange }) => {
           🔗 Add Image URL
         </button>
         <label className="px-3.5 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 cursor-pointer flex items-center gap-1">
-          {uploadingImage ? '⌛ Processing image...' : '📁 Upload Photo'}
-          <input type="file" accept="image/*" onChange={handleFileUploadCDN} disabled={uploadingImage} className="hidden" />
+          {uploadingImage ? '⌛ Compressing photo...' : '📁 Upload Photo'}
+          <input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploadingImage} className="hidden" />
         </label>
+      </div>
+    </div>
+  );
+};
+
+// 5. AUDIO BLOCK EDITOR
+const AudioBlockEditor = ({ block, onChange }) => (
+  <div className="space-y-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <input
+        type="text"
+        value={block.title || ''}
+        onChange={e => onChange({ ...block, title: e.target.value })}
+        placeholder="Audio Title..."
+        className="p-2.5 border rounded-xl text-xs font-semibold"
+      />
+      <input
+        type="text"
+        value={block.url || ''}
+        onChange={e => onChange({ ...block, url: e.target.value })}
+        placeholder="Direct MP3 / Audio URL..."
+        className="p-2.5 border rounded-xl text-xs font-mono"
+      />
+    </div>
+    <textarea
+      rows="3"
+      value={block.transcript || ''}
+      onChange={e => onChange({ ...block, transcript: e.target.value })}
+      placeholder="Audio transcript (optional, visible to students via toggle)..."
+      className="w-full p-2.5 border rounded-xl text-xs"
+    ></textarea>
+  </div>
+);
+
+// 6. SENTENCE REORDER EDITOR
+const SentenceReorderEditor = ({ block, onChange }) => {
+  const words = (block.sentence || '').trim().split(' ').filter(Boolean);
+  return (
+    <div className="space-y-3">
+      <input
+        type="text"
+        value={block.instruction || ''}
+        onChange={e => onChange({ ...block, instruction: e.target.value })}
+        placeholder="Instruction..."
+        className="p-2 border rounded-xl text-xs w-full"
+      />
+      <input
+        type="text"
+        value={block.sentence || ''}
+        onChange={e => onChange({ ...block, sentence: e.target.value })}
+        placeholder="Target sentence (e.g. She had never seen such a dress before.)..."
+        className="p-2.5 border rounded-xl text-sm font-bold w-full"
+      />
+      {words.length > 0 && (
+        <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
+          <label className="text-[10px] font-bold text-slate-400 uppercase">Слова для перемешивания:</label>
+          <div className="flex flex-wrap gap-1.5">
+            {words.map((w, i) => (
+              <span key={i} className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-indigo-700">
+                {w}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 7. CATEGORIZATION / BUCKETS EDITOR
+const CategorizationEditor = ({ block, onChange }) => {
+  const categories = block.categories || ['Категория 1', 'Категория 2'];
+  const items = block.items || [];
+
+  const updateCategory = (idx, val) => {
+    const updated = [...categories];
+    updated[idx] = val;
+    onChange({ ...block, categories: updated });
+  };
+  const addCategory = () => onChange({ ...block, categories: [...categories, `Категория ${categories.length + 1}`] });
+  const removeCategory = (idx) => {
+    const updated = categories.filter((_, i) => i !== idx);
+    onChange({ ...block, categories: updated });
+  };
+
+  const updateItem = (idx, field, val) => {
+    const updated = [...items];
+    updated[idx] = { ...updated[idx], [field]: val };
+    onChange({ ...block, items: updated });
+  };
+  const addItem = () => onChange({
+    ...block,
+    items: [...items, { id: `it-${Date.now()}`, text: 'Новое слово', categoryIndex: 0 }]
+  });
+  const removeItem = (idx) => {
+    const updated = items.filter((_, i) => i !== idx);
+    onChange({ ...block, items: updated });
+  };
+
+  return (
+    <div className="space-y-4">
+      <input
+        type="text"
+        value={block.instruction || ''}
+        onChange={e => onChange({ ...block, instruction: e.target.value })}
+        placeholder="Instruction..."
+        className="p-2 border rounded-xl text-xs w-full"
+      />
+
+      {/* Categories */}
+      <div className="space-y-2 bg-indigo-50/50 p-3.5 rounded-2xl border border-indigo-100">
+        <label className="text-[10px] font-bold text-indigo-900 uppercase tracking-wider">Категории (Коробки):</label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {categories.map((cat, idx) => (
+            <div key={idx} className="flex gap-1.5 items-center">
+              <input
+                type="text"
+                value={cat}
+                onChange={e => updateCategory(idx, e.target.value)}
+                className="p-2 border rounded-xl text-xs font-bold flex-1 bg-white"
+              />
+              {categories.length > 2 && (
+                <button onClick={() => removeCategory(idx)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>
+              )}
+            </div>
+          ))}
+        </div>
+        <button onClick={addCategory} className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold cursor-pointer">+ Добавить категорию</button>
+      </div>
+
+      {/* Items */}
+      <div className="space-y-2">
+        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Слова / Элементы для сортировки:</label>
+        <div className="space-y-2">
+          {items.map((it, idx) => (
+            <div key={it.id || idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl border">
+              <input
+                type="text"
+                value={it.text || ''}
+                onChange={e => updateItem(idx, 'text', e.target.value)}
+                placeholder="Слово..."
+                className="p-2 border rounded-lg text-xs flex-1 bg-white font-bold"
+              />
+              <select
+                value={it.categoryIndex ?? 0}
+                onChange={e => updateItem(idx, 'categoryIndex', Number(e.target.value))}
+                className="p-2 border rounded-lg text-xs bg-white font-semibold cursor-pointer"
+              >
+                {categories.map((cat, cIdx) => (
+                  <option key={cIdx} value={cIdx}>{cat}</option>
+                ))}
+              </select>
+              <button onClick={() => removeItem(idx)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>
+            </div>
+          ))}
+        </div>
+        <button onClick={addItem} className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer">+ Добавить слово</button>
       </div>
     </div>
   );
@@ -420,15 +576,15 @@ export const EditableBlockCard = ({ block, onChange }) => {
           onChange={e => onChange({ ...block, level: Number(e.target.value) })}
           className="p-2 border rounded-xl text-xs font-bold bg-slate-50 cursor-pointer"
         >
-          <option value={1}>H1 (Heading 1)</option>
-          <option value={2}>H2 (Heading 2)</option>
-          <option value={3}>H3 (Heading 3)</option>
+          <option value={1}>H1 (Заголовок 1)</option>
+          <option value={2}>H2 (Заголовок 2)</option>
+          <option value={3}>H3 (Подзаголовок)</option>
         </select>
         <input
           type="text"
           value={block.text || ''}
           onChange={e => onChange({ ...block, text: e.target.value })}
-          placeholder="Enter section heading..."
+          placeholder="Текст заголовка..."
           className="w-full p-2.5 border border-slate-200 rounded-xl font-bold text-slate-800 text-base outline-none focus:ring-2 focus:ring-indigo-500"
         />
       </div>
@@ -449,6 +605,18 @@ export const EditableBlockCard = ({ block, onChange }) => {
 
   if (block.type === 'video') {
     return <VideoBlockEditor block={block} onChange={onChange} />;
+  }
+
+  if (block.type === 'audio') {
+    return <AudioBlockEditor block={block} onChange={onChange} />;
+  }
+
+  if (block.type === 'sentence_reorder') {
+    return <SentenceReorderEditor block={block} onChange={onChange} />;
+  }
+
+  if (block.type === 'categorization') {
+    return <CategorizationEditor block={block} onChange={onChange} />;
   }
 
   if (block.type === 'flashcards') {
@@ -548,6 +716,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
+  // 8. GAP FILL (WITH MULTI-GAP EXTRACTION BUG FIX)
   if (block.type === 'gap_fill') {
     return (
       <div className="space-y-2">
@@ -558,18 +727,21 @@ export const EditableBlockCard = ({ block, onChange }) => {
           placeholder="Instruction..."
           className="p-2 border rounded-xl text-xs w-full"
         />
-        <input
-          type="text"
+        <textarea
+          rows="4"
           value={block.text || ''}
           onChange={e => {
             const textVal = e.target.value;
-            const match = textVal.match(/\[(.*?)\]/);
-            const extractedAns = match ? [match[1]] : (block.answers || []);
-            onChange({ ...block, text: textVal, answers: extractedAns });
+            // Robust extraction of ALL bracketed answers across multiple lines
+            const matches = [...textVal.matchAll(/\[(.*?)\]/g)].map(m => m[1].trim());
+            onChange({ ...block, text: textVal, answers: matches });
           }}
-          placeholder="Sentence with gap in brackets [correct_answer]..."
-          className="p-2.5 border rounded-xl text-sm font-medium w-full"
-        />
+          placeholder="Sentences with gaps in brackets:
+1. Yesterday she [went] to school.
+2. They [have seen] this movie before."
+          className="p-2.5 border rounded-xl text-sm font-medium w-full font-mono leading-relaxed"
+        ></textarea>
+        <p className="text-[11px] text-slate-400">Распознанные ответы: <strong className="text-indigo-600 font-bold">{block.answers?.join(', ') || 'нет'}</strong></p>
       </div>
     );
   }
@@ -596,7 +768,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={distractors.join(', ')}
           onChange={e => onChange({ ...block, distractors: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="Distractor words for word bank (comma separated): was, Paris, tomorrow..."
+          placeholder="Distractor words (comma separated): was, Paris, tomorrow..."
           className="p-2 border rounded-xl text-xs w-full text-amber-800 bg-amber-50/50"
         />
       </div>
