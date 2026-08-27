@@ -1,4 +1,4 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI TURBO ENGINE (ACCURATE CONTEXTUAL TASK GENERATION)
+// INDESTRUCTIBLE MULTI-PROVIDER AI TURBO ENGINE (ACCURATE AUTO-FILL FOR ALL BLOCKS)
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, basic plurals. Short sentences (5-10 words). Everyday basic vocabulary.',
@@ -47,6 +47,7 @@ export function sanitizeBlockStructure(b) {
   if (type === 'categories' || type === 'bucket') type = 'categorization';
   if (type === 'inline' || type === 'select_gap') type = 'inline_select';
   if (type === 'wheel' || type === 'roulette') type = 'spinning_wheel';
+  if (type === 'notes' || type === 'teacher_notes') type = 'teacher_notes';
 
   b.type = type;
 
@@ -105,6 +106,13 @@ export function sanitizeBlockStructure(b) {
     if (!Array.isArray(b.answers) || b.answers.length === 0) {
       const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)].map(m => m[1].trim());
       b.answers = matches.length > 0 ? matches : ['answer'];
+    }
+  }
+
+  // SPINNING WHEEL NORMALIZATION
+  if (b.type === 'spinning_wheel') {
+    if (!Array.isArray(b.items) || b.items.length === 0) {
+      b.items = ['Question 1?', 'Question 2?', 'Question 3?', 'Question 4?'];
     }
   }
 
@@ -267,7 +275,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // TIER 4: OPENROUTER API (Backup)
+  // TIER 4: OPENROUTER API
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const freeModels = ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen-2.5-72b-instruct:free'];
     for (const model of freeModels) {
@@ -297,7 +305,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
   return createFallbackLesson(topic, level);
 }
 
-// 5. DETERMINISTIC INSTANT FALLBACK
+// 5. INSTANT DETERMINISTIC FALLBACK
 function createFallbackLesson(topic = 'General English Practice', level = 'B1') {
   return {
     title: `${topic} (${level})`,
@@ -403,7 +411,7 @@ export async function generateFullLessonWithAI(env, payload) {
   const systemPrompt = `You are a master CELTA ELT Methodologist. Generate a 4-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
 CEFR Target: ${cefrRules}
 
-BLOCK KEYS: "heading", "text", "open_input", "flashcards", "multiple_choice", "matching", "grammar_card", "gap_fill_bank", "gap_fill", "sentence_reorder".
+BLOCK KEYS: "heading", "text", "open_input", "flashcards", "multiple_choice", "matching", "grammar_card", "gap_fill_bank", "gap_fill", "sentence_reorder", "inline_select", "spinning_wheel".
 
 CRITICAL RULE:
 - On Page 1, write a complete, engaging 180-220 word educational reading passage for CEFR Level ${level}.
@@ -473,16 +481,34 @@ STRICT JSON SCHEMA:
   }
 }
 
-// 8. CONTEXTUAL SINGLE & MULTI-BLOCK AI ASSISTANT (FIXED TASK DISPATCHER)
+// 8. CONTEXTUAL SINGLE & MULTI-BLOCK AI ASSISTANT (COMPLETE DISPATCHER)
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (!actions || actions.length === 0) return { error: 'Выберите хотя бы одно задание.' };
+
+  const targetBlockType = String(sourceBlock.type || '').toLowerCase().trim();
+
+  // 1-CLICK AUTO-FILL MAPPING: Maps target block type to the exact task generator
+  if (actions.includes('fill_this_block') && targetBlockType) {
+    if (targetBlockType === 'flashcards') actions.push('flashcards');
+    else if (targetBlockType === 'multiple_choice') actions.push('listening');
+    else if (targetBlockType === 'gap_fill') actions.push('gap_fill');
+    else if (targetBlockType === 'gap_fill_bank') actions.push('gap_fill_bank');
+    else if (targetBlockType === 'matching') actions.push('matching');
+    else if (targetBlockType === 'open_input') actions.push('discussion');
+    else if (targetBlockType === 'grammar_card') actions.push('generate_grammar_card');
+    else if (targetBlockType === 'text') actions.push('generate_text_passage');
+    else if (targetBlockType === 'sentence_reorder') actions.push('sentence_reorder');
+    else if (targetBlockType === 'inline_select') actions.push('inline_select');
+    else if (targetBlockType === 'spinning_wheel') actions.push('spinning_wheel');
+    else if (targetBlockType === 'teacher_notes') actions.push('teacher_notes');
+  }
 
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  // A. REWRITE / EXPAND / SHORTEN TEXT
+  // A. TEXT REFINEMENT TOOLS
   if (actions.includes('generate_text_passage')) {
     const textPrompt = `You are an ELT Materials Writer. Write an engaging educational reading text for CEFR Level ${level} (~${targetLength} words).\nCEFR Level ${level}: ${cefrRules}\nRETURN JSON OBJECT: { "text": "Full educational story passage..." }`;
     try {
@@ -521,7 +547,7 @@ export async function transformBlockWithAI(env, payload) {
     }
   }
 
-  // C. MULTI-TASK GENERATOR: Build specific exercise schemas for each requested action
+  // C. MULTI-TASK & BLOCK SPECIFIC SCHEMAS
   let tasksInstructions = '';
 
   if (actions.includes('listening') || actions.includes('multiple_choice')) {
@@ -575,14 +601,26 @@ export async function transformBlockWithAI(env, payload) {
 
   if (actions.includes('inline_select')) {
     tasksInstructions += `
-- GENERATE 1 "inline_select" block with 3 sentences from the text containing [correct_option* | wrong_option].
+- GENERATE 1 "inline_select" block with 3-4 sentences from the text containing [correct_option* | wrong_option].
   Schema: { "type": "inline_select", "instruction": "Choose the correct words in context:", "text": "1. Sentence with [correct* | wrong].\\n2. Sentence with [correct* | wrong]." }`;
   }
 
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
-- GENERATE 1 "spinning_wheel" block with 6 engaging speaking questions based on this story.
+- GENERATE 1 "spinning_wheel" block with 6 engaging discussion questions directly based on this story.
   Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Discussion Wheel", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"] }`;
+  }
+
+  if (actions.includes('sentence_reorder')) {
+    tasksInstructions += `
+- GENERATE 1 "sentence_reorder" block with a rich target sentence from the text.
+  Schema: { "type": "sentence_reorder", "instruction": "🧩 Reorder the words to form a correct sentence:", "sentence": "Complete target sentence here." }`;
+  }
+
+  if (actions.includes('teacher_notes')) {
+    tasksInstructions += `
+- GENERATE 1 "teacher_notes" block with stage aims and teacher speech scripts.
+  Schema: { "type": "teacher_notes", "aim": "Methodological goal...", "speech": "Spoken teacher instructions..." }`;
   }
 
   const systemPrompt = `You are a CELTA ELT Materials Designer. Generate ONLY a valid JSON array of requested interactive exercise blocks matching CEFR Level ${level} based on the source text provided.
