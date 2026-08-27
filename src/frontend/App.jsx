@@ -6,6 +6,7 @@ import { CreateLessonView } from './components/CreateLessonView.jsx';
 import { AIPromptsView } from './components/AIPromptsView.jsx';
 import { RoomView } from './components/RoomView.jsx';
 import { SubmissionsModal } from './components/SubmissionsModal.jsx';
+import { VocabTrainerView } from './components/VocabTrainerView.jsx';
 
 export default function App() {
   const [view, setView] = useState('library');
@@ -50,6 +51,13 @@ export default function App() {
     const roomParam = params.get('room');
     const roleParam = params.get('role');
     const hwParam = params.get('homework');
+    const trainerParam = params.get('trainer');
+
+    if (trainerParam) {
+      setIsTeacher(false);
+      openLesson(trainerParam, false, false);
+      return;
+    }
 
     if (hwParam) {
       setIsTeacher(false);
@@ -188,6 +196,13 @@ export default function App() {
             onEditLesson={handleEditLesson}
             onDeleteLesson={handleDeleteLesson}
             onViewSubmissions={(l) => setViewSubmissionsLesson(l)}
+          />
+        )}
+
+        {view === 'vocab' && isTeacher && isAuthenticated && (
+          <VocabTrainerView
+            onSaveLesson={handleSaveLesson}
+            onCancel={() => setView('library')}
           />
         )}
 
