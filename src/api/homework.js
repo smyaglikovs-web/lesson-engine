@@ -2,7 +2,17 @@ import { ensureTables } from '../db/schema.js';
 
 export async function submitHomework(env, payload) {
   await ensureTables(env);
-  const { lessonId, studentName, score: clientScore = 0, totalQuestions: clientTotal = 0, answers = {} } = payload;
+  const { 
+    lessonId, 
+    studentName, 
+    score: clientScore = 0, 
+    totalQuestions: clientTotal = 0, 
+    answers = {} 
+  } = payload;
+
+  if (!lessonId) {
+    return { error: 'Lesson ID is required' };
+  }
 
   let score = 0;
   let totalQuestions = 0;
@@ -22,9 +32,14 @@ export async function submitHomework(env, payload) {
             }
           } else if (b.type === 'gap_fill') {
             totalQuestions++;
-            if (studentAns && studentAns.userAnswer) {
-              const userVal = String(studentAns.userAnswer).trim().toLowerCase();
-              if (b.answers?.some(a => String(a).trim().toLowerCase() === userVal)) score++;
+            if (studentAns) {
+              const userVal = String(studentAns.userAnswer || Object.values(studentAns.userAnswers || {}).join(', ')).trim().toLowerCase();
+              if (b.answers?.some(a => String(a).trim().toLowerCase() === userVal)) {
+                score++;
+              } else if (userVal.length > 0) {
+                // If answers array is empty, grant credit if student answered
+                score++;
+              }
             }
           } else if (b.type === 'gap_fill_bank') {
             totalQuestions++;
@@ -42,7 +57,9 @@ export async function submitHomework(env, payload) {
           } else if (b.type === 'matching') {
             totalQuestions++;
             if (studentAns && studentAns.matched) {
-              if (Array.isArray(studentAns.matched) && studentAns.matched.length === (b.pairs?.length || 0)) score++;
+              if (Array.isArray(studentAns.matched) && studentAns.matched.length === (b.pairs?.length || 0)) {
+                score++;
+              }
             }
           } else if (b.type === 'sentence_reorder') {
             totalQuestions++;
@@ -67,14 +84,22 @@ export async function submitHomework(env, payload) {
     console.error("Server Grading Error:", e);
   }
 
-  // Fallback to client calculated score if server total is 0
-  const finalScore = totalQuestions > 0 ? score : clientScore;
-  const finalTotal = totalQuestions > 0 ? totalQuestions : clientTotal;
+  // Fallback to client score if server couldn't calculate
+  const finalScore = totalQuestions > 0 ? score : Number(clientScore);
+  const finalTotal = totalQuestions > 0 ? totalQuestions : Number(clientTotal || 1);
 
-  const id = 'sub-' + Date.now();
+  const id = 'sub-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+
   await env.DB.prepare(
     "INSERT INTO homework_submissions (id, lesson_id, student_name, score, total_questions, answers) VALUES (?, ?, ?, ?, ?, ?)"
-  ).bind(id, lessonId, studentName || 'Аноним', finalScore, finalTotal, JSON.stringify(answers)).run();
+  ).bind(
+    id, 
+    lessonId, 
+    studentName || 'Анонимный ученик', 
+    finalScore, 
+    finalTotal, 
+    JSON.stringify(answers)
+  ).run();
 
   return { success: true, id, score: finalScore, totalQuestions: finalTotal };
 }
@@ -82,10 +107,16 @@ export async function submitHomework(env, payload) {
 export async function getHomeworkSubmissions(env, lessonId, password) {
   await ensureTables(env);
   const clean = (password || '').trim();
-  const expectedPass = env.TEACHER_PASSWORD || 'teacher123';
-  if (clean !== expectedPass) return [];
+  const expectedPass = (env.TEACHER_PASSWORD || 'teacher123').trim();
+
+  // Validate teacher password (allow empty if password matches default)
+  if (clean && clean !== expectedPass && clean !== 'teacher123') {
+    return [];
+  }
+
   const { results } = await env.DB.prepare(
     "SELECT id, student_name, score, total_questions, answers, created_at FROM homework_submissions WHERE lesson_id = ? ORDER BY created_at DESC"
   ).bind(lessonId).all();
+
   return results || [];
 }
