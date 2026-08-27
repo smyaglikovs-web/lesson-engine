@@ -1,4 +1,4 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI SYNERGY ENGINE (HIGH-SPEED TURBO PIPELINE)
+// INDESTRUCTIBLE MULTI-PROVIDER AI TURBO ENGINE (LOW-LATENCY 2026 ARCHITECTURE)
 
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, basic plurals. Short sentences (5-10 words). Everyday basic vocabulary.',
@@ -19,8 +19,8 @@ function getYouTubeId(url = '') {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// ULTRA-FAST FETCH WITH STRICT TIMEOUT
-async function fetchWithTimeout(url, options = {}, timeoutMs = 6500) {
+// 1. ULTRA-FAST FETCH WITH STRICT TIMEOUT (PREVENTS HANGING)
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5500) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -33,7 +33,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 6500) {
   }
 }
 
-// SANITIZES & ENFORCES VALID ENGINE PRIMITIVES
+// 2. SANITIZES & ENFORCES VALID ENGINE PRIMITIVES
 export function sanitizeBlockStructure(b) {
   if (!b || typeof b !== 'object') return [b];
 
@@ -98,7 +98,7 @@ export function sanitizeBlockStructure(b) {
     });
   }
 
-  // GAP FILL NORMALIZATION
+  // GAP FILL NORMALIZATION (MULTI-GAP SUPPORT)
   if (b.type === 'gap_fill') {
     if (!Array.isArray(b.answers) || b.answers.length === 0) {
       const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)].map(m => m[1].trim());
@@ -109,7 +109,7 @@ export function sanitizeBlockStructure(b) {
   return [b];
 }
 
-// ULTRA-RESILIENT JSON PARSER WITH AUTO-REPAIR
+// 3. ULTRA-RESILIENT JSON PARSER WITH AUTO-REPAIR
 export function cleanAndParseJson(rawText, topic = '', level = 'B1') {
   if (!rawText) return null;
 
@@ -178,10 +178,10 @@ export function cleanAndParseJson(rawText, topic = '', level = 'B1') {
   }
 }
 
-// TURBO MULTI-PROVIDER AI PIPELINE
+// 4. TURBO MULTI-PROVIDER AI CASCADE
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3000, topic = '', level = 'B1') {
   
-  // TIER 1: GROQ API (Lightning fast ~1.5 seconds)
+  // TIER 1: GROQ API (1.0s – 1.8s Response Time)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     const fastGroqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
@@ -215,32 +215,57 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // TIER 2: GEMINI API (Fast Flash endpoint)
+  // TIER 2: GEMINI API (1.5s – 2.0s Response Time)
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
-    const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const geminiModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
 
-    try {
-      const gRes = await fetchWithTimeout(gUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: 'user', parts: [{ text: userContent }] }],
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-        })
-      }, 5500);
+    for (const gModel of geminiModels) {
+      try {
+        const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${apiKey}`;
+        const gRes = await fetchWithTimeout(gUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ role: 'user', parts: [{ text: userContent }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.15 }
+          })
+        }, 5500);
 
-      if (gRes.ok) {
-        const gData = await gRes.json();
-        const gText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-        const gParsed = cleanAndParseJson(gText, topic, level);
-        if (gParsed) return gParsed;
-      }
-    } catch (eG) {}
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const gText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          const gParsed = cleanAndParseJson(gText, topic, level);
+          if (gParsed) return gParsed;
+        }
+      } catch (eG) {}
+    }
   }
 
-  // TIER 3: OPENROUTER API
+  // TIER 3: CLOUDFLARE WORKERS AI (Native Edge Fallback)
+  if (env.AI) {
+    const cfModels = [
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      '@cf/meta/llama-3.1-8b-instruct-fast',
+      '@cf/meta/llama-3.1-70b-instruct'
+    ];
+    for (const cfModel of cfModels) {
+      try {
+        const resCf = await env.AI.run(cfModel, {
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
+          temperature: 0.15,
+          max_tokens: maxTokens
+        });
+
+        const rawCf = resCf?.response || resCf?.choices?.[0]?.message?.content;
+        const parsedCf = cleanAndParseJson(rawCf, topic, level);
+        if (parsedCf) return parsedCf;
+      } catch (eCf) {}
+    }
+  }
+
+  // TIER 4: OPENROUTER API (Backup)
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const freeModels = ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen-2.5-72b-instruct:free'];
     for (const model of freeModels) {
@@ -267,67 +292,51 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // TIER 4: CLOUDFLARE WORKERS AI
-  if (env.AI) {
-    const cfModels = ['@cf/meta/llama-3.1-8b-instruct', '@cf/meta/llama-3.1-70b-instruct'];
-    for (const cfModel of cfModels) {
-      try {
-        const resCf = await env.AI.run(cfModel, {
-          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
-          temperature: 0.2,
-          max_tokens: maxTokens
-        });
-
-        const rawCf = resCf?.response || resCf?.choices?.[0]?.message?.content;
-        const parsedCf = cleanAndParseJson(rawCf, topic, level);
-        if (parsedCf) return parsedCf;
-      } catch (eCf) {}
-    }
-  }
-
   return createFallbackLesson(topic, level);
 }
 
+// 5. DETERMINISTIC INSTANT FALLBACK
 function createFallbackLesson(topic = 'General English Practice', level = 'B1') {
   return {
     title: `${topic} (${level})`,
     level: level,
     topic: topic,
-    description: `CEFR ${level} Practice Lesson on ${topic}`,
+    description: `Interactive CEFR ${level} Lesson on ${topic}`,
     pages: [
       {
         id: 'p1',
         title: 'Part 1: Lead-in & Vocabulary',
         blocks: [
           { id: 'b1', type: 'heading', level: 1, text: `${topic}` },
-          { id: 'b2', type: 'open_input', prompt: `What do you know or think about ${topic}?` },
+          { id: 'b2', type: 'open_input', prompt: `What do you already know or think about ${topic}?` },
           { id: 'b3', type: 'flashcards', title: 'Target Vocabulary', cards: [
             { front: 'Key Concept', back: 'Основное понятие', example: `Understanding ${topic} is crucial.` },
-            { front: 'Practice', back: 'Практика', example: 'Consistent practice brings fluency.' }
+            { front: 'Practice', back: 'Практика', example: 'Consistent practice brings natural fluency.' }
           ]},
-          { id: 'b4', type: 'text', text: `${topic} is a widely studied theme in modern English learning. Exploring this subject helps improve reading comprehension, active vocabulary, and natural conversational skills. In this unit, we will analyze core ideas, practice target structures, and apply them interactively.` }
+          { id: 'b4', type: 'text', text: `${topic} is a widely studied theme in modern English learning. Exploring this subject helps improve reading comprehension, active vocabulary retention, and natural conversation skills. In this lesson, we will analyze key concepts, practice relevant structures, and apply them in interactive tasks.` }
         ]
       },
       {
         id: 'p2',
-        title: 'Part 2: Grammar & Comprehension',
+        title: 'Part 2: Comprehension & Grammar',
         blocks: [
-          { id: 'b5', type: 'grammar_card', title: `Grammar Focus (${level})`, formula: 'Subject + Verb + Object', explanation: `Standard sentence structure applied when discussing ${topic}.`, examples: [`We are actively practicing ${topic}.`] },
-          { id: 'b6', type: 'multiple_choice', question: `Which statement accurately relates to ${topic}?`, options: ['It requires regular practice', 'It is not important', 'It has no practical use'], correct: 0, explanation: 'Regular practice is the foundation of language mastery.' }
+          { id: 'b5', type: 'grammar_card', title: `Grammar Focus (${level})`, formula: 'Subject + Verb + Object', explanation: `Standard sentence patterns used when discussing ${topic}.`, examples: [`We are actively studying ${topic}.`] },
+          { id: 'b6', type: 'multiple_choice', question: `Which statement best relates to ${topic}?`, options: ['It requires regular practice', 'It has no practical use', 'It is never used in real conversation'], correct: 0, explanation: 'Regular practice forms the foundation of communicative mastery.' }
         ]
       },
       {
         id: 'p3',
-        title: 'Part 3: Active Production',
+        title: 'Part 3: Production & Practice',
         blocks: [
-          { id: 'b7', type: 'gap_fill', instruction: 'Complete the sentence with the target word:', text: `We are actively practicing [${topic}] today.`, answers: [topic] },
-          { id: 'b8', type: 'open_input', prompt: `Write 3 sentences expressing your personal thoughts on ${topic}:` }
+          { id: 'b7', type: 'gap_fill', instruction: 'Complete the sentence with the target word:', text: `We are actively studying [${topic}] today.`, answers: [topic] },
+          { id: 'b8', type: 'open_input', prompt: `Write 3 sentences sharing your personal thoughts or experience with ${topic}:` }
         ]
       }
     ]
   };
 }
 
+// 6. YOUTUBE TRANSCRIPT SCRAPER
 export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   try {
     const videoId = getYouTubeId(videoUrl);
@@ -384,19 +393,26 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   }
 }
 
+// 7. FULL AI LESSON GENERATOR
 export async function generateFullLessonWithAI(env, payload) {
   const { text = '', level = 'B1', topic = 'General English' } = payload;
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-  const systemPrompt = `You are a CELTA ELT Methodologist. Generate a 4-PAGE interactive English lesson in JSON format strictly matching CEFR level ${level}.
+  const systemPrompt = `You are a master CELTA ELT Methodologist. Generate a 4-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
 CEFR Target: ${cefrRules}
+
+BLOCK KEYS: "heading", "text", "open_input", "flashcards", "multiple_choice", "matching", "grammar_card", "gap_fill_bank", "gap_fill", "sentence_reorder".
+
+CRITICAL RULE:
+- On Page 1, write a complete, engaging 180-220 word educational reading passage for CEFR Level ${level}.
+- Never output raw objects inside "options". "options" must be an array of simple strings.
 
 STRICT JSON SCHEMA:
 {
   "title": "${topic}",
   "level": "${level}",
   "topic": "${topic}",
-  "description": "Interactive CEFR ${level} Lesson on ${topic}",
+  "description": "CEFR ${level} Lesson on ${topic}",
   "pages": [
     {
       "id": "p1",
@@ -412,23 +428,23 @@ STRICT JSON SCHEMA:
       "id": "p2",
       "title": "Part 2: Comprehension & Matching",
       "blocks": [
-        { "type": "multiple_choice", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" },
+        { "type": "multiple_choice", "question": "Comprehension Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" },
         { "type": "matching", "instruction": "Match the pairs:", "pairs": [ { "left": "Term", "right": "Definition" } ] }
       ]
     },
     {
       "id": "p3",
-      "title": "Part 3: Grammar Focus",
+      "title": "Part 3: Grammar & Practice",
       "blocks": [
         { "type": "grammar_card", "title": "Target Grammar Rule", "formula": "Formula", "explanation": "Explanation", "examples": ["Example 1", "Example 2"] },
-        { "type": "gap_fill", "instruction": "Complete the sentence:", "text": "1. She [practiced] yesterday.\\n2. They [have seen] it.", "answers": ["practiced", "have seen"] }
+        { "type": "gap_fill", "instruction": "Complete the sentence with target form:", "text": "1. She [practiced] yesterday.\\n2. They [have arrived] on time.", "answers": ["practiced", "have arrived"] }
       ]
     },
     {
       "id": "p4",
       "title": "Part 4: Production & Discussion",
       "blocks": [
-        { "type": "open_input", "prompt": "Discussion question for speaking/writing practice?" }
+        { "type": "open_input", "prompt": "Discussion question for speaking or written reflection?" }
       ]
     }
   ]
@@ -455,7 +471,7 @@ STRICT JSON SCHEMA:
   }
 }
 
-// CONTEXTUAL SINGLE BLOCK ASSISTANT
+// 8. CONTEXTUAL SINGLE BLOCK ASSISTANT
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', level = 'B1' } = payload;
   if (actions.length === 0) return { error: 'Выберите задание.' };
@@ -500,7 +516,7 @@ export async function transformBlockWithAI(env, payload) {
     }
   }
 
-  const systemPrompt = `You are an ELT Materials Writer. Generate ONLY valid JSON array of exercise blocks matching CEFR Level ${level} based on context.
+  const systemPrompt = `You are an ELT Materials Writer. Generate ONLY a valid JSON array of exercise blocks matching CEFR Level ${level} based on context.
 STRICT SCHEMA:
 [ { "type": "${targetBlockType || 'multiple_choice'}", "question": "Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" } ]`;
 
