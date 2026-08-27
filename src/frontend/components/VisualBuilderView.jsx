@@ -118,7 +118,6 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
-  // FULL DISPATCH FOR ALL 11 LEGO BLOCK TYPES
   const handleAddBlock = (type) => {
     const newBlock = { id: 'b-' + Date.now(), type };
     if (type === 'heading') { newBlock.level = 2; newBlock.text = 'Новый раздел'; }
