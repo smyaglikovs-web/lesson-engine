@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { playCorrectSound, triggerConfetti } from '../utils/sounds.js';
 
-// DEEP STUDIO PALETTE (RICH, MODERN & HIGH-CONTRAST)
-const STUDIO_PALETTE = [
+// DEEP STUDIO PALETTE (HIGH-CONTRAST & CRISP)
+const PALETTE = [
   '#4338ca', // Deep Indigo
   '#059669', // Emerald
   '#7c3aed', // Royal Violet
@@ -13,7 +13,7 @@ const STUDIO_PALETTE = [
   '#9333ea'  // Plum
 ];
 
-// Synthesized Mechanical Wheel Ticking Sound
+// Synthesized Realistic Mechanical Click
 const playWheelTick = () => {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -37,7 +37,6 @@ const playWheelTick = () => {
 };
 
 export const BlockSpinningWheel = ({ block, value, onChange }) => {
-  const canvasRef = useRef(null);
   const [items, setItems] = useState(
     Array.isArray(block.items) && block.items.length > 0
       ? block.items
@@ -46,19 +45,18 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
           'Have you ever had a memorable travel experience?',
           'What is the most challenging thing in English for you?',
           'Describe a situation where appearances were deceiving.',
-          'What would you change about modern trends?',
+          'What would you change about modern fashion trends?',
           'If you could travel anywhere tomorrow, where would you go?'
         ]
   );
 
   const [spinning, setSpinning] = useState(false);
+  const [rotationDeg, setRotationDeg] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(value?.winningIndex ?? null);
   const [selectedItem, setSelectedItem] = useState(value?.selectedText || '');
-  const rotationAngleRef = useRef(0);
-  const lastTickIndexRef = useRef(-1);
-  const animationFrameRef = useRef(null);
+  const tickIntervalRef = useRef(null);
 
-  // Sync state if block.items updates
+  // Sync state if block.items updates in editor
   useEffect(() => {
     if (Array.isArray(block.items) && block.items.length > 0) {
       setItems(block.items);
@@ -67,181 +65,53 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
 
   const numItems = items.length;
   const arcSize = (2 * Math.PI) / numItems;
+  const sliceDeg = 360 / numItems;
+  const radius = 184;
 
-  // 🎨 RETINA-AWARE CANVAS WHEEL RENDERER
-  const drawWheel = (currentAngle) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
-    // High-DPI Retina Scaling
-    const dpr = window.devicePixelRatio || 1;
-    const size = 380;
-    
-    if (canvas.width !== size * dpr || canvas.height !== size * dpr) {
-      canvas.width = size * dpr;
-      canvas.height = size * dpr;
-    }
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, size, size);
-
-    const center = size / 2;
-    const outerRadius = center - 18;
-    const hubRadius = 38;
-
-    // 1. SLEEK OUTER RIM BEZEL (METALLIC SLATE GRADIENT)
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(center, center, outerRadius + 6, 0, 2 * Math.PI);
-    const bezelGrad = ctx.createLinearGradient(0, 0, size, size);
-    bezelGrad.addColorStop(0, '#475569');
-    bezelGrad.addColorStop(0.5, '#64748b');
-    bezelGrad.addColorStop(1, '#1e293b');
-    ctx.fillStyle = bezelGrad;
-    ctx.shadowColor = 'rgba(15, 23, 42, 0.25)';
-    ctx.shadowBlur = 14;
-    ctx.shadowOffsetY = 5;
-    ctx.fill();
-    ctx.restore();
-
-    // 2. SLICES WITH CRISP 2.5PX WHITE BORDERS & BOLD NUMBERS
-    for (let i = 0; i < numItems; i++) {
-      const angle = currentAngle + i * arcSize;
-      const sliceColor = STUDIO_PALETTE[i % STUDIO_PALETTE.length];
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(center, center);
-      ctx.arc(center, center, outerRadius, angle, angle + arcSize);
-      ctx.lineTo(center, center);
-      ctx.fillStyle = sliceColor;
-      ctx.fill();
-
-      // Clean White Slices Divider
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-      ctx.restore();
-
-      // 3. DRAW BOLD CLEAN NUMBER (#1, #2, #3...) ON EACH SLICE
-      const midAngle = angle + arcSize / 2;
-
-      ctx.save();
-      ctx.translate(center, center);
-      ctx.rotate(midAngle);
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '800 20px "Plus Jakarta Sans", sans-serif';
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-      ctx.shadowBlur = 3;
-
-      ctx.fillText(`${i + 1}`, outerRadius - 22, 0);
-      ctx.restore();
-    }
-
-    // 4. METALLIC CENTER HUB (WHITE + INDIGO 'SPIN' BUTTON)
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(center, center, hubRadius, 0, 2 * Math.PI);
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 3;
-    ctx.fill();
-
-    // Inner Button
-    ctx.beginPath();
-    ctx.arc(center, center, hubRadius - 7, 0, 2 * Math.PI);
-    const innerHubGrad = ctx.createLinearGradient(center - 20, center - 20, center + 20, center + 20);
-    innerHubGrad.addColorStop(0, '#4f46e5');
-    innerHubGrad.addColorStop(1, '#3730a3');
-    ctx.fillStyle = innerHubGrad;
-    ctx.fill();
-
-    ctx.font = '800 12px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('SPIN', center, center);
-    ctx.restore();
-
-    // 5. 3D TOP NEEDLE (TEARDROP POINTER)
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(center - 13, 6);
-    ctx.lineTo(center + 13, 6);
-    ctx.lineTo(center, 30);
-    ctx.closePath();
-    ctx.fillStyle = '#f43f5e';
-    ctx.shadowColor = 'rgba(15, 23, 42, 0.35)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 3;
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-    ctx.restore();
-
-    ctx.restore();
-  };
-
-  useEffect(() => {
-    drawWheel(rotationAngleRef.current);
-  }, [items]);
-
+  // 🎡 SPIN PHYSICS HANDLER
   const handleSpin = () => {
     if (spinning || numItems === 0) return;
     setSpinning(true);
     setSelectedItem('');
     setSelectedIndex(null);
 
-    const extraSpins = 6 + Math.random() * 4; // 6 to 10 full fast spins
-    const targetAngle = rotationAngleRef.current + extraSpins * 2 * Math.PI + Math.random() * 2 * Math.PI;
-    const duration = 4600;
-    const startTime = performance.now();
-    const startAngle = rotationAngleRef.current;
+    // 5 to 9 full spins + random target slice
+    const extraSpins = 5 + Math.floor(Math.random() * 4);
+    const targetSlice = Math.floor(Math.random() * numItems);
+    
+    // Calculate final angle pointing at the top needle (270 degrees)
+    const targetAngle = (extraSpins * 360) + (270 - (targetSlice * sliceDeg) - (sliceDeg / 2));
+    const finalRotation = rotationDeg + targetAngle;
+    setRotationDeg(finalRotation);
 
-    const animateSpin = (currentTime) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Smooth 4th-order ease-out physics
-      const easeOut = 1 - Math.pow(1 - progress, 4);
-      const currentAngle = startAngle + (targetAngle - startAngle) * easeOut;
-      rotationAngleRef.current = currentAngle;
-
-      drawWheel(currentAngle);
-
-      // Play ticking sound when passing slices
-      const currentNormalized = (currentAngle % (2 * Math.PI));
-      const currentSliceIdx = Math.floor((currentNormalized / arcSize)) % numItems;
-      if (currentSliceIdx !== lastTickIndexRef.current) {
-        lastTickIndexRef.current = currentSliceIdx;
-        playWheelTick();
+    // Sound Ticking Loop
+    let tickCount = 0;
+    const maxTicks = 24;
+    const tickInterval = setInterval(() => {
+      playWheelTick();
+      tickCount++;
+      if (tickCount >= maxTicks) {
+        clearInterval(tickInterval);
       }
+    }, 180);
+    tickIntervalRef.current = tickInterval;
 
-      if (progress < 1) {
-        animationFrameRef.current = requestAnimationFrame(animateSpin);
-      } else {
-        setSpinning(false);
-        
-        // Calculate winning slice directly under top pointer (at 1.5 * PI)
-        const normalizedAngle = (2 * Math.PI - (currentAngle % (2 * Math.PI)) + 1.5 * Math.PI) % (2 * Math.PI);
-        const winningIndex = Math.floor(normalizedAngle / arcSize) % numItems;
-        const winner = items[winningIndex];
+    // Reveal Result after 4.5s transition
+    setTimeout(() => {
+      clearInterval(tickIntervalRef.current);
+      setSpinning(false);
 
-        setSelectedIndex(winningIndex);
-        setSelectedItem(winner);
-        playCorrectSound();
-        triggerConfetti();
-        if (onChange) onChange({ selectedText: winner, winningIndex });
-      }
-    };
+      // Winning slice directly under top needle (270 degrees)
+      const normalizedDeg = (270 - (finalRotation % 360) + 360) % 360;
+      const winningIdx = Math.floor(normalizedDeg / sliceDeg) % numItems;
+      const winner = items[winningIdx];
 
-    animationFrameRef.current = requestAnimationFrame(animateSpin);
+      setSelectedIndex(winningIdx);
+      setSelectedItem(winner);
+      playCorrectSound();
+      triggerConfetti();
+      if (onChange) onChange({ selectedText: winner, winningIndex: winningIdx });
+    }, 4500);
   };
 
   const handleEliminateCurrent = () => {
@@ -254,9 +124,11 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
 
   return (
     <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-6 text-center">
+      
+      {/* HEADER */}
       <div>
         <div className="flex items-center justify-center gap-2.5 mb-1.5">
-          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <path d="m4.93 4.93 4.24 4.24" />
@@ -275,14 +147,92 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
         </p>
       </div>
 
+      {/* 🎡 PURE VECTOR SVG WHEEL */}
       <div className="relative inline-block mx-auto p-2">
-        <canvas
-          ref={canvasRef}
-          style={{ width: '380px', height: '380px' }}
-          className="max-w-full h-auto drop-shadow-xl rounded-full"
-        ></canvas>
+        
+        {/* Outer Shadow Wrapper */}
+        <div className="relative w-[340px] h-[340px] sm:w-[380px] sm:h-[380px] mx-auto drop-shadow-xl select-none">
+          
+          {/* Rotating SVG Vector Surface */}
+          <svg
+            viewBox="0 0 400 400"
+            className="w-full h-full"
+            style={{
+              transform: `rotate(${rotationDeg}deg)`,
+              transformOrigin: '200px 200px',
+              transition: spinning ? 'transform 4.5s cubic-bezier(0.12, 0.9, 0.18, 1)' : 'none'
+            }}
+          >
+            {/* Outer Bezel Rim */}
+            <circle cx="200" cy="200" r="196" fill="#ffffff" stroke="#e2e8f0" strokeWidth="6" />
+
+            {/* Slices */}
+            {items.map((_, i) => {
+              const theta1 = i * arcSize;
+              const theta2 = (i + 1) * arcSize;
+              const x1 = 200 + radius * Math.cos(theta1);
+              const y1 = 200 + radius * Math.sin(theta1);
+              const x2 = 200 + radius * Math.cos(theta2);
+              const y2 = 200 + radius * Math.sin(theta2);
+
+              const thetaMid = (theta1 + theta2) / 2;
+              const textR = 135;
+              const tx = 200 + textR * Math.cos(thetaMid);
+              const ty = 200 + textR * Math.sin(thetaMid);
+              const rotDeg = (thetaMid * 180) / Math.PI + 90;
+
+              return (
+                <g key={i}>
+                  {/* Slice Path */}
+                  <path
+                    d={`M 200 200 L ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2} Z`}
+                    fill={PALETTE[i % PALETTE.length]}
+                    stroke="#ffffff"
+                    strokeWidth="2.5"
+                  />
+                  {/* Crisp Number */}
+                  <text
+                    x={tx}
+                    y={ty}
+                    transform={`rotate(${rotDeg}, ${tx}, ${ty})`}
+                    fill="#ffffff"
+                    fontSize="22"
+                    fontWeight="800"
+                    fontFamily="Plus Jakarta Sans, sans-serif"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))' }}
+                  >
+                    {i + 1}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* 3D Top Needle Pointer (Stationary Overlay) */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-20 pointer-events-none drop-shadow-md">
+            <svg width="28" height="36" viewBox="0 0 28 36" fill="none">
+              <path d="M 2 4 L 26 4 L 14 32 Z" fill="#f43f5e" stroke="#ffffff" strokeWidth="2.5" strokeLinejoin="round" />
+            </svg>
+          </div>
+
+          {/* Center Hub Button (Interactive Click-to-Spin) */}
+          <button
+            onClick={handleSpin}
+            disabled={spinning}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-20 h-20 bg-white rounded-full border-4 border-slate-100 shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition cursor-pointer disabled:pointer-events-none"
+            title="Нажмите чтобы крутить"
+          >
+            <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white font-extrabold text-xs tracking-wider shadow-inner">
+              {spinning ? '🌀' : 'SPIN'}
+            </div>
+          </button>
+
+        </div>
       </div>
 
+      {/* SPIN BUTTON */}
       <div>
         <button
           onClick={handleSpin}
@@ -293,18 +243,19 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
         </button>
       </div>
 
+      {/* 🎯 SPOTLIGHT REVEAL CARD */}
       {selectedItem && (
-        <div className="p-6 bg-slate-50 border-2 border-indigo-500 rounded-3xl space-y-3 max-w-xl mx-auto shadow-md animate-fade-in">
-          <span className="px-4 py-1.5 bg-indigo-600 text-white text-xs font-extrabold rounded-full uppercase tracking-wider inline-block shadow-2xs">
+        <div className="p-6 bg-slate-900 text-white rounded-3xl space-y-3 max-w-xl mx-auto shadow-2xl border border-slate-800 animate-fade-in text-center">
+          <span className="px-3.5 py-1 bg-indigo-500 text-white text-[11px] font-extrabold rounded-full uppercase tracking-wider inline-block">
             🎯 ВОПРОС #{selectedIndex !== null ? selectedIndex + 1 : '1'}
           </span>
-          <p className="font-extrabold text-slate-900 text-lg sm:text-xl leading-relaxed">
+          <p className="font-extrabold text-white text-lg sm:text-xl leading-relaxed font-sans">
             "{selectedItem}"
           </p>
           {block.eliminateMode && items.length > 2 && (
             <button
               onClick={handleEliminateCurrent}
-              className="mt-2 px-4 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 font-bold rounded-xl text-xs transition cursor-pointer shadow-2xs"
+              className="mt-2 px-3.5 py-1.5 bg-slate-800 hover:bg-rose-950 hover:text-rose-400 border border-slate-700 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
             >
               ✕ Убрать этот вопрос из колеса
             </button>
