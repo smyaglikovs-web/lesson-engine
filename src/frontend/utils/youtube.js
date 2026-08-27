@@ -36,7 +36,8 @@ export const fetchYouTubeTranscriptAuto = async (videoUrl) => {
   return null;
 };
 
-export const compressAndUploadImage = (file, maxWidth = 1000, quality = 0.72) => {
+// HIGH-EFFICIENCY LIGHTWEIGHT COMPRESSOR (~40KB PER IMAGE FOR D1 SPEED)
+export const compressAndUploadImage = (file, maxWidth = 800, quality = 0.65) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
