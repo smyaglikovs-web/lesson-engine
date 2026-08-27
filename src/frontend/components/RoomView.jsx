@@ -39,12 +39,12 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   }, [activeLesson]);
 
   const totalPages = normalizedPages.length;
-
   const safePageIdx = Math.min(currentPageIdx, totalPages - 1);
   const activePage = normalizedPages[safePageIdx] || { blocks: [] };
   const pageBlocks = activePage.blocks || [];
   const progressPct = Math.round(((safePageIdx + 1) / totalPages) * 100);
 
+  // Load Saved Answers from LocalStorage
   useEffect(() => {
     if (!roomId) return;
     try {
@@ -60,7 +60,9 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     } catch (e) {}
   }, [roomId]);
 
+  // LIVE ROOM STATE POLLING (ONLY in live teacher sessions, NEVER overwrites active answers)
   useEffect(() => {
+    // Only run live polling in Teacher Live Classroom sessions
     if (!roomId || !isTeacher) return;
 
     const interval = setInterval(async () => {
@@ -74,20 +76,18 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           setCurrentPageIdx(data.page_idx);
         }
 
-        const serverAnswers = data.student_answers || {};
-        setUserAnswers(prev => {
-          const serverStr = JSON.stringify(serverAnswers);
-          const prevStr = JSON.stringify(prev);
-          return serverStr !== prevStr ? serverAnswers : prev;
-        });
+        const serverAnswers = data.student_answers;
+        if (serverAnswers && Object.keys(serverAnswers).length > 0) {
+          setUserAnswers(prev => ({ ...prev, ...serverAnswers }));
+        }
       } catch (e) {}
-    }, 1200);
+    }, 1500);
 
     return () => clearInterval(interval);
   }, [roomId, isTeacher]);
 
   const syncRoomState = async (pageIdx, answers) => {
-    if (!roomId) return;
+    if (!roomId || !isTeacher) return;
     try {
       await fetch(`/api/rooms/${roomId}/state`, {
         method: 'POST',
@@ -104,20 +104,24 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // ZERO-LAG ATOMIC ANSWER HANDLER (Instant response on first click)
   const handleAnswerChange = (blockId, newVal) => {
-    let updated;
-    if (newVal === null || newVal === undefined) {
-      updated = { ...userAnswers };
-      delete updated[blockId];
-    } else {
-      updated = { ...userAnswers, [blockId]: newVal };
-    }
-    setUserAnswers(updated);
-    if (isTeacher) syncRoomState(safePageIdx, updated);
+    setUserAnswers(prev => {
+      let updated;
+      if (newVal === null || newVal === undefined) {
+        updated = { ...prev };
+        delete updated[blockId];
+      } else {
+        updated = { ...prev, [blockId]: newVal };
+      }
 
-    try {
-      localStorage.setItem(`student_answers_${roomId}`, JSON.stringify(updated));
-    } catch (e) {}
+      try {
+        localStorage.setItem(`student_answers_${roomId}`, JSON.stringify(updated));
+      } catch (e) {}
+
+      if (isTeacher) syncRoomState(safePageIdx, updated);
+      return updated;
+    });
   };
 
   const handleStartHomework = () => {
@@ -129,7 +133,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   };
 
   const handleResetWholeLesson = async () => {
-    if (!confirm('Вы уверены, что хотите сбросить ВСЕ ответы и начать урок сначала с 1-й страницы?')) return;
+    if (!confirm('Вы уверены, что хотите сбросить ВСЕ ответы и начать сначала?')) return;
     setUserAnswers({});
     setCurrentPageIdx(0);
     setIsLessonCompleted(false);
@@ -172,6 +176,10 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
             }
           });
           if (allCorrect && correctAns.length > 0) score++;
+        } else if (b.type === 'inline_select') {
+          total++;
+          const selections = studentAns?.selections || {};
+          if (studentAns?.submitted && Object.keys(selections).length > 0) score++;
         } else if (b.type === 'matching') {
           total++;
           const matched = studentAns?.matched || [];
@@ -215,10 +223,10 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           localStorage.removeItem(`student_answers_${roomId}`);
         } catch (e) {}
       } else {
-        alert('Ошибка при сохранении: ' + (data.error || 'Проверьте D1'));
+        alert('Ошибка при сохранении: ' + (data.error || 'Проверьте соединение'));
       }
     } catch (e) {
-      alert('Ошибка отправки домашнего задания: ' + e.message);
+      alert('Ошибка отправки: ' + e.message);
     }
   };
 
