@@ -21,6 +21,7 @@ export async function ensureTables(env) {
           room_id TEXT PRIMARY KEY, 
           page_idx INTEGER DEFAULT 0, 
           student_answers TEXT, 
+          last_student_seen INTEGER DEFAULT 0,
           updated_at INTEGER DEFAULT (unixepoch())
         );
       `),
@@ -37,13 +38,12 @@ export async function ensureTables(env) {
       `)
     ]);
 
-    // Backward compatibility: Ensure 'data' column exists if table was created previously
     try {
-      await env.DB.prepare(`ALTER TABLE lessons ADD COLUMN data TEXT`).run();
-    } catch(e) {}
+      await env.DB.prepare(`ALTER TABLE room_states ADD COLUMN last_student_seen INTEGER DEFAULT 0`).run();
+    } catch (e) {}
 
     tablesInitialized = true;
-  } catch(e) { 
+  } catch (e) { 
     console.error("DB Schema Init Error:", e); 
   }
 }
