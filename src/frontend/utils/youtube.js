@@ -1,42 +1,29 @@
 export function getYouTubeId(url = '') {
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = String(url).match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
+  try {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.hostname.includes('youtu.be')) {
+      return parsedUrl.pathname.slice(1).split('?')[0];
+    }
+    if (parsedUrl.hostname.includes('youtube.com')) {
+      if (parsedUrl.pathname.includes('/shorts/')) {
+        return parsedUrl.pathname.split('/shorts/')[1].split('/')[0].split('?')[0];
+      }
+      return parsedUrl.searchParams.get('v');
+    }
+  } catch (e) {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = String(url).match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  }
+  return null;
 }
 
-export const fetchYouTubeTranscriptAuto = async (videoUrl) => {
-  const videoId = getYouTubeId(videoUrl);
-  if (!videoId) return null;
+export function getYouTubeEmbedUrl(url) {
+  if (!url) return null;
+  const id = getYouTubeId(url);
+  return id ? `https://www.youtube.com/embed/${id}` : url;
+}
 
-  const ttUrls = [
-    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
-    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US`
-  ];
-
-  for (const url of ttUrls) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const text = await res.text();
-        if (text && text.length > 100) {
-          const clean = text
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&#39;/g, "'")
-            .replace(/&quot;/g, '"')
-            .replace(/\s+/g, ' ')
-            .trim();
-          if (clean.length > 50) return clean.slice(0, 3500);
-        }
-      }
-    } catch(e) {}
-  }
-
-  return null;
-};
-
-// HIGH-SPEED LIGHTWEIGHT COMPRESSOR (~40KB PER IMAGE TO PREVENT D1 LAG)
 export const compressAndUploadImage = (file, maxWidth = 800, quality = 0.65) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -59,8 +46,7 @@ export const compressAndUploadImage = (file, maxWidth = 800, quality = 0.65) => 
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressedBase64);
+        resolve(canvas.toDataURL('image/jpeg', quality));
       };
       img.onerror = () => reject(new Error('Ошибка чтения изображения'));
     };
