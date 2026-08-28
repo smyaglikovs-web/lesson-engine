@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BlockRenderer } from './BlockRenderer.jsx';
-import { triggerConfetti, playVictorySound, playCorrectSound } from '../utils/sounds.js';
+import { triggerConfetti, playVictorySound } from '../utils/sounds.js';
 
-// Minimalist Classroom Stage Stopwatch & Countdown Timer
 const ClassroomTimer = () => {
   const [secondsLeft, setSecondsLeft] = useState(120);
   const [isActive, setIsActive] = useState(false);
@@ -57,7 +56,7 @@ const ClassroomTimer = () => {
             <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
               ⏱️ Таймер этапа
             </span>
-            <button onClick={() => setIsExpanded(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">
+            <button onClick={() => setIsExpanded(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs p-1 cursor-pointer">
               ✕
             </button>
           </div>
@@ -67,22 +66,22 @@ const ClassroomTimer = () => {
           </div>
 
           <div className="flex gap-1.5 justify-center">
-            <button onClick={() => setPreset(60)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl">1m</button>
-            <button onClick={() => setPreset(120)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl">2m</button>
-            <button onClick={() => setPreset(180)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl">3m</button>
-            <button onClick={() => setPreset(300)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl">5m</button>
+            <button onClick={() => setPreset(60)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl cursor-pointer">1m</button>
+            <button onClick={() => setPreset(120)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl cursor-pointer">2m</button>
+            <button onClick={() => setPreset(180)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl cursor-pointer">3m</button>
+            <button onClick={() => setPreset(300)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl cursor-pointer">5m</button>
           </div>
 
           <div className="flex gap-2">
             <button
               onClick={() => setIsActive(!isActive)}
-              className={`flex-1 py-2 text-xs font-extrabold text-white rounded-xl shadow-xs transition ${isActive ? 'bg-amber-500 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+              className={`flex-1 py-2 text-xs font-extrabold text-white rounded-xl shadow-xs transition cursor-pointer ${isActive ? 'bg-amber-500 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
             >
               {isActive ? '⏸ Пауза' : '▶ Старт'}
             </button>
             <button
               onClick={() => { setIsActive(false); setSecondsLeft(120); }}
-              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
             >
               🔄
             </button>
@@ -104,9 +103,10 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [studentName, setStudentName] = useState('');
   const [hasStartedHomework, setHasStartedHomework] = useState(false);
 
+  const debounceTimerRef = useRef(null);
+
   const normalizedPages = React.useMemo(() => {
     if (!activeLesson) return [{ id: 'p1', title: 'Part 1', blocks: [] }];
-
     let rawPages = activeLesson.pages;
 
     if (Array.isArray(rawPages) && rawPages.length > 0) {
@@ -149,6 +149,32 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     } catch (e) {}
   }, [roomId]);
 
+  const syncRoomStateDebounced = useCallback((pageIdx, answers) => {
+    if (!roomId || !isTeacher) return;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        await fetch(`/api/rooms/${roomId}/state`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageIdx, answers })
+        });
+      } catch (e) {}
+    }, 400);
+  }, [roomId, isTeacher]);
+
+  // Student Presence Heartbeat
+  useEffect(() => {
+    if (!roomId || isTeacher) return;
+    const sendHeartbeat = () => {
+      fetch(`/api/rooms/${roomId}/heartbeat`, { method: 'POST' }).catch(() => {});
+    };
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 4000);
+    return () => clearInterval(interval);
+  }, [roomId, isTeacher]);
+
+  // Polling Room State
   useEffect(() => {
     if (!roomId) return;
 
@@ -185,39 +211,23 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return () => clearInterval(interval);
   }, [roomId, isTeacher]);
 
-  const syncRoomState = async (pageIdx, answers) => {
-    if (!roomId || !isTeacher) return;
-    try {
-      await fetch(`/api/rooms/${roomId}/state`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pageIdx, answers })
-      });
-    } catch (e) {}
-  };
-
   const handlePageChange = (newIdx) => {
     const safeIdx = Math.max(0, Math.min(newIdx, totalPages - 1));
     setCurrentPageIdx(safeIdx);
-    if (isTeacher) syncRoomState(safeIdx, userAnswers);
+    if (isTeacher) syncRoomStateDebounced(safeIdx, userAnswers);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleAnswerChange = (blockId, newVal) => {
     setUserAnswers(prev => {
-      let updated;
-      if (newVal === null || newVal === undefined) {
-        updated = { ...prev };
-        delete updated[blockId];
-      } else {
-        updated = { ...prev, [blockId]: newVal };
-      }
+      const updated = newVal === null || newVal === undefined ? { ...prev } : { ...prev, [blockId]: newVal };
+      if (newVal === null || newVal === undefined) delete updated[blockId];
 
       try {
         localStorage.setItem(`student_answers_${roomId}`, JSON.stringify(updated));
       } catch (e) {}
 
-      if (isTeacher) syncRoomState(safePageIdx, updated);
+      if (isTeacher) syncRoomStateDebounced(safePageIdx, updated);
       return updated;
     });
   };
@@ -238,7 +248,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     try {
       localStorage.removeItem(`student_answers_${roomId}`);
     } catch (e) {}
-    if (isTeacher) await syncRoomState(0, {});
+    if (isTeacher) syncRoomStateDebounced(0, {});
   };
 
   const submitHomework = async () => {
@@ -289,13 +299,13 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
             }
           });
           if (allCorrect && correctAns.length > 0) score++;
-        } else if (b.type === 'inline_select') {
-          total++;
-          if (studentAns?.submitted) score++;
         } else if (b.type === 'matching') {
           total++;
-          const matched = studentAns?.matched || [];
-          if (matched.length === (b.pairs?.length || 0)) score++;
+          const expected = (b.pairs || []).map(pair => `${String(pair.left || '').trim().toLowerCase()}:::${String(pair.right || '').trim().toLowerCase()}`);
+          const submitted = (studentAns?.matched || []).map(m => `${String(m.left || '').trim().toLowerCase()}:::${String(m.right || '').trim().toLowerCase()}`);
+          if (expected.length > 0 && expected.length === submitted.length && expected.every(item => submitted.includes(item))) {
+            score++;
+          }
         } else if (b.type === 'sentence_reorder') {
           total++;
           const userSentence = (studentAns?.selectedWordObjects || []).map(w => w.text).join(' ');
@@ -343,11 +353,8 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   };
 
   const handleFinishLesson = () => {
-    if (isTeacher) {
-      onExitRoom();
-    } else {
-      submitHomework();
-    }
+    if (isTeacher) onExitRoom();
+    else submitHomework();
   };
 
   const copyStudentLink = () => {
@@ -418,7 +425,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                   <button
                     onClick={handleResetWholeLesson}
                     className="px-3.5 py-2 bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-extrabold rounded-xl transition shadow-xs cursor-pointer"
-                    title="Очистить все ответы и вернуться на 1-ю страницу"
+                    title="Очистить все ответы"
                   >
                     🔄 Сбросить
                   </button>
@@ -465,7 +472,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 )}
               </div>
 
-              {/* PAGE NAVIGATION CONTROLS */}
+              {/* NAVIGATION */}
               <div className="flex justify-between items-center pt-2">
                 <button
                   disabled={safePageIdx === 0}
@@ -484,7 +491,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                   </button>
                 ) : (
                   <button
-                    onClick={isTeacher ? handleFinishLesson : submitHomework}
+                    onClick={handleFinishLesson}
                     className="px-8 py-3 bg-emerald-600 text-white font-extrabold rounded-2xl hover:bg-emerald-700 text-sm shadow-md transition cursor-pointer"
                   >
                     {isTeacher ? 'Завершить урок 🎉' : 'Сдать ДЗ 🎉'}
