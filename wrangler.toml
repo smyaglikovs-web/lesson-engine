@@ -1,5 +1,5 @@
 name = "lessons"
-main = "src/worker.js"
+main = "src/worker.js" 
 compatibility_date = "2024-09-23" 
 
 [assets]
