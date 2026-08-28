@@ -1,6 +1,6 @@
 import { ensureTables } from '../db/schema.js';
 
-function normalizeBlockType(rawType) {
+export function normalizeBlockType(rawType) {
   let t = String(rawType || 'text').toLowerCase().trim();
   if (t === 'header' || t === 'title' || t === 'h1' || t === 'h2' || t === 'h3') return 'heading';
   if (t === 'paragraph' || t === 'reading' || t === 'article' || t === 'content' || t === 'story') return 'text';
@@ -18,7 +18,7 @@ function normalizeBlockType(rawType) {
   return t;
 }
 
-function sanitizeBlocks(blocksArray) {
+export function sanitizeBlocks(blocksArray) {
   if (!Array.isArray(blocksArray)) return [];
   return blocksArray.map((b, idx) => {
     if (!b || typeof b !== 'object') {
@@ -57,9 +57,16 @@ export async function saveLesson(env, lesson, password) {
   const id = lesson.id || 'lesson-' + Date.now();
   const jsonString = JSON.stringify(lesson);
 
-  await env.DB.prepare(
-    "INSERT OR REPLACE INTO lessons (id, title, level, topic, description, data) VALUES (?, ?, ?, ?, ?, ?)"
-  ).bind(
+  await env.DB.prepare(`
+    INSERT INTO lessons (id, title, level, topic, description, data) 
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET 
+      title = excluded.title, 
+      level = excluded.level, 
+      topic = excluded.topic, 
+      description = excluded.description, 
+      data = excluded.data
+  `).bind(
     id, 
     lesson.title || 'Untitled', 
     lesson.level || 'B1', 
@@ -74,18 +81,16 @@ export async function saveLesson(env, lesson, password) {
 export async function getSingleLesson(env, lessonId) {
   await ensureTables(env);
   const row = await env.DB.prepare(
-    "SELECT data, pages_json, title, level, topic, description FROM lessons WHERE id = ?"
+    "SELECT data, title, level, topic, description FROM lessons WHERE id = ?"
   ).bind(lessonId).first();
 
   if (!row) return null;
 
-  let rawData = row.data || row.pages_json;
   let parsed = null;
-
-  if (rawData) {
+  if (row.data) {
     try {
-      parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
-    } catch(e) {}
+      parsed = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+    } catch (e) {}
   }
 
   if (!parsed || typeof parsed !== 'object') {
@@ -114,8 +119,6 @@ export async function getSingleLesson(env, lessonId) {
     }
   } else if (Array.isArray(parsed.blocks) && parsed.blocks.length > 0) {
     pages = [{ id: 'p1', title: parsed.topic || row.topic || 'Part 1', blocks: sanitizeBlocks(parsed.blocks) }];
-  } else if (Array.isArray(parsed)) {
-    pages = [{ id: 'p1', title: row.topic || 'Part 1', blocks: sanitizeBlocks(parsed) }];
   } else {
     pages = [{ id: 'p1', title: row.topic || 'Part 1', blocks: [] }];
   }
@@ -138,6 +141,12 @@ export async function deleteLesson(env, lessonId, password) {
     return { error: "Неверный пароль учителя!" };
   }
 
-  await env.DB.prepare("DELETE FROM lessons WHERE id = ?").bind(lessonId).run();
+  // Cascading cleanup
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM homework_submissions WHERE lesson_id = ?").bind(lessonId),
+    env.DB.prepare("DELETE FROM room_states WHERE room_id = ?").bind(lessonId),
+    env.DB.prepare("DELETE FROM lessons WHERE id = ?").bind(lessonId)
+  ]);
+
   return { success: true };
 }
