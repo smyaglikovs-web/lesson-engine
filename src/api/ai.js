@@ -162,7 +162,26 @@ export function cleanAndParseJson(rawText) {
   try {
     return JSON.parse(clean);
   } catch (e1) {
-    return null;
+    try {
+      let fixed = '';
+      let inString = false;
+      for (let i = 0; i < clean.length; i++) {
+        const c = clean[i];
+        if (c === '"' && (i === 0 || clean[i - 1] !== '\\')) {
+          inString = !inString;
+          fixed += c;
+        } else if (inString && (c === '\n' || c === '\r')) {
+          fixed += '\\n';
+        } else if (inString && c === '\t') {
+          fixed += '\\t';
+        } else {
+          fixed += c;
+        }
+      }
+      return JSON.parse(fixed);
+    } catch (e2) {
+      return null;
+    }
   }
 }
 
@@ -248,7 +267,7 @@ function createFallbackLesson(topic = 'General English Practice', level = 'B1') 
     pages: [
       {
         id: 'p1',
-        title: 'Part 1: Lead-in, Vocabulary & Story',
+        title: 'Part 1: Warm-up, Vocabulary & Story',
         blocks: [
           { id: 'b1', type: 'heading', level: 1, text: `${topic}` },
           { 
@@ -278,23 +297,23 @@ function createFallbackLesson(topic = 'General English Practice', level = 'B1') 
       },
       {
         id: 'p2',
-        title: 'Part 2: Comprehension & Lexis',
+        title: 'Part 2: Comprehension & Practice',
         blocks: [
-          { id: 'b5', type: 'heading', level: 2, text: 'Comprehension & Vocabulary Practice' }
+          { id: 'b5', type: 'heading', level: 2, text: 'Part 2: Comprehension & Practice' }
         ]
       },
       {
         id: 'p3',
-        title: 'Part 3: Grammar & Controlled Practice',
+        title: 'Part 3: Grammar Focus',
         blocks: [
-          { id: 'b6', type: 'heading', level: 2, text: 'Grammar Focus' }
+          { id: 'b6', type: 'heading', level: 2, text: 'Part 3: Grammar Focus' }
         ]
       },
       {
         id: 'p4',
         title: 'Part 4: Production & Speaking',
         blocks: [
-          { id: 'b7', type: 'heading', level: 2, text: 'Speaking & Free Practice' }
+          { id: 'b7', type: 'heading', level: 2, text: 'Part 4: Speaking & Production' }
         ]
       }
     ]
@@ -364,8 +383,8 @@ ${cefrRules}
 
 STRICT PAGE 1 SPECIFICATION:
 Page 1 MUST contain exactly these 4 high-craft blocks:
-1. "heading" (level: 1): An inspiring, authentic educational title for "${topic}".
-2. "open_input": A warm-up lead-in discussion prompt containing AT LEAST 3 numbered, thought-provoking speaking questions (1., 2., 3.) activating background knowledge and personal interest.
+1. "heading" (level: 1): An inspiring educational title for "${topic}".
+2. "open_input": A warm-up lead-in discussion prompt containing AT LEAST 3 numbered, thought-provoking speaking questions (1., 2., 3.) activating background knowledge.
 3. "flashcards": 6 to 8 target high-yield vocabulary words/phrases extracted from or essential for this story.
    Each card MUST have:
    - "front": target word or collocation
@@ -374,7 +393,7 @@ Page 1 MUST contain exactly these 4 high-craft blocks:
 4. "text": A beautiful, immersive, and educational 250-350 word reading story/article written with rich language specifically calibrated for CEFR Level ${level}, naturally integrating the target flashcard vocabulary.
 
 PAGES 2, 3, 4:
-Provide clean, structured subsequent pages with placeholders ready for the teacher to build interactive tasks in the Lego Builder.
+Provide clean, structured subsequent pages with headings ready for the teacher.
 
 MANDATORY JSON FORMAT:
 {
@@ -407,14 +426,14 @@ MANDATORY JSON FORMAT:
     },
     {
       "id": "p2",
-      "title": "Part 2: Comprehension & Vocabulary",
+      "title": "Part 2: Comprehension & Practice",
       "blocks": [
         { "type": "heading", "level": 2, "text": "Part 2: Comprehension & Practice" }
       ]
     },
     {
       "id": "p3",
-      "title": "Part 3: Grammar & Practice",
+      "title": "Part 3: Grammar Focus",
       "blocks": [
         { "type": "heading", "level": 2, "text": "Part 3: Grammar Focus" }
       ]
@@ -431,7 +450,7 @@ MANDATORY JSON FORMAT:
 
 RETURN ONLY A VALID ROOT JSON OBJECT.`;
 
-  const userPrompt = `Topic: ${topic}\nLevel: ${level}\nSource material / Inspiration:\n${text || 'Create an original, captivating educational reading story on this topic.'}`;
+  const userPrompt = `Topic: ${topic}\nLevel: ${level}\nSource material / Context:\n${text || 'Create an original, captivating educational reading story on this topic.'}`;
 
   try {
     const result = await runAiPipeline(env, systemPrompt, userPrompt, 2800, topic, level);
@@ -470,6 +489,7 @@ export async function transformBlockWithAI(env, payload) {
 
   const targetBlockType = String(sourceBlock.type || '').toLowerCase().trim();
 
+  // 1-Click Auto Fill Mappings
   if (actions.includes('fill_this_block') && targetBlockType) {
     if (targetBlockType === 'flashcards') actions.push('flashcards');
     else if (targetBlockType === 'multiple_choice') actions.push('listening');
@@ -482,25 +502,184 @@ export async function transformBlockWithAI(env, payload) {
     else if (targetBlockType === 'sentence_reorder') actions.push('sentence_reorder');
     else if (targetBlockType === 'inline_select') actions.push('inline_select');
     else if (targetBlockType === 'spinning_wheel') actions.push('spinning_wheel');
+    else if (targetBlockType === 'teacher_notes') actions.push('teacher_notes');
   }
 
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  if (actions.includes('generate_text_passage')) {
-    const textPrompt = `You are an ELT Materials Writer. Write an engaging educational reading story for CEFR Level ${level} (~${targetLength} words).\nCEFR Level ${level}: ${cefrRules}\nRETURN JSON ROOT OBJECT: { "blocks": [ { "type": "text", "text": "Full educational story passage..." } ] }`;
+  // A. TEXT REFINEMENT TOOLS (EXPAND, SHORTEN, REWRITE LEVEL, GENERATE PASSAGE)
+  if (actions.includes('generate_text_passage') || actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
+    let wordCountTarget = targetLength || '250';
+    let specificInstruction = `Write an engaging educational reading story for CEFR Level ${level} (~${wordCountTarget} words).`;
+
+    if (actions.includes('expand_text')) {
+      wordCountTarget = '400';
+      specificInstruction = `Expand the following story into a rich, immersive 350-450 word educational reading passage for CEFR Level ${level}, adding detailed background, vivid examples, and natural nuance.`;
+    } else if (actions.includes('shorten_text')) {
+      wordCountTarget = '150';
+      specificInstruction = `Condense and summarize this story into a crisp, clear 120-160 word passage for CEFR Level ${level}, preserving the core ideas and target vocabulary.`;
+    } else if (actions.includes('refine_level')) {
+      specificInstruction = `Rewrite this reading text strictly adapting vocabulary, idioms, and grammatical structures for CEFR Level ${level} (~250 words).`;
+    }
+
+    const textPrompt = `You are a CELTA ELT Materials Writer.
+${specificInstruction}
+CEFR Level ${level} Rules: ${cefrRules}
+
+RETURN A VALID JSON ROOT OBJECT:
+{
+  "blocks": [
+    {
+      "type": "text",
+      "text": "Full rewritten and beautifully formatted educational passage..."
+    }
+  ]
+}`;
+
     try {
-      const result = await runAiPipeline(env, textPrompt, `Topic/Context: ${safeContextData}`, 2000);
-      const textVal = result.data.blocks?.[0]?.text || result.data.text || JSON.stringify(result.data);
-      return { success: true, isFallback: result.isFallback, newBlocks: [{ type: 'text', text: textVal }] };
+      const result = await runAiPipeline(env, textPrompt, `Source Context / Input:\n${safeContextData}`, 2200);
+      const generatedText = result.data?.blocks?.[0]?.text || result.data?.text || (typeof result.data === 'string' ? result.data : '');
+
+      if (generatedText && generatedText.length > 50) {
+        return { success: true, isFallback: result.isFallback, newBlocks: [{ type: 'text', text: generatedText }] };
+      }
+      // Fallback expansion if AI failed
+      return { 
+        success: true, 
+        isFallback: true, 
+        newBlocks: [{ 
+          type: 'text', 
+          text: `${safeContextData}\n\nFurthermore, exploring this topic reveals how modern language continues to evolve across international contexts. By actively analyzing key structures and real-world examples, students develop natural fluency, confidence in conversation, and deeper cultural comprehension.` 
+        }] 
+      };
     } catch (e) {
-      return { error: 'Failed to generate text: ' + e.message };
+      return { error: 'Failed to refine text: ' + e.message };
     }
   }
 
+  // B. GRAMMAR CARD GENERATION
+  if (actions.includes('generate_grammar_card')) {
+    const grammarPrompt = `Generate 1 Grammar Card JSON root object for CEFR Level ${level} (${cefrRules}):
+{
+  "blocks": [
+    {
+      "type": "grammar_card",
+      "title": "${safeContextData}",
+      "formula": "Subject + Verb Structure",
+      "explanation": "Rule explanation for CEFR ${level}",
+      "examples": ["Example sentence 1", "Example sentence 2"]
+    }
+  ]
+}`;
+    try {
+      const result = await runAiPipeline(env, grammarPrompt, `Grammar Topic: ${safeContextData}`, 1000);
+      const rawList = result.data?.blocks || (Array.isArray(result.data) ? result.data : [result.data]);
+      let cleanBlocks = [];
+      rawList.forEach(b => {
+        const res = sanitizeBlockStructure(b);
+        if (Array.isArray(res)) cleanBlocks.push(...res);
+        else cleanBlocks.push(res);
+      });
+      return { success: true, isFallback: result.isFallback, newBlocks: cleanBlocks };
+    } catch (e) {
+      return { error: 'Failed to generate grammar card: ' + e.message };
+    }
+  }
+
+  // C. MULTI-TASK & EXERCISE SCHEMAS
+  let tasksInstructions = '';
+
+  if (actions.includes('grammar_quiz')) {
+    tasksInstructions += `
+- GENERATE 1 "multiple_choice" block drilling the grammar rule "${safeContextData}" for CEFR Level ${level}.
+  Schema: { "type": "multiple_choice", "question": "Grammar gap sentence?", "options": ["Correct option", "Distractor 1", "Distractor 2"], "correct": 0, "explanation": "Grammar rule reason." }`;
+  }
+
+  if (actions.includes('grammar_transform')) {
+    tasksInstructions += `
+- GENERATE 1 "gap_fill" block with 4 sentence transformations drilling "${safeContextData}".
+  Schema: { "type": "gap_fill", "instruction": "Complete the second sentence using the target grammar structure:", "text": "1. Prompt sentence.\\nTransformation: She [had never seen] such a sight.\\n2. Prompt sentence.\\nTransformation: Rarely [do we witness] this.", "answers": ["had never seen", "do we witness"] }`;
+  }
+
+  if (actions.includes('listening') || (actions.includes('multiple_choice') && !actions.includes('grammar_quiz'))) {
+    tasksInstructions += `
+- GENERATE 1 "multiple_choice" block with 3-4 comprehension questions based directly on the context.
+  Schema: { "type": "multiple_choice", "question": "Comprehension question text?", "options": ["Correct Option", "Distractor 1", "Distractor 2"], "correct": 0, "explanation": "Why this option is correct based on context." }`;
+  }
+
+  if (actions.includes('true_false')) {
+    tasksInstructions += `
+- GENERATE 3 separate "multiple_choice" blocks for True/False questions based on the context.
+  Schema: { "type": "multiple_choice", "question": "Statement from the story...", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Reference to the text." }`;
+  }
+
+  if (actions.includes('flashcards')) {
+    const backStyle = flashcardType === 'russian' ? 'Russian translation' : 'simple English definition';
+    tasksInstructions += `
+- GENERATE 1 "flashcards" block with 6 target vocabulary words extracted directly from the context.
+  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "target word", "back": "${backStyle}", "example": "Context sentence." } ] }`;
+  }
+
+  if (actions.includes('gap_fill') && !actions.includes('grammar_transform')) {
+    tasksInstructions += `
+- GENERATE 1 "gap_fill" block with 4 sentences, putting target words in brackets [word].
+  Schema: { "type": "gap_fill", "instruction": "Complete the sentences with target words:", "text": "1. Sentence with [word1].\\n2. Sentence with [word2].", "answers": ["word1", "word2"] }`;
+  }
+
+  if (actions.includes('gap_fill_bank')) {
+    tasksInstructions += `
+- GENERATE 1 "gap_fill_bank" block using a paragraph containing [target words] in brackets and 3 distractors.
+  Schema: { "type": "gap_fill_bank", "instruction": "Fill the gaps using words from the bank:", "text": "Paragraph with [word1] and [word2]...", "distractors": ["wrong1", "wrong2", "wrong3"] }`;
+  }
+
+  if (actions.includes('matching')) {
+    tasksInstructions += `
+- GENERATE 1 "matching" block with 6 pairs configured as "${matchingType}".
+  Schema: { "type": "matching", "instruction": "Match the pairs:", "pairs": [ { "left": "word/phrase", "right": "definition/translation" } ] }`;
+  }
+
+  if (actions.includes('discussion') || actions.includes('open_input')) {
+    tasksInstructions += `
+- GENERATE 1 "open_input" block with 2-3 communicative discussion questions exploring the themes of this context.
+  Schema: { "type": "open_input", "prompt": "Discussion questions based on the material?" }`;
+  }
+
+  if (actions.includes('inline_select')) {
+    tasksInstructions += `
+- GENERATE 1 "inline_select" block with 3-4 sentences containing [correct_option* | wrong_option].
+  Schema: { "type": "inline_select", "instruction": "Choose the correct words in context:", "text": "1. Sentence with [correct* | wrong].\\n2. Sentence with [correct* | wrong]." }`;
+  }
+
+  if (actions.includes('spinning_wheel')) {
+    tasksInstructions += `
+- GENERATE 1 "spinning_wheel" block with 6 engaging speaking questions directly based on this context.
+  Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Discussion Wheel", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"], "eliminateMode": false }`;
+  }
+
+  if (actions.includes('sentence_reorder')) {
+    tasksInstructions += `
+- GENERATE 1 "sentence_reorder" block with a rich target sentence from the context.
+  Schema: { "type": "sentence_reorder", "instruction": "🧩 Reorder the words to form a correct sentence:", "sentence": "Complete target sentence here." }`;
+  }
+
+  if (actions.includes('teacher_notes')) {
+    tasksInstructions += `
+- GENERATE 1 "teacher_notes" block with stage aims and teacher speech scripts.
+  Schema: { "type": "teacher_notes", "aim": "Methodological goal...", "speech": "Spoken teacher instructions..." }`;
+  }
+
   const systemPrompt = `You are a CELTA ELT Materials Designer. Generate a root JSON object with a "blocks" array matching CEFR Level ${level} (${cefrRules}) directly testing the source context.
-JSON SCHEMA: { "blocks": [ ... ] }`;
+
+MANDATORY JSON FORMAT:
+{
+  "blocks": [
+    ...
+  ]
+}
+
+EXERCISE SPECIFICATIONS:${tasksInstructions}`;
 
   try {
     const result = await runAiPipeline(env, systemPrompt, `Source Context:\n${safeContextData}`, 2500);
@@ -512,6 +691,10 @@ JSON SCHEMA: { "blocks": [ ... ] }`;
       if (Array.isArray(res)) cleanBlocks.push(...res);
       else cleanBlocks.push(res);
     });
+
+    if (cleanBlocks.length === 0) {
+      return { error: 'Не удалось сформировать задания. Попробуйте ещё раз.' };
+    }
 
     return { success: true, isFallback: result.isFallback, newBlocks: cleanBlocks };
   } catch (err) {
