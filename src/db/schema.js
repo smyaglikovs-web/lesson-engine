@@ -1,8 +1,7 @@
-let isInitialized = false;
+let tablesInitialized = false;
 
 export async function ensureTables(env) {
-  if (!env || !env.DB) return;
-  if (isInitialized) return;
+  if (!env || !env.DB || tablesInitialized) return;
 
   try {
     await env.DB.batch([
@@ -38,13 +37,13 @@ export async function ensureTables(env) {
       `)
     ]);
 
-    // Backward compatibility: Ensure 'data' column exists if table was created previously with 'pages_json'
+    // Backward compatibility: Ensure 'data' column exists if table was created previously
     try {
       await env.DB.prepare(`ALTER TABLE lessons ADD COLUMN data TEXT`).run();
     } catch(e) {}
 
-    isInitialized = true;
+    tablesInitialized = true;
   } catch(e) { 
-    console.error("DB Init Error:", e); 
+    console.error("DB Schema Init Error:", e); 
   }
 }
