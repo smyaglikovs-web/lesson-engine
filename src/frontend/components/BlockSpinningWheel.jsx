@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { playCorrectSound, triggerConfetti } from '../utils/sounds.js';
 
-// SKYENG / DUOLINGO MODERN VIBRANT PALETTE (HIGH-CONTRAST & CRISP)
 const MODERN_WHEEL_PALETTE = [
   '#4f46e5', // Royal Indigo
   '#10b981', // Emerald Mint
@@ -15,7 +14,6 @@ const MODERN_WHEEL_PALETTE = [
   '#2563eb'  // Ocean Blue
 ];
 
-// Synthesized Realistic Mechanical Ticking Sound
 const playWheelTick = () => {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -59,12 +57,18 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
   const lastTickIndexRef = useRef(-1);
   const animationFrameRef = useRef(null);
 
+  // Sync state if block items change
+  useEffect(() => {
+    if (Array.isArray(block.items) && block.items.length > 0) {
+      setItems(block.items);
+    }
+  }, [JSON.stringify(block.items)]);
+
   const numItems = items.length;
   const arcSize = (2 * Math.PI) / numItems;
 
-  // SMART MULTI-LINE TEXT WRAPPER
   const wrapTextToLines = (text, maxCharsPerLine = 15) => {
-    const words = text.split(' ');
+    const words = String(text || '').split(' ');
     const lines = [];
     let currentLine = '';
 
@@ -77,10 +81,9 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
       }
     });
     if (currentLine) lines.push(currentLine);
-    return lines.slice(0, 3); // Max 3 clean lines
+    return lines.slice(0, 3);
   };
 
-  // 🎨 CRISP MODERN WHEEL RENDERER (AUTO-FLIPS TEXT & ELIMINATES SMUDGES)
   const drawWheel = (currentAngle) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -92,7 +95,7 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
 
     ctx.clearRect(0, 0, size, size);
 
-    // 1. SLEEK OUTER RIM BEZEL (LIGHTWEIGHT AMBIENT SHADOW)
+    // Outer Rim
     ctx.save();
     ctx.beginPath();
     ctx.arc(center, center, outerRadius + 5, 0, 2 * Math.PI);
@@ -103,7 +106,7 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
     ctx.fill();
     ctx.restore();
 
-    // 2. SLICES WITH CRISP 3PX WHITE BORDERS
+    // Slices
     for (let i = 0; i < numItems; i++) {
       const angle = currentAngle + i * arcSize;
       const sliceColor = MODERN_WHEEL_PALETTE[i % MODERN_WHEEL_PALETTE.length];
@@ -116,13 +119,12 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
       ctx.fillStyle = sliceColor;
       ctx.fill();
 
-      // Clean White Divider
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 3;
       ctx.stroke();
       ctx.restore();
 
-      // 3. AUTO-FLIPPED HIGH-CONTRAST TYPOGRAPHY
+      // Text Labels
       const midAngle = angle + arcSize / 2;
       const normalizedMid = (midAngle % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
       const isLeftHalf = normalizedMid > Math.PI / 2 && normalizedMid < (3 * Math.PI) / 2;
@@ -145,7 +147,6 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
       const totalHeight = (textLines.length - 1) * lineHeight;
 
       if (isLeftHalf) {
-        // FLIP 180 DEGREES: Text on the left is always readable from left to right!
         ctx.rotate(Math.PI);
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
@@ -156,7 +157,6 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
           ctx.fillText(line, startX, yPos);
         });
       } else {
-        // RIGHT SIDE: Standard radial text
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
         const startX = outerRadius - 18;
@@ -170,7 +170,7 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
       ctx.restore();
     }
 
-    // 4. CLEAN MODERN CENTER HUB (SKYENG / DUOLINGO STYLE)
+    // Center Hub
     ctx.save();
     ctx.beginPath();
     ctx.arc(center, center, hubRadius, 0, 2 * Math.PI);
@@ -179,7 +179,6 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
     ctx.shadowBlur = 10;
     ctx.fill();
 
-    // Inner Hub Button
     ctx.beginPath();
     ctx.arc(center, center, hubRadius - 8, 0, 2 * Math.PI);
     ctx.fillStyle = '#4f46e5';
@@ -192,7 +191,7 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
     ctx.fillText('✨', center, center);
     ctx.restore();
 
-    // 5. SLEEK TOP NEEDLE POINTER
+    // Needle Pointer
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(center - 13, 6);
@@ -229,14 +228,12 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
       
-      // Smooth 4th-order ease-out physics
       const easeOut = 1 - Math.pow(1 - progress, 4);
       const currentAngle = startAngle + (targetAngle - startAngle) * easeOut;
       rotationAngleRef.current = currentAngle;
 
       drawWheel(currentAngle);
 
-      // Play ticking sound when passing slices
       const currentNormalized = (currentAngle % (2 * Math.PI));
       const currentSliceIdx = Math.floor((currentNormalized / arcSize)) % numItems;
       if (currentSliceIdx !== lastTickIndexRef.current) {
@@ -249,7 +246,6 @@ export const BlockSpinningWheel = ({ block, value, onChange }) => {
       } else {
         setSpinning(false);
         
-        // Calculate winning slice directly under top pointer (at 1.5 * PI)
         const normalizedAngle = (2 * Math.PI - (currentAngle % (2 * Math.PI)) + 1.5 * Math.PI) % (2 * Math.PI);
         const winningIndex = Math.floor(normalizedAngle / arcSize) % numItems;
         const winner = items[winningIndex];
