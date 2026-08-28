@@ -10,15 +10,17 @@ const shuffleArray = (arr) => {
   return res;
 };
 
-export const BlockMatching = ({ block, value, onChange }) => {
+export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
   const matched = value?.matched || [];
   const mistakes = value?.mistakes || 0;
   const [selectedLeft, setSelectedLeft] = useState(null);
   const [wrongPair, setWrongPair] = useState(false);
 
+  const pairs = block.pairs || [];
+
   const rightItems = useMemo(() => {
-    return shuffleArray((block.pairs || []).map(p => p.right));
-  }, [block.id]);
+    return shuffleArray(pairs.map((p, idx) => ({ id: `r-${idx}`, text: p.right, origIndex: idx })));
+  }, [block.id, JSON.stringify(pairs)]);
 
   const handleLeftClick = (leftText) => {
     if (matched.some(m => m.left === leftText)) return;
@@ -28,62 +30,86 @@ export const BlockMatching = ({ block, value, onChange }) => {
 
   const handleRightClick = (rightText) => {
     if (!selectedLeft || matched.some(m => m.right === rightText)) return;
-    const correctPair = block.pairs.find(p => p.left === selectedLeft && p.right === rightText);
+    const correctPair = pairs.find(p => p.left === selectedLeft && p.right === rightText);
 
     if (correctPair) {
       playCorrectSound();
       const newMatched = [...matched, { left: selectedLeft, right: rightText }];
-      onChange({ matched: newMatched, mistakes });
+      if (onChange) onChange({ matched: newMatched, mistakes });
       setSelectedLeft(null);
     } else {
       playWrongSound();
       setWrongPair(true);
       const newMistakes = mistakes + 1;
-      onChange({ matched, mistakes: newMistakes });
+      if (onChange) onChange({ matched, mistakes: newMistakes });
       setTimeout(() => setWrongPair(false), 800);
     }
   };
 
-  const isCompleted = matched.length === (block.pairs?.length || 0);
+  const isCompleted = matched.length === pairs.length && pairs.length > 0;
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
-      <div className="flex justify-between items-center mb-4">
-        <h4 className="font-semibold text-lg text-slate-800">{block.instruction || 'Соедините пары:'}</h4>
+    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4">
+      <div className="flex justify-between items-center">
+        <h4 className="font-extrabold text-base sm:text-lg text-slate-800 leading-snug">
+          {block.instruction || '🔗 Соедините пары:'}
+        </h4>
         {mistakes > 0 && (
-          <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-bold text-xs rounded-full border border-rose-200 animate-pulse">
+          <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-bold text-xs rounded-full border border-rose-200">
             ⚠️ Ошибок: {mistakes}
           </span>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          {block.pairs?.map((p, idx) => {
+          {pairs.map((p, idx) => {
             const isMatched = matched.some(m => m.left === p.left);
             const isSelected = selectedLeft === p.left;
-            let style = "w-full p-3 text-left rounded-lg border font-medium transition text-sm ";
-            if (isMatched) style += "bg-green-50 border-green-500 text-green-800 opacity-60";
-            else if (isSelected) style += "bg-indigo-50 border-indigo-600 text-indigo-900 shadow-sm";
-            else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-700";
-            return <button key={`${block.id}-left-${idx}`} disabled={isMatched} onClick={() => handleLeftClick(p.left)} className={style}>{p.left} {isMatched && '✓'}</button>;
+            let style = "w-full p-3.5 text-left rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer ";
+            if (isMatched) style += "bg-emerald-50 border-emerald-500 text-emerald-900 opacity-60";
+            else if (isSelected) style += "bg-indigo-50 border-indigo-600 text-indigo-900 shadow-xs ring-2 ring-indigo-500/20";
+            else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-800 hover:bg-white";
+
+            return (
+              <button 
+                key={`left-${idx}`} 
+                disabled={isMatched} 
+                onClick={() => handleLeftClick(p.left)} 
+                className={style}
+              >
+                <span>{p.left}</span>
+                {isMatched && <span className="text-emerald-600 font-extrabold">✓</span>}
+              </button>
+            );
           })}
         </div>
 
         <div className="space-y-2">
-          {rightItems.map((rightText, idx) => {
-            const isMatched = matched.some(m => m.right === rightText);
-            let style = "w-full p-3 text-left rounded-lg border font-medium transition text-sm ";
-            if (isMatched) style += "bg-green-50 border-green-500 text-green-800 opacity-60";
-            else if (wrongPair && selectedLeft) style += "bg-red-50 border-red-300 text-slate-700 animate-bounce";
-            else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-700";
-            return <button key={`${block.id}-right-${idx}`} disabled={isMatched} onClick={() => handleRightClick(rightText)} className={style}>{rightText} {isMatched && '✓'}</button>;
+          {rightItems.map((rightObj, idx) => {
+            const isMatched = matched.some(m => m.right === rightObj.text);
+            let style = "w-full p-3.5 text-left rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer ";
+            if (isMatched) style += "bg-emerald-50 border-emerald-500 text-emerald-900 opacity-60";
+            else if (wrongPair && selectedLeft) style += "bg-rose-50 border-rose-300 text-rose-900 animate-bounce";
+            else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-800 hover:bg-white";
+
+            return (
+              <button 
+                key={`right-${idx}`} 
+                disabled={isMatched} 
+                onClick={() => handleRightClick(rightObj.text)} 
+                className={style}
+              >
+                <span>{rightObj.text}</span>
+                {isMatched && <span className="text-emerald-600 font-extrabold">✓</span>}
+              </button>
+            );
           })}
         </div>
       </div>
 
       {isCompleted && (
-        <div className="p-3 bg-green-100 text-green-800 rounded-lg text-sm font-bold text-center flex justify-between items-center px-4">
+        <div className="p-4 bg-emerald-100 text-emerald-900 rounded-2xl text-xs font-bold text-center flex justify-between items-center px-4">
           <span>Все пары соединены верно! 🎉</span>
           <span className="text-xs font-normal">Всего ошибок: {mistakes}</span>
         </div>
