@@ -26,33 +26,29 @@ export default {
     const method = request.method;
 
     try {
+      // Lazy schema initialization
       await ensureTables(env);
 
-      // 1. TEACHER AUTH LOGIN
+      // --- AUTH ROUTER ---
       if (path === '/api/teacher/login' && method === 'POST') {
         const body = await request.json();
         const res = await verifyTeacherLogin(env, body.password);
-        if (res.success) return jsonResponse({ success: true });
-        return jsonResponse({ error: 'Invalid password' }, 401);
+        return res.success ? jsonResponse({ success: true }) : jsonResponse({ error: 'Invalid password' }, 401);
       }
 
-      // 2. FULL AI LESSON GENERATOR
+      // --- AI & TRANSCRIPT ROUTER ---
       if (path === '/api/ai/generate' && method === 'POST') {
         const payload = await request.json();
         const res = await generateFullLessonWithAI(env, payload);
-        if (res.error) return jsonResponse({ error: res.error }, 500);
-        return jsonResponse(res);
+        return res.error ? jsonResponse({ error: res.error }, 500) : jsonResponse(res);
       }
 
-      // 3. SINGLE BLOCK & CONTEXTUAL AI ASSISTANT
       if (path === '/api/ai/transform-block' && method === 'POST') {
         const payload = await request.json();
         const res = await transformBlockWithAI(env, payload);
-        if (res.error) return jsonResponse({ error: res.error }, 500);
-        return jsonResponse(res);
+        return res.error ? jsonResponse({ error: res.error }, 500) : jsonResponse(res);
       }
 
-      // 4. YOUTUBE TRANSCRIPT SCRAPER
       if (path === '/api/youtube/transcript' && method === 'POST') {
         const { url: ytUrl } = await request.json();
         if (!ytUrl) return jsonResponse({ error: 'No URL provided' }, 400);
@@ -64,46 +60,39 @@ export default {
         return jsonResponse({ success: false, message: 'Subtitles not found. Please paste transcript manually.' });
       }
 
-      // 5. GET ALL LESSONS
+      // --- LESSON CRUD ROUTER ---
       if (path === '/api/lessons' && method === 'GET') {
         const list = await getLessons(env);
         return jsonResponse(list);
       }
 
-      // 6. GET SINGLE LESSON
       if (path.startsWith('/api/lessons/') && method === 'GET') {
         const id = path.split('/')[3];
         const lesson = await getSingleLesson(env, id);
-        if (!lesson) return jsonResponse({ error: 'Lesson not found' }, 404);
-        return jsonResponse(lesson);
+        return lesson ? jsonResponse(lesson) : jsonResponse({ error: 'Lesson not found' }, 404);
       }
 
-      // 7. SAVE / UPDATE LESSON (POST) - Password Protected
       if (path === '/api/lessons' && method === 'POST') {
         const password = request.headers.get('x-teacher-password');
         const lesson = await request.json();
         const res = await saveLesson(env, lesson, password);
-        if (res.error) return jsonResponse({ error: res.error }, 403);
-        return jsonResponse(res);
+        return res.error ? jsonResponse({ error: res.error }, 403) : jsonResponse(res);
       }
 
-      // 8. DELETE LESSON - Password Protected
       if (path.startsWith('/api/lessons/') && method === 'DELETE') {
         const id = path.split('/')[3];
         const password = request.headers.get('x-teacher-password');
         const res = await deleteLesson(env, id, password);
-        if (res.error) return jsonResponse({ error: res.error }, 403);
-        return jsonResponse(res);
+        return res.error ? jsonResponse({ error: res.error }, 403) : jsonResponse(res);
       }
 
-      // 9. SUBMIT HOMEWORK
+      // --- HOMEWORK ROUTER ---
       if (path === '/api/homework/submit' && method === 'POST') {
         const payload = await request.json();
         const res = await submitHomework(env, payload);
         return jsonResponse(res);
       }
 
-      // 10. GET HOMEWORK SUBMISSIONS
       if (path.startsWith('/api/homework/') && method === 'GET') {
         const lessonId = path.split('/')[3];
         const password = request.headers.get('x-teacher-password');
@@ -111,7 +100,7 @@ export default {
         return jsonResponse(list);
       }
 
-      // 11. REALTIME ROOM STATE SYNC
+      // --- REALTIME ROOM STATE ROUTER ---
       if (path.match(/\/api\/rooms\/[^/]+\/state/) && method === 'GET') {
         const roomId = path.split('/')[3];
         const state = await getRoomState(env, roomId);
@@ -128,7 +117,7 @@ export default {
       return jsonResponse({ error: 'Endpoint not found: ' + path }, 404);
 
     } catch (err) {
-      console.error('Worker Router Error:', err);
+      console.error('Worker Execution Error:', err);
       return jsonResponse({ error: err.message || 'Internal Server Error' }, 500);
     }
   }
