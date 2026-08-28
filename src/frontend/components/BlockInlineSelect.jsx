@@ -7,15 +7,18 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
   const submitted = Boolean(value?.submitted);
   const selections = value?.selections || {};
 
-  // Parse lines: "Sentence with [option1* | option2] text."
+  // Clean lines: strip duplicate dashes/underscores generated before brackets
   const parsedLines = useMemo(() => {
     return lines.map((line, lineIdx) => {
-      const parts = line.split(/\[(.*?)\]/);
+      // Clean residual dashes/underscores like "----- [choice]"
+      const cleanedLine = line.replace(/_{2,}\s*\[/g, '[').replace(/-{2,}\s*\[/g, '[');
+      const parts = cleanedLine.split(/\[(.*?)\]/);
       const segments = [];
 
       for (let i = 0; i < parts.length; i++) {
         if (i % 2 === 0) {
-          segments.push({ type: 'text', text: parts[i] });
+          const textPart = parts[i].replace(/_{2,}/g, '').replace(/-{2,}/g, '');
+          segments.push({ type: 'text', text: textPart });
         } else {
           const rawOptions = parts[i].split('|').map(o => o.trim());
           let correctOption = '';
@@ -59,7 +62,9 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
     });
   });
 
-  const allFilled = totalGaps > 0 && Object.keys(selections).length >= totalGaps;
+  const allFilled = parsedLines
+    .flatMap(line => line.filter(seg => seg.type === 'select'))
+    .every(seg => Boolean(selections[seg.gapKey]));
 
   const handleSelectChange = (gapKey, chosenVal) => {
     if (submitted || !onChange) return;
@@ -83,6 +88,10 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
     }
   };
 
+  if (parsedLines.length === 0 || totalGaps === 0) {
+    return null;
+  }
+
   return (
     <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4">
       {block.instruction && (
@@ -91,9 +100,9 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
         </h4>
       )}
 
-      <div className="space-y-3.5 text-base sm:text-lg leading-relaxed font-medium text-slate-800">
+      <div className="space-y-4 text-base sm:text-lg leading-relaxed font-medium text-slate-800">
         {parsedLines.map((lineSegments, lIdx) => (
-          <div key={lIdx} className="flex flex-wrap items-center gap-2 py-1">
+          <div key={lIdx} className="flex flex-wrap items-center gap-1.5 py-1">
             {lineSegments.map((seg, sIdx) => {
               if (seg.type === 'text') {
                 return <span key={sIdx} className="text-slate-800">{seg.text}</span>;
@@ -102,7 +111,7 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
               const selectedVal = selections[seg.gapKey] || '';
               const isCorrect = selectedVal.trim().toLowerCase() === seg.correct.trim().toLowerCase();
 
-              let borderStyle = 'border-indigo-300 bg-indigo-50/50 text-indigo-900';
+              let borderStyle = 'border-indigo-300 bg-indigo-50/70 text-indigo-900';
               if (submitted) {
                 borderStyle = isCorrect 
                   ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' 
@@ -110,7 +119,7 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
               }
 
               return (
-                <div key={seg.gapKey} className="inline-flex items-center gap-1.5 relative my-0.5">
+                <span key={seg.gapKey} className="inline-flex items-center gap-1 mx-1">
                   <select
                     disabled={submitted}
                     value={selectedVal}
@@ -129,7 +138,7 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
                       title={isCorrect ? 'Верно' : `Правильно: ${seg.correct}`}
                     ></span>
                   )}
-                </div>
+                </span>
               );
             })}
           </div>
