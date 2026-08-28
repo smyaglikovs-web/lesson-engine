@@ -1,13 +1,13 @@
 import React, { useMemo } from 'react';
 import { playCorrectSound, playWrongSound } from '../utils/sounds.js';
 
-export const BlockInlineSelect = ({ block, value, onChange }) => {
+export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
   const rawText = block.text || '';
-  const lines = rawText.split('\n').filter(line => line.trim().length > 0);
-  const submitted = value?.submitted || false;
-  const selections = value?.selections || {}; // { lineIdx_gapIdx: selectedText }
+  const lines = useMemo(() => rawText.split('\n').filter(line => line.trim().length > 0), [rawText]);
+  const submitted = Boolean(value?.submitted);
+  const selections = value?.selections || {};
 
-  // Parse lines and extract choices. Format: "Sentence with [option1* | option2] text."
+  // Parse lines: "Sentence with [option1* | option2] text."
   const parsedLines = useMemo(() => {
     return lines.map((line, lineIdx) => {
       const parts = line.split(/\[(.*?)\]/);
@@ -17,7 +17,6 @@ export const BlockInlineSelect = ({ block, value, onChange }) => {
         if (i % 2 === 0) {
           segments.push({ type: 'text', text: parts[i] });
         } else {
-          // Inside brackets
           const rawOptions = parts[i].split('|').map(o => o.trim());
           let correctOption = '';
           const cleanOptions = rawOptions.map(opt => {
@@ -29,7 +28,6 @@ export const BlockInlineSelect = ({ block, value, onChange }) => {
             return opt;
           });
 
-          // If no asterisk was provided, default first option as correct
           if (!correctOption && cleanOptions.length > 0) {
             correctOption = cleanOptions[0];
           }
@@ -44,7 +42,7 @@ export const BlockInlineSelect = ({ block, value, onChange }) => {
       }
       return segments;
     });
-  }, [rawText]);
+  }, [lines]);
 
   let totalGaps = 0;
   let correctCount = 0;
@@ -64,13 +62,13 @@ export const BlockInlineSelect = ({ block, value, onChange }) => {
   const allFilled = totalGaps > 0 && Object.keys(selections).length >= totalGaps;
 
   const handleSelectChange = (gapKey, chosenVal) => {
-    if (submitted) return;
+    if (submitted || !onChange) return;
     const updated = { ...selections, [gapKey]: chosenVal };
     onChange({ selections: updated, submitted: false });
   };
 
   const handleSubmit = () => {
-    if (!allFilled) return;
+    if (!allFilled || !onChange) return;
     if (correctCount === totalGaps) {
       playCorrectSound();
     } else {
@@ -80,7 +78,9 @@ export const BlockInlineSelect = ({ block, value, onChange }) => {
   };
 
   const handleReset = () => {
-    onChange({ selections: {}, submitted: false });
+    if (onChange) {
+      onChange({ selections: {}, submitted: false });
+    }
   };
 
   return (
@@ -104,7 +104,9 @@ export const BlockInlineSelect = ({ block, value, onChange }) => {
 
               let borderStyle = 'border-indigo-300 bg-indigo-50/50 text-indigo-900';
               if (submitted) {
-                borderStyle = isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' : 'border-rose-500 bg-rose-50 text-rose-900 font-bold';
+                borderStyle = isCorrect 
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' 
+                  : 'border-rose-500 bg-rose-50 text-rose-900 font-bold';
               }
 
               return (
@@ -144,7 +146,10 @@ export const BlockInlineSelect = ({ block, value, onChange }) => {
             Проверить
           </button>
           {Object.keys(selections).length > 0 && (
-            <button onClick={handleReset} className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-2xl text-xs font-bold hover:bg-slate-50 cursor-pointer">
+            <button 
+              onClick={handleReset} 
+              className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-2xl text-xs font-bold hover:bg-slate-50 cursor-pointer"
+            >
               Сбросить
             </button>
           )}
@@ -152,9 +157,14 @@ export const BlockInlineSelect = ({ block, value, onChange }) => {
       ) : (
         <div className={`p-4 rounded-2xl text-xs font-bold flex justify-between items-center ${correctCount === totalGaps ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
           <span>
-            {correctCount === totalGaps ? '🎉 Отлично! Все варианты выбраны верно!' : `❌ Результат: ${correctCount} из ${totalGaps} верно.`}
+            {correctCount === totalGaps 
+              ? '🎉 Отлично! Все варианты выбраны верно!' 
+              : `❌ Результат: ${correctCount} из ${totalGaps} верно.`}
           </span>
-          <button onClick={handleReset} className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 cursor-pointer">
+          <button 
+            onClick={handleReset} 
+            className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 cursor-pointer"
+          >
             Попробовать снова 🔄
           </button>
         </div>
