@@ -10,12 +10,13 @@ const shuffleArray = (arr) => {
   return res;
 };
 
-export const BlockGapFillBank = ({ block, value, onChange }) => {
+export const BlockGapFillBank = ({ block = {}, value = {}, onChange }) => {
   const text = block.text || '';
   const instruction = block.instruction || '🧩 Заполните пропуски словами из банка:';
-  const distractors = block.distractors || [];
+  const distractors = Array.isArray(block.distractors) ? block.distractors : [];
 
   const { segments, correctAnswers } = useMemo(() => {
+    if (!text) return { segments: [], correctAnswers: [] };
     const parts = text.split(/\[(.*?)\]/);
     const segs = [];
     const ans = [];
@@ -34,18 +35,16 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
     return shuffleArray(allWords.map((w, idx) => ({ id: `w-${idx}`, text: w })));
   }, [text, JSON.stringify(distractors)]);
 
-  const placedSlots = value?.placedSlots || {}; // { gapIdx: { id, text } }
-  const submitted = value?.submitted || false;
+  const placedSlots = value?.placedSlots || {};
+  const submitted = Boolean(value?.submitted);
   const [draggedWord, setDraggedWord] = useState(null);
 
   const usedWordIds = Object.values(placedSlots).map(w => w?.id).filter(Boolean);
 
   const handlePlaceWordInSlot = (gapIdx, wordObj) => {
-    if (submitted || !wordObj) return;
+    if (submitted || !wordObj || !onChange) return;
 
     const updated = { ...placedSlots };
-    
-    // Clear word from previous slot if it was already placed elsewhere
     Object.keys(updated).forEach(sIdx => {
       if (updated[sIdx]?.id === wordObj.id) {
         delete updated[sIdx];
@@ -57,7 +56,7 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
   };
 
   const handleRemoveFromSlot = (gapIdx) => {
-    if (submitted) return;
+    if (submitted || !onChange) return;
     const updated = { ...placedSlots };
     delete updated[gapIdx];
     onChange({ placedSlots: updated, submitted: false });
@@ -74,6 +73,7 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
   };
 
   const handleSubmit = () => {
+    if (!onChange) return;
     let correctCount = 0;
     correctAnswers.forEach((ans, idx) => {
       if (placedSlots[idx]?.text?.trim().toLowerCase() === ans.trim().toLowerCase()) {
@@ -81,7 +81,7 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
       }
     });
 
-    if (correctCount === correctAnswers.length) {
+    if (correctCount === correctAnswers.length && correctAnswers.length > 0) {
       playCorrectSound();
     } else {
       playWrongSound();
@@ -90,18 +90,22 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
   };
 
   const handleReset = () => {
-    onChange({ placedSlots: {}, submitted: false });
+    if (onChange) onChange({ placedSlots: {}, submitted: false });
   };
 
-  const isAllSlotsFilled = Object.keys(placedSlots).length === correctAnswers.length;
+  const isAllSlotsFilled = correctAnswers.length > 0 && Object.keys(placedSlots).length === correctAnswers.length;
+
+  if (correctAnswers.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
-      <h4 className="font-semibold text-lg text-slate-800 mb-2">{instruction}</h4>
-      <p className="text-slate-500 text-xs mb-4">Нажмите на слово в банке, чтобы вставить в пропуск. Нажмите на слово в пропуске, чтобы убрать.</p>
+    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4">
+      <h4 className="font-extrabold text-base sm:text-lg text-slate-800 mb-1">{instruction}</h4>
+      <p className="text-slate-500 text-xs mb-3">Нажмите на слово в банке, чтобы вставить в пропуск. Нажмите на слово в пропуске, чтобы убрать.</p>
 
       {/* Word Bank Pool */}
-      <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6 items-center min-h-16">
+      <div className="flex flex-wrap gap-2 p-4 bg-slate-50 border border-slate-200 rounded-2xl items-center min-h-14">
         {wordBank.map(w => {
           const isUsed = usedWordIds.includes(w.id);
           return (
@@ -111,7 +115,7 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
               onClick={() => handleBankWordClick(w)}
               draggable={!isUsed && !submitted}
               onDragStart={() => setDraggedWord(w)}
-              className={`px-3 py-1.5 rounded-lg border font-bold text-xs transition ${
+              className={`px-3.5 py-2 rounded-xl border font-bold text-xs transition ${
                 isUsed 
                   ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' 
                   : 'bg-white border-slate-300 text-indigo-700 hover:border-indigo-500 shadow-2xs hover:scale-105 cursor-pointer'
@@ -124,7 +128,7 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
       </div>
 
       {/* Sentence with Gap Slots */}
-      <div className="flex flex-wrap items-center gap-2 text-base sm:text-lg leading-relaxed mb-6 font-medium text-slate-800 bg-indigo-50/30 p-4 rounded-xl border border-indigo-100">
+      <div className="flex flex-wrap items-center gap-2 text-base sm:text-lg leading-relaxed font-medium text-slate-800 bg-indigo-50/40 p-5 rounded-2xl border border-indigo-100">
         {segments.map((seg, idx) => {
           const gapIdx = idx;
           const hasGap = idx < correctAnswers.length;
@@ -145,9 +149,9 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
                     }
                   }}
                   onClick={() => placedWord && handleRemoveFromSlot(gapIdx)}
-                  className={`inline-flex items-center justify-center min-w-28 px-3 py-1 border-2 rounded-xl text-center font-bold text-sm transition cursor-pointer ${
+                  className={`inline-flex items-center justify-center min-w-28 px-3 py-1 border-2 rounded-xl text-center font-bold text-xs sm:text-sm transition cursor-pointer ${
                     submitted
-                      ? (isSlotCorrect ? 'bg-green-100 border-green-500 text-green-900' : 'bg-red-100 border-red-500 text-red-900')
+                      ? (isSlotCorrect ? 'bg-emerald-100 border-emerald-500 text-emerald-900' : 'bg-rose-100 border-rose-500 text-rose-900')
                       : (placedWord ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-white border-dashed border-indigo-300 text-slate-400')
                   }`}
                 >
@@ -164,18 +168,28 @@ export const BlockGapFillBank = ({ block, value, onChange }) => {
       </div>
 
       {!submitted ? (
-        <div className="flex gap-2">
-          <button disabled={!isAllSlotsFilled} onClick={handleSubmit} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl disabled:opacity-40 hover:bg-indigo-700 transition cursor-pointer">
+        <div className="flex gap-2 pt-1">
+          <button 
+            disabled={!isAllSlotsFilled} 
+            onClick={handleSubmit} 
+            className="px-6 py-2.5 bg-indigo-600 text-white font-extrabold rounded-2xl disabled:opacity-40 hover:bg-indigo-700 transition cursor-pointer text-xs shadow-md"
+          >
             Проверить
           </button>
-          <button onClick={handleReset} className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50 cursor-pointer">
+          <button 
+            onClick={handleReset} 
+            className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-2xl text-xs font-bold hover:bg-slate-50 cursor-pointer"
+          >
             Сбросить
           </button>
         </div>
       ) : (
-        <div className="flex justify-between items-center p-3 bg-slate-100 rounded-xl">
-          <span className="text-xs font-bold text-slate-700">Задание завершено!</span>
-          <button onClick={handleReset} className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 cursor-pointer">
+        <div className="flex justify-between items-center p-3.5 bg-slate-100 rounded-2xl">
+          <span className="text-xs font-bold text-slate-700">Задание проверено!</span>
+          <button 
+            onClick={handleReset} 
+            className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 cursor-pointer"
+          >
             Попробовать снова 🔄
           </button>
         </div>
