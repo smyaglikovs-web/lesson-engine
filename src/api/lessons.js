@@ -12,6 +12,9 @@ function normalizeBlockType(rawType) {
   if (t === 'gapfill_bank' || t === 'gap-fill-bank' || t === 'word_bank' || t === 'wordbank') return 'gap_fill_bank';
   if (t === 'reorder' || t === 'reorder_sentence' || t === 'sentence-reorder') return 'sentence_reorder';
   if (t === 'categories' || t === 'bucket') return 'categorization';
+  if (t === 'inline' || t === 'inline_select' || t === 'dropdown_select' || t === 'select_gap') return 'inline_select';
+  if (t === 'wheel' || t === 'roulette' || t === 'spinning_wheel') return 'spinning_wheel';
+  if (t === 'notes' || t === 'teacher_notes' || t === 'teacher-notes') return 'teacher_notes';
   return t;
 }
 
@@ -68,7 +71,6 @@ export async function saveLesson(env, lesson, password) {
   return { success: true, id };
 }
 
-// BULLETPROOF LESSON RETRIEVAL & NORMALIZATION (READS BOTH 'data' AND 'pages_json')
 export async function getSingleLesson(env, lessonId) {
   await ensureTables(env);
   const row = await env.DB.prepare(
@@ -97,12 +99,10 @@ export async function getSingleLesson(env, lessonId) {
     };
   }
 
-  // Handle pages array normalization
   let rawPages = parsed.pages;
   let pages = [];
 
   if (Array.isArray(rawPages) && rawPages.length > 0) {
-    // If rawPages is actually a flat array of block objects
     if (rawPages[0] && rawPages[0].type && !Array.isArray(rawPages[0].blocks)) {
       pages = [{ id: 'p1', title: parsed.topic || row.topic || 'Part 1', blocks: sanitizeBlocks(rawPages) }];
     } else {
