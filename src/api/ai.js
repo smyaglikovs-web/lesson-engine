@@ -1,11 +1,10 @@
-// INDESTRUCTIBLE MULTI-PROVIDER AI TURBO ENGINE (DEFINITIVE ROOT-OBJECT CONTRACT)
-
 export const CEFR_MATRIX = {
   'A1': 'Target Grammar: Present Simple, to be, there is/are, basic plurals. Short sentences (5-10 words). Everyday basic vocabulary.',
   'A2': 'Target Grammar: Past Simple, Present Continuous, Comparatives. Daily routines, travel, hobbies.',
   'B1': 'Target Grammar: Past Continuous, Conditionals 1 & 2, Present Perfect, Passive Voice. Work, feelings, modern lifestyle.',
   'B2': 'Target Grammar: Conditionals 3, Future Perfect, Past Modals, Wish clauses, Complex Passives. Idioms, abstract concepts.',
-  'C1': 'Target Grammar: Inversion, Cleft sentences, Advanced Modals, Participle clauses. Nuanced, academic, idiomatic language.'
+  'C1': 'Target Grammar: Inversion, Cleft sentences, Advanced Modals, Participle clauses. Nuanced, academic, idiomatic language.',
+  'C2': 'Target Grammar: Mastery of nuance, inversion, complex subjunctive, idiomatic mastery, stylistic flexibility. Academic and native-like precision.'
 };
 
 const BROWSER_HEADERS = {
@@ -13,13 +12,26 @@ const BROWSER_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9'
 };
 
-function getYouTubeId(url = '') {
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = String(url).match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
+export function getYouTubeId(url = '') {
+  try {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.hostname.includes('youtu.be')) {
+      return parsedUrl.pathname.slice(1).split('?')[0];
+    }
+    if (parsedUrl.hostname.includes('youtube.com')) {
+      if (parsedUrl.pathname.includes('/shorts/')) {
+        return parsedUrl.pathname.split('/shorts/')[1].split('/')[0].split('?')[0];
+      }
+      return parsedUrl.searchParams.get('v');
+    }
+  } catch (e) {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = String(url).match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  }
+  return null;
 }
 
-// 1. ULTRA-FAST FETCH WITH STRICT TIMEOUT
 async function fetchWithTimeout(url, options = {}, timeoutMs = 5500) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -33,7 +45,6 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 5500) {
   }
 }
 
-// 2. SANITIZES & ENFORCES VALID ENGINE PRIMITIVES
 export function sanitizeBlockStructure(b) {
   if (!b || typeof b !== 'object') return [b];
 
@@ -71,7 +82,7 @@ export function sanitizeBlockStructure(b) {
     });
 
     b.options = cleanOptions.length > 0 ? cleanOptions : ['Option A', 'Option B'];
-    b.correct = detectedCorrect;
+    b.correct = (detectedCorrect >= 0 && detectedCorrect < b.options.length) ? detectedCorrect : 0;
   }
 
   // MATCHING NORMALIZATION
@@ -87,21 +98,40 @@ export function sanitizeBlockStructure(b) {
     });
   }
 
+  // CATEGORIZATION NORMALIZATION
+  if (b.type === 'categorization') {
+    if (!Array.isArray(b.categories) || b.categories.length === 0) {
+      b.categories = ['Category 1', 'Category 2'];
+    }
+    const rawItems = Array.isArray(b.items) ? b.items : [];
+    b.items = rawItems.map((it, idx) => {
+      if (typeof it === 'string') {
+        return { id: `it-${idx}`, text: it, categoryIndex: idx % b.categories.length };
+      }
+      return {
+        id: it.id || `it-${idx}`,
+        text: it.text || `Item ${idx + 1}`,
+        categoryIndex: typeof it.categoryIndex === 'number' ? it.categoryIndex : 0
+      };
+    });
+  }
+
   // FLASHCARDS NORMALIZATION
   if (b.type === 'flashcards') {
     let rawCards = Array.isArray(b.cards) ? b.cards : [];
     b.cards = rawCards.map(c => {
       if (typeof c === 'object' && c !== null) {
-        const frontVal = c.front || c.word || c.term || 'Word';
-        const backVal = c.back || c.translation || c.definition || 'Translation';
-        const exVal = c.example || c.sentence || '';
-        return { front: String(frontVal), back: String(backVal), example: String(exVal) };
+        return {
+          front: String(c.front || c.word || c.term || 'Word'),
+          back: String(c.back || c.translation || c.definition || 'Translation'),
+          example: String(c.example || c.sentence || '')
+        };
       }
       return { front: 'Word', back: 'Translation', example: '' };
     });
   }
 
-  // GAP FILL NORMALIZATION (MULTI-GAP SUPPORT)
+  // GAP FILL NORMALIZATION
   if (b.type === 'gap_fill') {
     if (!Array.isArray(b.answers) || b.answers.length === 0) {
       const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)].map(m => m[1].trim());
@@ -109,18 +139,10 @@ export function sanitizeBlockStructure(b) {
     }
   }
 
-  // SPINNING WHEEL NORMALIZATION
-  if (b.type === 'spinning_wheel') {
-    if (!Array.isArray(b.items) || b.items.length === 0) {
-      b.items = ['Question 1?', 'Question 2?', 'Question 3?', 'Question 4?'];
-    }
-  }
-
   return [b];
 }
 
-// 3. ULTRA-RESILIENT JSON PARSER WITH AUTO-REPAIR
-export function cleanAndParseJson(rawText, topic = '', level = 'B1') {
+export function cleanAndParseJson(rawText) {
   if (!rawText) return null;
 
   let clean = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
@@ -140,63 +162,15 @@ export function cleanAndParseJson(rawText, topic = '', level = 'B1') {
   try {
     return JSON.parse(clean);
   } catch (e1) {
-    try {
-      let fixed = '';
-      let inString = false;
-      for (let i = 0; i < clean.length; i++) {
-        const c = clean[i];
-        if (c === '"' && (i === 0 || clean[i - 1] !== '\\')) {
-          inString = !inString;
-          fixed += c;
-        } else if (inString && (c === '\n' || c === '\r')) {
-          fixed += '\\n';
-        } else if (inString && c === '\t') {
-          fixed += '\\t';
-        } else {
-          fixed += c;
-        }
-      }
-      return JSON.parse(fixed);
-    } catch (e2) {
-      let stack = [];
-      let repaired = '';
-      let insideStr = false;
-
-      for (let i = 0; i < clean.length; i++) {
-        const char = clean[i];
-        if (char === '"' && (i === 0 || clean[i - 1] !== '\\')) {
-          insideStr = !insideStr;
-        }
-        repaired += char;
-        if (!insideStr) {
-          if (char === '{') stack.push('}');
-          else if (char === '[') stack.push(']');
-          else if (char === '}' || char === ']') stack.pop();
-        }
-      }
-
-      if (insideStr) repaired += '"';
-      while (stack.length > 0) repaired += stack.pop();
-      repaired = repaired.replace(/,\s*([\}\]])/g, '$1');
-
-      try {
-        return JSON.parse(repaired);
-      } catch (e3) {
-        return null;
-      }
-    }
+    return null;
   }
 }
 
-// 4. TURBO MULTI-PROVIDER AI CASCADE
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3000, topic = '', level = 'B1') {
-  
-  // TIER 1: GROQ API (1.0s – 1.8s)
+  // 1. GROQ TIER
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
-    const fastGroqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
-
-    for (const model of fastGroqModels) {
+    for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
       try {
         const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
@@ -206,10 +180,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           },
           body: JSON.stringify({
             model: model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userContent }
-            ],
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
             temperature: 0.15,
             response_format: { type: 'json_object' }
           })
@@ -217,20 +188,17 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 
         if (res.ok) {
           const data = await res.json();
-          const content = data?.choices?.[0]?.message?.content;
-          const parsed = cleanAndParseJson(content, topic, level);
-          if (parsed) return parsed;
+          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+          if (parsed) return { data: parsed, isFallback: false };
         }
       } catch (e) {}
     }
   }
 
-  // TIER 2: GEMINI API (1.5s – 2.0s)
+  // 2. GEMINI TIER
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
-    const geminiModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
-
-    for (const gModel of geminiModels) {
+    for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
       try {
         const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${apiKey}`;
         const gRes = await fetchWithTimeout(gUrl, {
@@ -245,67 +213,33 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 
         if (gRes.ok) {
           const gData = await gRes.json();
-          const gText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          const gParsed = cleanAndParseJson(gText, topic, level);
-          if (gParsed) return gParsed;
+          const parsed = cleanAndParseJson(gData?.candidates?.[0]?.content?.parts?.[0]?.text);
+          if (parsed) return { data: parsed, isFallback: false };
         }
       } catch (eG) {}
     }
   }
 
-  // TIER 3: CLOUDFLARE WORKERS AI
+  // 3. CLOUDFLARE WORKERS AI TIER
   if (env.AI) {
-    const cfModels = [
-      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-      '@cf/meta/llama-3.1-8b-instruct-fast',
-      '@cf/meta/llama-3.1-70b-instruct'
-    ];
-    for (const cfModel of cfModels) {
+    for (const cfModel of ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/meta/llama-3.1-8b-instruct-fast']) {
       try {
         const resCf = await env.AI.run(cfModel, {
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
           temperature: 0.15,
           max_tokens: maxTokens
         });
-
         const rawCf = resCf?.response || resCf?.choices?.[0]?.message?.content;
-        const parsedCf = cleanAndParseJson(rawCf, topic, level);
-        if (parsedCf) return parsedCf;
+        const parsedCf = cleanAndParseJson(rawCf);
+        if (parsedCf) return { data: parsedCf, isFallback: false };
       } catch (eCf) {}
     }
   }
 
-  // TIER 4: OPENROUTER API
-  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
-    const freeModels = ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen-2.5-72b-instruct:free'];
-    for (const model of freeModels) {
-      try {
-        const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${env.OPENROUTER_API_KEY.trim()}`
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }]
-          })
-        }, 5500);
-
-        if (res.ok) {
-          const data = await res.json();
-          const content = data?.choices?.[0]?.message?.content;
-          const parsed = cleanAndParseJson(content, topic, level);
-          if (parsed) return parsed;
-        }
-      } catch (e) {}
-    }
-  }
-
-  return createFallbackLesson(topic, level);
+  // Deterministic Fallback with Explicit Flag
+  return { data: createFallbackLesson(topic, level), isFallback: true };
 }
 
-// 5. DETERMINISTIC FALLBACK
 function createFallbackLesson(topic = 'General English Practice', level = 'B1') {
   return {
     title: `${topic} (${level})`,
@@ -323,7 +257,7 @@ function createFallbackLesson(topic = 'General English Practice', level = 'B1') 
             { front: 'Key Concept', back: 'Основное понятие', example: `Understanding ${topic} is crucial.` },
             { front: 'Practice', back: 'Практика', example: 'Consistent practice brings natural fluency.' }
           ]},
-          { id: 'b4', type: 'text', text: `${topic} is a widely studied theme in modern English learning. Exploring this subject helps improve reading comprehension, active vocabulary retention, and natural conversation skills. In this lesson, we will analyze key concepts, practice relevant structures, and apply them in interactive tasks.` }
+          { id: 'b4', type: 'text', text: `${topic} is a widely studied theme in modern English learning. Exploring this subject helps improve reading comprehension, active vocabulary retention, and natural conversation skills.` }
         ]
       },
       {
@@ -346,8 +280,7 @@ function createFallbackLesson(topic = 'General English Practice', level = 'B1') 
   };
 }
 
-// 6. YOUTUBE TRANSCRIPT SCRAPER
-export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
+export async function fetchYouTubeTranscriptNative(videoUrl) {
   try {
     const videoId = getYouTubeId(videoUrl);
     if (!videoId) return null;
@@ -361,7 +294,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
         const odata = await oembedRes.json();
         title = odata.title || '';
       }
-    } catch(e) {}
+    } catch (e) {}
 
     const timedTextUrls = [
       `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
@@ -380,21 +313,15 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
             let fullText = '';
             let m;
             while ((m = textRegex.exec(xml)) !== null) {
-              let decodedText = m[1]
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&#39;/g, "'")
-                .replace(/&quot;/g, '"')
-                .replace(/<[^>]+>/g, '')
-                .trim();
-              if (decodedText) fullText += decodedText + ' ';
+              const decoded = m[1]
+                .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/<[^>]+>/g, '').trim();
+              if (decoded) fullText += decoded + ' ';
             }
             fullText = fullText.replace(/\s+/g, ' ').trim();
             if (fullText.length > 40) transcriptText = fullText.slice(0, 3500);
           }
         }
-      } catch(e) {}
+      } catch (e) {}
     }
 
     return { title, transcript: transcriptText, videoId };
@@ -403,68 +330,20 @@ export async function fetchYouTubeTranscriptNative(videoUrl, env = {}) {
   }
 }
 
-// 7. FULL AI LESSON GENERATOR
 export async function generateFullLessonWithAI(env, payload) {
   const { text = '', level = 'B1', topic = 'General English' } = payload;
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-  const systemPrompt = `You are a master CELTA ELT Methodologist. Generate a 4-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
+  const systemPrompt = `You are a CELTA ELT Methodologist. Generate a 4-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
 CEFR Target: ${cefrRules}
-
-BLOCK KEYS: "heading", "text", "open_input", "flashcards", "multiple_choice", "matching", "grammar_card", "gap_fill_bank", "gap_fill", "sentence_reorder", "inline_select", "spinning_wheel".
-
-CRITICAL RULES:
-- On Page 1, write a complete, engaging 180-220 word educational reading passage for CEFR Level ${level}.
-- Never output raw objects inside "options". "options" must be an array of simple strings.
-- RETURN ONLY A VALID ROOT JSON OBJECT.
-
-STRICT JSON SCHEMA:
-{
-  "title": "${topic}",
-  "level": "${level}",
-  "topic": "${topic}",
-  "description": "CEFR ${level} Lesson on ${topic}",
-  "pages": [
-    {
-      "id": "p1",
-      "title": "Part 1: Lead-in & Reading",
-      "blocks": [
-        { "type": "heading", "level": 1, "text": "${topic}" },
-        { "type": "open_input", "prompt": "What do you already know about ${topic}?" },
-        { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "word", "back": "translation", "example": "Context sentence." } ] },
-        { "type": "text", "text": "A rich 200-word educational story text about ${topic} strictly for CEFR ${level}..." }
-      ]
-    },
-    {
-      "id": "p2",
-      "title": "Part 2: Comprehension & Matching",
-      "blocks": [
-        { "type": "multiple_choice", "question": "Comprehension Question?", "options": ["Option A", "Option B", "Option C"], "correct": 0, "explanation": "Reason" },
-        { "type": "matching", "instruction": "Match the pairs:", "pairs": [ { "left": "Term", "right": "Definition" } ] }
-      ]
-    },
-    {
-      "id": "p3",
-      "title": "Part 3: Grammar & Practice",
-      "blocks": [
-        { "type": "grammar_card", "title": "Target Grammar Rule", "formula": "Formula", "explanation": "Explanation", "examples": ["Example 1", "Example 2"] },
-        { "type": "gap_fill", "instruction": "Complete the sentence with target form:", "text": "1. She [practiced] yesterday.\\n2. They [have arrived] on time.", "answers": ["practiced", "have arrived"] }
-      ]
-    },
-    {
-      "id": "p4",
-      "title": "Part 4: Production & Discussion",
-      "blocks": [
-        { "type": "open_input", "prompt": "Discussion question for speaking or written reflection?" }
-      ]
-    }
-  ]
-}`;
+RETURN ONLY A VALID ROOT JSON OBJECT.`;
 
   const userPrompt = `Topic: ${topic}\nMaterial/Context: ${text || 'Create an educational story on the topic.'}`;
 
   try {
-    const parsedJson = await runAiPipeline(env, systemPrompt, userPrompt, 2800, topic, level);
+    const result = await runAiPipeline(env, systemPrompt, userPrompt, 2800, topic, level);
+    const parsedJson = result.data;
+
     if (parsedJson && parsedJson.pages) {
       parsedJson.pages.forEach(p => {
         let cleanBlocks = [];
@@ -476,20 +355,27 @@ STRICT JSON SCHEMA:
         p.blocks = cleanBlocks;
       });
     }
-    return { success: true, jsonText: JSON.stringify(parsedJson, null, 2) };
+
+    return { 
+      success: true, 
+      isFallback: result.isFallback, 
+      jsonText: JSON.stringify(parsedJson, null, 2) 
+    };
   } catch (err) {
-    return { success: true, jsonText: JSON.stringify(createFallbackLesson(topic, level), null, 2) };
+    return { 
+      success: true, 
+      isFallback: true, 
+      jsonText: JSON.stringify(createFallbackLesson(topic, level), null, 2) 
+    };
   }
 }
 
-// 8. UNIFIED CONTEXTUAL SINGLE & MULTI-BLOCK AI ASSISTANT (ROOT OBJECT ENFORCEMENT)
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (!actions || actions.length === 0) return { error: 'Выберите хотя бы одно задание.' };
 
   const targetBlockType = String(sourceBlock.type || '').toLowerCase().trim();
 
-  // 1-CLICK AUTO-FILL MAPPING: Maps target block type to the exact task generator
   if (actions.includes('fill_this_block') && targetBlockType) {
     if (targetBlockType === 'flashcards') actions.push('flashcards');
     else if (targetBlockType === 'multiple_choice') actions.push('listening');
@@ -502,158 +388,29 @@ export async function transformBlockWithAI(env, payload) {
     else if (targetBlockType === 'sentence_reorder') actions.push('sentence_reorder');
     else if (targetBlockType === 'inline_select') actions.push('inline_select');
     else if (targetBlockType === 'spinning_wheel') actions.push('spinning_wheel');
-    else if (targetBlockType === 'teacher_notes') actions.push('teacher_notes');
   }
 
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
-  const isGrammarContext = safeContextData.toLowerCase().includes('grammar rule') || targetBlockType === 'grammar_card' || actions.includes('grammar_quiz') || actions.includes('grammar_transform');
 
-  // A. TEXT REFINEMENT TOOLS
   if (actions.includes('generate_text_passage')) {
     const textPrompt = `You are an ELT Materials Writer. Write an engaging educational reading story for CEFR Level ${level} (~${targetLength} words).\nCEFR Level ${level}: ${cefrRules}\nRETURN JSON ROOT OBJECT: { "blocks": [ { "type": "text", "text": "Full educational story passage..." } ] }`;
     try {
-      const parsedObj = await runAiPipeline(env, textPrompt, `Topic/Context: ${safeContextData}`, 2000);
-      const textVal = parsedObj.blocks?.[0]?.text || parsedObj.text || JSON.stringify(parsedObj);
-      return { success: true, newBlocks: [{ type: 'text', text: textVal }] };
+      const result = await runAiPipeline(env, textPrompt, `Topic/Context: ${safeContextData}`, 2000);
+      const textVal = result.data.blocks?.[0]?.text || result.data.text || JSON.stringify(result.data);
+      return { success: true, isFallback: result.isFallback, newBlocks: [{ type: 'text', text: textVal }] };
     } catch (e) {
       return { error: 'Failed to generate text: ' + e.message };
     }
   }
 
-  if (actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
-    let instruction = `Expand this text into a rich 350-400 word educational story matching CEFR Level ${level}.`;
-    if (actions.includes('shorten_text')) instruction = `Shorten this text into a concise summary (~150 words) matching CEFR Level ${level}.`;
-    else if (actions.includes('refine_level')) instruction = `Rewrite this reading text strictly adapting grammar and vocabulary to CEFR Level ${level}.`;
-
-    const textPrompt = `You are an ELT Materials Writer. ${instruction}\nCEFR Level ${level}: ${cefrRules}\nRETURN JSON ROOT OBJECT: { "blocks": [ { "type": "text", "text": "Full rewritten text..." } ] }`;
-    try {
-      const parsedObj = await runAiPipeline(env, textPrompt, `Original Text:\n${safeContextData}`, 2000);
-      const textVal = parsedObj.blocks?.[0]?.text || parsedObj.text || JSON.stringify(parsedObj);
-      return { success: true, newBlocks: [{ type: 'text', text: textVal }] };
-    } catch (e) {
-      return { error: 'Failed to refine text: ' + e.message };
-    }
-  }
-
-  // B. GRAMMAR CARD GENERATION
-  if (actions.includes('generate_grammar_card')) {
-    const grammarPrompt = `Generate 1 Grammar Card JSON root object for CEFR Level ${level}:\n{ "blocks": [ { "type": "grammar_card", "title": "${safeContextData}", "formula": "Subject + Verb", "explanation": "Rule explanation", "examples": ["Example 1", "Example 2"] } ] }`;
-    try {
-      const parsed = await runAiPipeline(env, grammarPrompt, `Grammar Topic: ${safeContextData}`, 1000);
-      const rawList = parsed?.blocks || (Array.isArray(parsed) ? parsed : [parsed]);
-      let cleanBlocks = [];
-      rawList.forEach(b => {
-        const res = sanitizeBlockStructure(b);
-        if (Array.isArray(res)) cleanBlocks.push(...res);
-        else cleanBlocks.push(res);
-      });
-      return { success: true, newBlocks: cleanBlocks };
-    } catch (e) {
-      return { error: 'Failed to generate grammar card: ' + e.message };
-    }
-  }
-
-  // C. MULTI-TASK & BLOCK SPECIFIC SCHEMAS
-  let tasksInstructions = '';
-
-  if (actions.includes('grammar_quiz')) {
-    tasksInstructions += `
-- GENERATE 1 "multiple_choice" block with 4 challenging multiple-choice questions specifically drilling the grammar rule "${safeContextData}" for CEFR Level ${level}.
-  Schema: { "type": "multiple_choice", "question": "Sentence with gap or grammar question?", "options": ["Correct grammar form", "Grammar distractor 1", "Grammar distractor 2", "Grammar distractor 3"], "correct": 0, "explanation": "Detailed grammar explanation of why this form is required by the rule." }`;
-  }
-
-  if (actions.includes('grammar_transform')) {
-    tasksInstructions += `
-- GENERATE 1 "gap_fill" block with 4 sentence transformations specifically testing the target grammar structure: "${safeContextData}".
-  Schema: { "type": "gap_fill", "instruction": "Complete the second sentence so that it has a similar meaning, using the target grammar:", "text": "1. Prompt sentence.\\nTransformation: She [had never seen] such a beautiful dress.\\n2. Prompt sentence.\\nTransformation: Rarely [do we witness] such events.", "answers": ["had never seen", "do we witness"] }`;
-  }
-
-  if (actions.includes('listening') || (actions.includes('multiple_choice') && !actions.includes('grammar_quiz'))) {
-    tasksInstructions += `
-- GENERATE 1 "multiple_choice" block with 4 comprehension questions based directly on the context.
-  Schema: { "type": "multiple_choice", "question": "Comprehension question text?", "options": ["Option A", "Option B", "Option C", "Option D"], "correct": 0, "explanation": "Why this option is correct based on context." }`;
-  }
-
-  if (actions.includes('true_false')) {
-    tasksInstructions += `
-- GENERATE 3 separate "multiple_choice" blocks for True/False questions based on the context.
-  Schema: { "type": "multiple_choice", "question": "Statement from the story...", "options": ["True", "False", "Not Stated"], "correct": 0, "explanation": "Reference to the text." }`;
-  }
-
-  if (actions.includes('flashcards')) {
-    const backStyle = flashcardType === 'russian' ? 'Russian translation' : 'simple English definition';
-    tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 target vocabulary words extracted directly from the context.
-  Schema: { "type": "flashcards", "title": "Key Vocabulary", "cards": [ { "front": "target word", "back": "${backStyle}", "example": "Context sentence." } ] }`;
-  }
-
-  if (actions.includes('gap_fill') && !actions.includes('grammar_transform')) {
-    tasksInstructions += `
-- GENERATE 1 "gap_fill" block with 4 sentences, putting target words in brackets [word].
-  Schema: { "type": "gap_fill", "instruction": "Complete the sentences with target words:", "text": "1. Sentence with [word1].\\n2. Sentence with [word2].", "answers": ["word1", "word2"] }`;
-  }
-
-  if (actions.includes('gap_fill_bank')) {
-    tasksInstructions += `
-- GENERATE 1 "gap_fill_bank" block using a paragraph containing [target words] in brackets and 3 distractor words.
-  Schema: { "type": "gap_fill_bank", "instruction": "Fill the gaps using words from the bank:", "text": "Paragraph with [word1] and [word2]...", "distractors": ["wrong1", "wrong2", "wrong3"] }`;
-  }
-
-  if (actions.includes('matching')) {
-    tasksInstructions += `
-- GENERATE 1 "matching" block with 6 pairs configured as "${matchingType}".
-  Schema: { "type": "matching", "instruction": "Match the pairs:", "pairs": [ { "left": "word/phrase", "right": "definition/translation" } ] }`;
-  }
-
-  if (actions.includes('discussion') || actions.includes('open_input')) {
-    tasksInstructions += `
-- GENERATE 1 "open_input" block with 2-3 communicative discussion questions exploring the themes of this context.
-  Schema: { "type": "open_input", "prompt": "Discussion questions based on the material?" }`;
-  }
-
-  if (actions.includes('inline_select')) {
-    tasksInstructions += `
-- GENERATE 1 "inline_select" block with 3-4 sentences containing [correct_option* | wrong_option].
-  Schema: { "type": "inline_select", "instruction": "Choose the correct words in context:", "text": "1. Sentence with [correct* | wrong].\\n2. Sentence with [correct* | wrong]." }`;
-  }
-
-  if (actions.includes('spinning_wheel')) {
-    tasksInstructions += `
-- GENERATE 1 "spinning_wheel" block with 6 engaging speaking questions directly based on this context.
-  Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Discussion Wheel", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"], "eliminateMode": false }`;
-  }
-
-  if (actions.includes('sentence_reorder')) {
-    tasksInstructions += `
-- GENERATE 1 "sentence_reorder" block with a rich target sentence from the context.
-  Schema: { "type": "sentence_reorder", "instruction": "🧩 Reorder the words to form a correct sentence:", "sentence": "Complete target sentence here." }`;
-  }
-
-  if (actions.includes('teacher_notes')) {
-    tasksInstructions += `
-- GENERATE 1 "teacher_notes" block with stage aims and teacher speech scripts.
-  Schema: { "type": "teacher_notes", "aim": "Methodological goal...", "speech": "Spoken teacher instructions..." }`;
-  }
-
-  const systemPrompt = `You are a CELTA ELT Materials Designer. Generate a root JSON object with a "blocks" array containing ONLY the requested interactive exercise blocks matching CEFR Level ${level} based on the source context.
-
-CRITICAL RULES:
-1. Every generated exercise MUST directly reference and test facts, vocabulary, and grammar from the source context.
-2. "options" MUST be an array of plain text strings like ["Option A", "Option B"]. Never output nested objects inside options!
-3. MANDATORY JSON WRAPPER: You MUST wrap all generated blocks in a root object with key "blocks":
-{
-  "blocks": [
-    ...
-  ]
-}
-
-EXERCISE SPECIFICATIONS:${tasksInstructions}`;
+  const systemPrompt = `You are a CELTA ELT Materials Designer. Generate a root JSON object with a "blocks" array matching CEFR Level ${level} (${cefrRules}).
+JSON SCHEMA: { "blocks": [ ... ] }`;
 
   try {
-    const parsedObj = await runAiPipeline(env, systemPrompt, `Source Context:\n${safeContextData}`, 2500);
-    const rawList = parsedObj?.blocks || parsedObj?.newBlocks || parsedObj?.items || parsedObj?.tasks || (Array.isArray(parsedObj) ? parsedObj : [parsedObj]);
+    const result = await runAiPipeline(env, systemPrompt, `Source Context:\n${safeContextData}`, 2500);
+    const rawList = result.data?.blocks || result.data?.newBlocks || (Array.isArray(result.data) ? result.data : [result.data]);
     
     let cleanBlocks = [];
     rawList.forEach(b => {
@@ -662,11 +419,7 @@ EXERCISE SPECIFICATIONS:${tasksInstructions}`;
       else cleanBlocks.push(res);
     });
 
-    if (cleanBlocks.length === 0) {
-      return { error: 'Не удалось сформировать задания. Попробуйте ещё раз.' };
-    }
-
-    return { success: true, newBlocks: cleanBlocks };
+    return { success: true, isFallback: result.isFallback, newBlocks: cleanBlocks };
   } catch (err) {
     return { error: 'AI task generation failed: ' + err.message };
   }
