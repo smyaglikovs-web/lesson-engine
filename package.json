@@ -1,5 +1,5 @@
 {
-  "name": "lessons",
+  "name": "lessons", 
   "private": true,
   "type": "module",
   "scripts": {
