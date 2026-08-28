@@ -181,10 +181,10 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           body: JSON.stringify({
             model: model,
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
-            temperature: 0.15,
+            temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 5500);
+        }, 6000);
 
         if (res.ok) {
           const data = await res.json();
@@ -207,9 +207,9 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: systemPrompt }] },
             contents: [{ role: 'user', parts: [{ text: userContent }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.15 }
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
           })
-        }, 5500);
+        }, 6000);
 
         if (gRes.ok) {
           const gData = await gRes.json();
@@ -226,7 +226,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
       try {
         const resCf = await env.AI.run(cfModel, {
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
-          temperature: 0.15,
+          temperature: 0.2,
           max_tokens: maxTokens
         });
         const rawCf = resCf?.response || resCf?.choices?.[0]?.message?.content;
@@ -236,7 +236,6 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // Deterministic Fallback with Explicit Flag
   return { data: createFallbackLesson(topic, level), isFallback: true };
 }
 
@@ -249,31 +248,53 @@ function createFallbackLesson(topic = 'General English Practice', level = 'B1') 
     pages: [
       {
         id: 'p1',
-        title: 'Part 1: Lead-in & Vocabulary',
+        title: 'Part 1: Lead-in, Vocabulary & Story',
         blocks: [
           { id: 'b1', type: 'heading', level: 1, text: `${topic}` },
-          { id: 'b2', type: 'open_input', prompt: `What do you already know or think about ${topic}?` },
-          { id: 'b3', type: 'flashcards', title: 'Target Vocabulary', cards: [
-            { front: 'Key Concept', back: 'Основное понятие', example: `Understanding ${topic} is crucial.` },
-            { front: 'Practice', back: 'Практика', example: 'Consistent practice brings natural fluency.' }
-          ]},
-          { id: 'b4', type: 'text', text: `${topic} is a widely studied theme in modern English learning. Exploring this subject helps improve reading comprehension, active vocabulary retention, and natural conversation skills.` }
+          { 
+            id: 'b2', 
+            type: 'open_input', 
+            prompt: `🔥 Warm-up & Lead-in Discussion:\n1. What comes to your mind first when you hear about "${topic}"?\n2. Have you ever had personal experience with this in real life?\n3. Why do you think this topic is important for modern English speakers?` 
+          },
+          { 
+            id: 'b3', 
+            type: 'flashcards', 
+            title: `Target Vocabulary (${topic})`, 
+            cards: [
+              { front: 'Key Concept', back: 'Основное понятие / Ключевая идея', example: `Understanding this is crucial when exploring ${topic}.` },
+              { front: 'To engage with', back: 'Взаимодействовать / Погружаться', example: 'Students actively engage with real-world materials.' },
+              { front: 'Perspective', back: 'Взгляд / Точка зрения', example: 'Looking at this from a fresh perspective changes everything.' },
+              { front: 'Significance', back: 'Значимость / Важность', example: 'The cultural significance cannot be underestimated.' },
+              { front: 'To cultivate', back: 'Развивать / Культивировать', example: 'Consistent practice helps cultivate natural fluency.' },
+              { front: 'Outcome', back: 'Результат / Итог', example: 'The final outcome exceeded all our expectations.' }
+            ]
+          },
+          { 
+            id: 'b4', 
+            type: 'text', 
+            text: `${topic} has increasingly become one of the most dynamic and discussed subjects in modern communication. Understanding its background not only enriches our conceptual vocabulary, but also provides a deeper look into how language reflects contemporary culture, everyday choices, and evolving perspectives.\n\nWhen we look closely at ${topic}, we notice that it directly influences how people express their thoughts, negotiate meaning, and navigate complex social situations. By examining real-world contexts and exploring target idioms, learners can bridge the gap between textbook theory and natural conversational confidence.` 
+          }
         ]
       },
       {
         id: 'p2',
-        title: 'Part 2: Comprehension & Grammar',
+        title: 'Part 2: Comprehension & Lexis',
         blocks: [
-          { id: 'b5', type: 'grammar_card', title: `Grammar Focus (${level})`, formula: 'Subject + Verb + Object', explanation: `Standard sentence patterns used when discussing ${topic}.`, examples: [`We are actively studying ${topic}.`] },
-          { id: 'b6', type: 'multiple_choice', question: `Which statement best relates to ${topic}?`, options: ['It requires regular practice', 'It has no practical use', 'It is never used in real conversation'], correct: 0, explanation: 'Regular practice forms the foundation of communicative mastery.' }
+          { id: 'b5', type: 'heading', level: 2, text: 'Comprehension & Vocabulary Practice' }
         ]
       },
       {
         id: 'p3',
-        title: 'Part 3: Production & Practice',
+        title: 'Part 3: Grammar & Controlled Practice',
         blocks: [
-          { id: 'b7', type: 'gap_fill', instruction: 'Complete the sentence with the target word:', text: `We are actively studying [${topic}] today.`, answers: [topic] },
-          { id: 'b8', type: 'open_input', prompt: `Write 3 sentences sharing your personal thoughts or experience with ${topic}:` }
+          { id: 'b6', type: 'heading', level: 2, text: 'Grammar Focus' }
+        ]
+      },
+      {
+        id: 'p4',
+        title: 'Part 4: Production & Speaking',
+        blocks: [
+          { id: 'b7', type: 'heading', level: 2, text: 'Speaking & Free Practice' }
         ]
       }
     ]
@@ -330,15 +351,87 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
   }
 }
 
+// 1-PAGE CORE MASTERPIECE AI GENERATOR
 export async function generateFullLessonWithAI(env, payload) {
   const { text = '', level = 'B1', topic = 'General English' } = payload;
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-  const systemPrompt = `You are a CELTA ELT Methodologist. Generate a 4-PAGE interactive English lesson in JSON strictly matching CEFR level ${level}.
-CEFR Target: ${cefrRules}
+  const systemPrompt = `You are a world-class CELTA ELT Author and Master Materials Writer.
+Your mission is to focus 100% of your pedagogical brilliance and creativity on crafting a MASTERPIECE FOUNDATION on PAGE 1 for CEFR Level ${level} on the topic "${topic}".
+
+CEFR Level ${level} Guidelines:
+${cefrRules}
+
+STRICT PAGE 1 SPECIFICATION:
+Page 1 MUST contain exactly these 4 high-craft blocks:
+1. "heading" (level: 1): An inspiring, authentic educational title for "${topic}".
+2. "open_input": A warm-up lead-in discussion prompt containing AT LEAST 3 numbered, thought-provoking speaking questions (1., 2., 3.) activating background knowledge and personal interest.
+3. "flashcards": 6 to 8 target high-yield vocabulary words/phrases extracted from or essential for this story.
+   Each card MUST have:
+   - "front": target word or collocation
+   - "back": Russian translation or clear definition
+   - "example": engaging example sentence showing the word in context.
+4. "text": A beautiful, immersive, and educational 250-350 word reading story/article written with rich language specifically calibrated for CEFR Level ${level}, naturally integrating the target flashcard vocabulary.
+
+PAGES 2, 3, 4:
+Provide clean, structured subsequent pages with placeholders ready for the teacher to build interactive tasks in the Lego Builder.
+
+MANDATORY JSON FORMAT:
+{
+  "title": "${topic}",
+  "level": "${level}",
+  "topic": "${topic}",
+  "description": "Master CEFR ${level} Lesson on ${topic}",
+  "pages": [
+    {
+      "id": "p1",
+      "title": "Part 1: Warm-up, Vocabulary & Story",
+      "blocks": [
+        { "type": "heading", "level": 1, "text": "${topic}" },
+        { 
+          "type": "open_input", 
+          "prompt": "🔥 Warm-up & Lead-in Discussion:\n1. [First engaging question?]\n2. [Second thought-provoking question?]\n3. [Third personal opinion question?]" 
+        },
+        { 
+          "type": "flashcards", 
+          "title": "Key Target Vocabulary", 
+          "cards": [
+            { "front": "target word", "back": "translation or definition", "example": "Context sentence." }
+          ] 
+        },
+        { 
+          "type": "text", 
+          "text": "A rich 250-350 word educational story passage strictly for CEFR ${level}..." 
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "title": "Part 2: Comprehension & Vocabulary",
+      "blocks": [
+        { "type": "heading", "level": 2, "text": "Part 2: Comprehension & Practice" }
+      ]
+    },
+    {
+      "id": "p3",
+      "title": "Part 3: Grammar & Practice",
+      "blocks": [
+        { "type": "heading", "level": 2, "text": "Part 3: Grammar Focus" }
+      ]
+    },
+    {
+      "id": "p4",
+      "title": "Part 4: Production & Speaking",
+      "blocks": [
+        { "type": "heading", "level": 2, "text": "Part 4: Speaking & Production" }
+      ]
+    }
+  ]
+}
+
 RETURN ONLY A VALID ROOT JSON OBJECT.`;
 
-  const userPrompt = `Topic: ${topic}\nMaterial/Context: ${text || 'Create an educational story on the topic.'}`;
+  const userPrompt = `Topic: ${topic}\nLevel: ${level}\nSource material / Inspiration:\n${text || 'Create an original, captivating educational reading story on this topic.'}`;
 
   try {
     const result = await runAiPipeline(env, systemPrompt, userPrompt, 2800, topic, level);
@@ -370,6 +463,7 @@ RETURN ONLY A VALID ROOT JSON OBJECT.`;
   }
 }
 
+// CONTEXTUAL SINGLE & MULTI-BLOCK AI ASSISTANT
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (!actions || actions.length === 0) return { error: 'Выберите хотя бы одно задание.' };
@@ -405,7 +499,7 @@ export async function transformBlockWithAI(env, payload) {
     }
   }
 
-  const systemPrompt = `You are a CELTA ELT Materials Designer. Generate a root JSON object with a "blocks" array matching CEFR Level ${level} (${cefrRules}).
+  const systemPrompt = `You are a CELTA ELT Materials Designer. Generate a root JSON object with a "blocks" array matching CEFR Level ${level} (${cefrRules}) directly testing the source context.
 JSON SCHEMA: { "blocks": [ ... ] }`;
 
   try {
