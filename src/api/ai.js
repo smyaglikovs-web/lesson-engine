@@ -106,12 +106,12 @@ export function sanitizeBlockStructure(b) {
     const rawItems = Array.isArray(b.items) ? b.items : [];
     b.items = rawItems.map((it, idx) => {
       if (typeof it === 'string') {
-        return { id: `it-${idx}`, text: it, categoryIndex: idx % b.categories.length };
+        return { id: `it-${idx}-${Date.now()}`, text: it, categoryIndex: idx % b.categories.length };
       }
       return {
-        id: it.id || `it-${idx}`,
+        id: it.id || `it-${idx}-${Date.now()}`,
         text: it.text || `Item ${idx + 1}`,
-        categoryIndex: typeof it.categoryIndex === 'number' ? it.categoryIndex : 0
+        categoryIndex: typeof it.categoryIndex === 'number' ? it.categoryIndex : (idx % b.categories.length)
       };
     });
   }
@@ -136,6 +136,13 @@ export function sanitizeBlockStructure(b) {
     if (!Array.isArray(b.answers) || b.answers.length === 0) {
       const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)].map(m => m[1].trim());
       b.answers = matches.length > 0 ? matches : ['answer'];
+    }
+  }
+
+  // GAP FILL BANK NORMALIZATION
+  if (b.type === 'gap_fill_bank') {
+    if (!Array.isArray(b.distractors)) {
+      b.distractors = ['option', 'example'];
     }
   }
 
@@ -186,7 +193,6 @@ export function cleanAndParseJson(rawText) {
 }
 
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 3000, topic = '', level = 'B1') {
-  // 1. GROQ TIER
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
@@ -214,7 +220,6 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. GEMINI TIER
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -239,7 +244,6 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 3. CLOUDFLARE WORKERS AI TIER
   if (env.AI) {
     for (const cfModel of ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/meta/llama-3.1-8b-instruct-fast']) {
       try {
@@ -370,30 +374,21 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
   }
 }
 
-// 1-PAGE CORE MASTERPIECE AI GENERATOR
 export async function generateFullLessonWithAI(env, payload) {
   const { text = '', level = 'B1', topic = 'General English' } = payload;
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
-  const systemPrompt = `You are a world-class CELTA ELT Author and Master Materials Writer.
-Your mission is to focus 100% of your pedagogical brilliance and creativity on crafting a MASTERPIECE FOUNDATION on PAGE 1 for CEFR Level ${level} on the topic "${topic}".
-
-CEFR Level ${level} Guidelines:
-${cefrRules}
+  const systemPrompt = `You are a world-class CELTA ELT Author. Focus 100% of your effort on crafting a MASTERPIECE Page 1 for CEFR Level ${level} on "${topic}".
+CEFR Level ${level} Guidelines: ${cefrRules}
 
 STRICT PAGE 1 SPECIFICATION:
-Page 1 MUST contain exactly these 4 high-craft blocks:
-1. "heading" (level: 1): An inspiring educational title for "${topic}".
-2. "open_input": A warm-up lead-in discussion prompt containing AT LEAST 3 numbered, thought-provoking speaking questions (1., 2., 3.) activating background knowledge.
-3. "flashcards": 6 to 8 target high-yield vocabulary words/phrases extracted from or essential for this story.
-   Each card MUST have:
-   - "front": target word or collocation
-   - "back": Russian translation or clear definition
-   - "example": engaging example sentence showing the word in context.
-4. "text": A beautiful, immersive, and educational 250-350 word reading story/article written with rich language specifically calibrated for CEFR Level ${level}, naturally integrating the target flashcard vocabulary.
+1. "heading" (level: 1): Inspiring title.
+2. "open_input": A warm-up prompt with 3 distinct numbered questions (1., 2., 3.) on separate lines.
+3. "flashcards": 6-8 target high-yield vocabulary items (front, back, example).
+4. "text": An engaging 250-350 word educational reading story written for CEFR ${level}.
 
 PAGES 2, 3, 4:
-Provide clean, structured subsequent pages with headings ready for the teacher.
+Provide clean subsequent pages with section headings.
 
 MANDATORY JSON FORMAT:
 {
@@ -409,14 +404,12 @@ MANDATORY JSON FORMAT:
         { "type": "heading", "level": 1, "text": "${topic}" },
         { 
           "type": "open_input", 
-          "prompt": "🔥 Warm-up & Lead-in Discussion:\n1. [First engaging question?]\n2. [Second thought-provoking question?]\n3. [Third personal opinion question?]" 
+          "prompt": "🔥 Warm-up & Lead-in Discussion:\n1. [Question 1?]\n2. [Question 2?]\n3. [Question 3?]" 
         },
         { 
           "type": "flashcards", 
           "title": "Key Target Vocabulary", 
-          "cards": [
-            { "front": "target word", "back": "translation or definition", "example": "Context sentence." }
-          ] 
+          "cards": [ { "front": "word", "back": "translation or definition", "example": "Context sentence." } ] 
         },
         { 
           "type": "text", 
@@ -427,27 +420,20 @@ MANDATORY JSON FORMAT:
     {
       "id": "p2",
       "title": "Part 2: Comprehension & Practice",
-      "blocks": [
-        { "type": "heading", "level": 2, "text": "Part 2: Comprehension & Practice" }
-      ]
+      "blocks": [ { "type": "heading", "level": 2, "text": "Part 2: Comprehension & Practice" } ]
     },
     {
       "id": "p3",
       "title": "Part 3: Grammar Focus",
-      "blocks": [
-        { "type": "heading", "level": 2, "text": "Part 3: Grammar Focus" }
-      ]
+      "blocks": [ { "type": "heading", "level": 2, "text": "Part 3: Grammar Focus" } ]
     },
     {
       "id": "p4",
       "title": "Part 4: Production & Speaking",
-      "blocks": [
-        { "type": "heading", "level": 2, "text": "Part 4: Speaking & Production" }
-      ]
+      "blocks": [ { "type": "heading", "level": 2, "text": "Part 4: Speaking & Production" } ]
     }
   ]
 }
-
 RETURN ONLY A VALID ROOT JSON OBJECT.`;
 
   const userPrompt = `Topic: ${topic}\nLevel: ${level}\nSource material / Context:\n${text || 'Create an original, captivating educational reading story on this topic.'}`;
@@ -482,7 +468,6 @@ RETURN ONLY A VALID ROOT JSON OBJECT.`;
   }
 }
 
-// CONTEXTUAL SINGLE & MULTI-BLOCK AI ASSISTANT
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (!actions || actions.length === 0) return { error: 'Выберите хотя бы одно задание.' };
@@ -502,6 +487,7 @@ export async function transformBlockWithAI(env, payload) {
     else if (targetBlockType === 'sentence_reorder') actions.push('sentence_reorder');
     else if (targetBlockType === 'inline_select') actions.push('inline_select');
     else if (targetBlockType === 'spinning_wheel') actions.push('spinning_wheel');
+    else if (targetBlockType === 'categorization') actions.push('categorization');
     else if (targetBlockType === 'teacher_notes') actions.push('teacher_notes');
   }
 
@@ -509,7 +495,7 @@ export async function transformBlockWithAI(env, payload) {
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  // A. TEXT REFINEMENT TOOLS (EXPAND, SHORTEN, REWRITE LEVEL, GENERATE PASSAGE)
+  // A. TEXT REFINEMENT TOOLS
   if (actions.includes('generate_text_passage') || actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
     let wordCountTarget = targetLength || '250';
     let specificInstruction = `Write an engaging educational reading story for CEFR Level ${level} (~${wordCountTarget} words).`;
@@ -545,7 +531,6 @@ RETURN A VALID JSON ROOT OBJECT:
       if (generatedText && generatedText.length > 50) {
         return { success: true, isFallback: result.isFallback, newBlocks: [{ type: 'text', text: generatedText }] };
       }
-      // Fallback expansion if AI failed
       return { 
         success: true, 
         isFallback: true, 
@@ -593,13 +578,13 @@ RETURN A VALID JSON ROOT OBJECT:
 
   if (actions.includes('grammar_quiz')) {
     tasksInstructions += `
-- GENERATE 1 "multiple_choice" block drilling the grammar rule "${safeContextData}" for CEFR Level ${level}.
+- GENERATE 1 "multiple_choice" block drilling grammar for CEFR Level ${level}.
   Schema: { "type": "multiple_choice", "question": "Grammar gap sentence?", "options": ["Correct option", "Distractor 1", "Distractor 2"], "correct": 0, "explanation": "Grammar rule reason." }`;
   }
 
   if (actions.includes('grammar_transform')) {
     tasksInstructions += `
-- GENERATE 1 "gap_fill" block with 4 sentence transformations drilling "${safeContextData}".
+- GENERATE 1 "gap_fill" block with 4 sentence transformations.
   Schema: { "type": "gap_fill", "instruction": "Complete the second sentence using the target grammar structure:", "text": "1. Prompt sentence.\\nTransformation: She [had never seen] such a sight.\\n2. Prompt sentence.\\nTransformation: Rarely [do we witness] this.", "answers": ["had never seen", "do we witness"] }`;
   }
 
@@ -630,8 +615,8 @@ RETURN A VALID JSON ROOT OBJECT:
 
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
-- GENERATE 1 "gap_fill_bank" block using a paragraph containing [target words] in brackets and 3 distractors.
-  Schema: { "type": "gap_fill_bank", "instruction": "Fill the gaps using words from the bank:", "text": "Paragraph with [word1] and [word2]...", "distractors": ["wrong1", "wrong2", "wrong3"] }`;
+- GENERATE 1 "gap_fill_bank" block using a cohesive paragraph containing 4-5 [target words] in brackets and 3 distractors.
+  Schema: { "type": "gap_fill_bank", "instruction": "🧩 Fill the gaps using words from the bank:", "text": "A cohesive story paragraph with [target1] and [target2] and [target3]...", "distractors": ["wrong1", "wrong2", "wrong3"] }`;
   }
 
   if (actions.includes('matching')) {
@@ -642,14 +627,21 @@ RETURN A VALID JSON ROOT OBJECT:
 
   if (actions.includes('discussion') || actions.includes('open_input')) {
     tasksInstructions += `
-- GENERATE 1 "open_input" block with 2-3 communicative discussion questions exploring the themes of this context.
-  Schema: { "type": "open_input", "prompt": "Discussion questions based on the material?" }`;
+- GENERATE 1 "open_input" block with 2-3 communicative discussion questions numbered 1, 2, 3 on separate lines.
+  Schema: { "type": "open_input", "prompt": "💬 Speaking Discussion:\\n1. Question 1?\\n2. Question 2?\\n3. Question 3?" }`;
   }
 
   if (actions.includes('inline_select')) {
     tasksInstructions += `
 - GENERATE 1 "inline_select" block with 3-4 sentences containing [correct_option* | wrong_option].
-  Schema: { "type": "inline_select", "instruction": "Choose the correct words in context:", "text": "1. Sentence with [correct* | wrong].\\n2. Sentence with [correct* | wrong]." }`;
+  CRITICAL: DO NOT use dashes or underscores like '----- [option]'. Write natural sentences where the dropdown replaces the word directly!
+  Schema: { "type": "inline_select", "instruction": "Choose the correct words in context:", "text": "1. By next year they [will have released* | were releasing] their album.\\n2. Fans should [analyze* | ignore] the lyrics carefully." }`;
+  }
+
+  if (actions.includes('categorization')) {
+    tasksInstructions += `
+- GENERATE 1 "categorization" block with 2-3 categories and 6-8 items to sort based on the material.
+  Schema: { "type": "categorization", "instruction": "📦 Sort the words/phrases into correct categories:", "categories": ["Category A", "Category B"], "items": [ { "id": "it-1", "text": "Item 1", "categoryIndex": 0 }, { "id": "it-2", "text": "Item 2", "categoryIndex": 1 }, { "id": "it-3", "text": "Item 3", "categoryIndex": 0 }, { "id": "it-4", "text": "Item 4", "categoryIndex": 1 } ] }`;
   }
 
   if (actions.includes('spinning_wheel')) {
