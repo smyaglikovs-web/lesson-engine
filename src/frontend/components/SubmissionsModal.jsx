@@ -9,10 +9,10 @@ const RenderSubmissionBlock = ({ blockId, block, answer }) => {
     );
   }
 
-  // 1. OPEN INPUT (Written Response / Production)
+  // 1. OPEN INPUT (Written Response)
   if (block?.type === 'open_input' || answer.text !== undefined) {
     const studentText = answer.text || 'Нет ответа';
-    const wordCount = studentText.trim() ? studentText.trim().split(' ').filter(Boolean).length : 0;
+    const wordCount = studentText.trim() ? studentText.trim().split(/\s+/).filter(Boolean).length : 0;
     return (
       <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
         <div className="flex justify-between items-start">
@@ -51,10 +51,10 @@ const RenderSubmissionBlock = ({ blockId, block, answer }) => {
     );
   }
 
-  // 3. GAP FILL (Direct Word Typing / Active Recall)
+  // 3. GAP FILL (Direct Word Typing)
   if (block?.type === 'gap_fill' || answer.userAnswer !== undefined || answer.userAnswers !== undefined) {
     const userAnswer = answer.userAnswer || Object.values(answer.userAnswers || {}).join(', ') || '';
-    const isCorrect = block ? block.answers?.some(a => a.trim().toLowerCase() === userAnswer.trim().toLowerCase()) : false;
+    const isCorrect = block?.answers ? block.answers.some(a => a.trim().toLowerCase() === userAnswer.trim().toLowerCase()) : false;
 
     return (
       <div className={`p-4 border rounded-2xl space-y-2 ${isCorrect ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200'}`}>
@@ -66,14 +66,67 @@ const RenderSubmissionBlock = ({ blockId, block, answer }) => {
         </div>
         {block?.text && <p className="text-xs text-slate-700 font-semibold">{block.text}</p>}
         <div className="text-xs space-y-1 font-medium">
-          <p><strong className="text-slate-500">Введённый ответ ученика:</strong> <span className={isCorrect ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}>{userAnswer || '(пусто)'}</span></p>
-          {!isCorrect && block?.answers && <p><strong className="text-slate-500">Правильный ответ:</strong> <span className="text-emerald-700 font-bold">{block.answers?.join(' / ')}</span></p>}
+          <p><strong className="text-slate-500">Ответ ученика:</strong> <span className={isCorrect ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}>{userAnswer || '(пусто)'}</span></p>
+          {!isCorrect && block?.answers && <p><strong className="text-slate-500">Правильный ответ:</strong> <span className="text-emerald-700 font-bold">{block.answers.join(' / ')}</span></p>}
         </div>
       </div>
     );
   }
 
-  // 4. MATCHING PAIRS
+  // 4. GAP FILL WITH WORD BANK
+  if (block?.type === 'gap_fill_bank' || answer.placedSlots !== undefined) {
+    const placedSlots = answer.placedSlots || {};
+    const rawParts = (block?.text || '').split(/\[(.*?)\]/);
+    const correctAns = rawParts.filter((_, idx) => idx % 2 === 1);
+    let allCorrect = correctAns.length > 0;
+
+    correctAns.forEach((ans, idx) => {
+      if (placedSlots[idx]?.text?.trim().toLowerCase() !== ans.trim().toLowerCase()) {
+        allCorrect = false;
+      }
+    });
+
+    return (
+      <div className={`p-4 border rounded-2xl space-y-2 ${allCorrect ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200'}`}>
+        <div className="flex justify-between items-center">
+          <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Банк слов ({blockId})</span>
+          <span className={`text-xs font-bold px-3 py-1 rounded-full ${allCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+            {allCorrect ? 'Верно ✅' : 'Ошибка ❌'}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs font-medium">
+          {correctAns.map((ans, idx) => {
+            const userPlaced = placedSlots[idx]?.text || '(пусто)';
+            const slotOk = userPlaced.trim().toLowerCase() === ans.trim().toLowerCase();
+            return (
+              <span key={idx} className={`p-2 rounded-xl border ${slotOk ? 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold' : 'bg-rose-100 text-rose-900 border-rose-300 font-bold'}`}>
+                #{idx + 1}: {userPlaced} {slotOk ? '✓' : `(нужно: ${ans})`}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // 5. INLINE SELECT
+  if (block?.type === 'inline_select' || answer.selections !== undefined) {
+    const selections = answer.selections || {};
+    return (
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+        <span className="text-[11px] font-extrabold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full uppercase tracking-wider">🔽 Выбор из выпадающего списка</span>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {Object.entries(selections).map(([k, v], idx) => (
+            <div key={idx} className="p-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800">
+              Пропуск #{idx + 1}: <span className="text-indigo-600">{v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 6. MATCHING PAIRS
   if (block?.type === 'matching' || answer.matched !== undefined) {
     const matched = answer.matched || [];
     return (
@@ -86,7 +139,6 @@ const RenderSubmissionBlock = ({ blockId, block, answer }) => {
             </span>
           )}
         </div>
-        <h5 className="font-bold text-slate-800 text-sm">{block?.instruction || 'Пары:'}</h5>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
           {matched.map((m, idx) => (
             <div key={idx} className="p-2.5 bg-white border border-slate-200 rounded-xl flex justify-between items-center font-medium">
@@ -100,7 +152,53 @@ const RenderSubmissionBlock = ({ blockId, block, answer }) => {
     );
   }
 
-  // FALLBACK FOR OTHER TYPES
+  // 7. SENTENCE REORDER
+  if (block?.type === 'sentence_reorder' || answer.selectedWordObjects !== undefined) {
+    const userSentence = (answer.selectedWordObjects || []).map(w => w.text).join(' ');
+    const isCorrect = userSentence.trim().toLowerCase() === (block?.sentence || '').trim().toLowerCase();
+
+    return (
+      <div className={`p-4 border rounded-2xl space-y-2 ${isCorrect ? 'bg-emerald-50/50 border-emerald-200' : 'bg-rose-50/50 border-rose-200'}`}>
+        <div className="flex justify-between items-center">
+          <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Сборка предложения ({blockId})</span>
+          <span className={`text-xs font-bold px-3 py-1 rounded-full ${isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+            {isCorrect ? 'Верно ✅' : 'Ошибка ❌'}
+          </span>
+        </div>
+        <p className="text-xs text-slate-800 font-medium"><strong>Собрано:</strong> "{userSentence}"</p>
+        {!isCorrect && block?.sentence && <p className="text-xs text-emerald-700 font-bold"><strong>Оригинал:</strong> "{block.sentence}"</p>}
+      </div>
+    );
+  }
+
+  // 8. CATEGORIZATION
+  if (block?.type === 'categorization' || answer.placements !== undefined) {
+    const placements = answer.placements || {};
+    const categories = block?.categories || [];
+    const items = block?.items || [];
+
+    return (
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+        <span className="text-[11px] font-extrabold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full uppercase tracking-wider">📦 Распределение по категориям</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          {categories.map((cat, cIdx) => (
+            <div key={cIdx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+              <strong className="text-slate-800 block text-xs">📂 {cat}:</strong>
+              <div className="flex flex-wrap gap-1">
+                {items.filter(it => placements[it.id] === cIdx).map(it => (
+                  <span key={it.id} className="px-2 py-0.5 bg-slate-100 rounded-lg text-[11px] font-bold text-slate-700">
+                    {it.text}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // FALLBACK
   return (
     <div className="p-4 bg-slate-50 border rounded-2xl">
       <p className="text-xs font-extrabold text-slate-400 mb-1 uppercase">Задание #{blockId}</p>
