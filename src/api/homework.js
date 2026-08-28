@@ -34,11 +34,10 @@ export async function submitHomework(env, payload) {
             }
           } 
           
-          // 2. GAP FILL (MULTI-GAP ACCURATE SERVER GRADING)
+          // 2. GAP FILL
           else if (b.type === 'gap_fill') {
             const rawText = b.text || '';
             const lines = rawText.split('\n').filter(line => line.trim().length > 0);
-            
             let blockTotalGaps = 0;
             let blockCorrectGaps = 0;
 
@@ -56,22 +55,17 @@ export async function submitHomework(env, payload) {
               }
             });
 
-            // If parsed with brackets, grade strictly
             if (blockTotalGaps > 0) {
               totalQuestions++;
-              if (blockCorrectGaps === blockTotalGaps) {
-                score++;
-              }
+              if (blockCorrectGaps === blockTotalGaps) score++;
             } else if (b.answers && b.answers.length > 0) {
               totalQuestions++;
               const userVal = String(studentAns?.userAnswer || '').trim().toLowerCase();
-              if (b.answers.some(a => String(a).trim().toLowerCase() === userVal)) {
-                score++;
-              }
+              if (b.answers.some(a => String(a).trim().toLowerCase() === userVal)) score++;
             }
           } 
           
-          // 3. GAP FILL WITH WORD BANK
+          // 3. GAP FILL BANK
           else if (b.type === 'gap_fill_bank') {
             totalQuestions++;
             if (studentAns && studentAns.placedSlots) {
@@ -120,13 +114,15 @@ export async function submitHomework(env, payload) {
             }
           }
 
-          // 5. MATCHING PAIRS
+          // 5. MATCHING (Strict Pair-by-Pair Validation)
           else if (b.type === 'matching') {
             totalQuestions++;
-            if (studentAns && studentAns.matched) {
-              if (Array.isArray(studentAns.matched) && studentAns.matched.length === (b.pairs?.length || 0)) {
-                score++;
-              }
+            const expectedPairs = (b.pairs || []).map(p => `${String(p.left || '').trim().toLowerCase()}:::${String(p.right || '').trim().toLowerCase()}`);
+            const submittedPairs = (studentAns?.matched || []).map(m => `${String(m.left || '').trim().toLowerCase()}:::${String(m.right || '').trim().toLowerCase()}`);
+
+            if (expectedPairs.length > 0 && expectedPairs.length === submittedPairs.length) {
+              const allMatch = expectedPairs.every(p => submittedPairs.includes(p));
+              if (allMatch) score++;
             }
           } 
           
@@ -155,8 +151,8 @@ export async function submitHomework(env, payload) {
         });
       });
     }
-  } catch(e) {
-    console.error("Server Grading Computation Error:", e);
+  } catch (e) {
+    console.error("Server Grading Error:", e);
   }
 
   const finalScore = totalQuestions > 0 ? score : Number(clientScore);
