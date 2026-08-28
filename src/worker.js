@@ -2,7 +2,7 @@ import { ensureTables } from './db/schema.js';
 import { verifyTeacherLogin, getLessons, saveLesson, getSingleLesson, deleteLesson } from './api/lessons.js';
 import { generateFullLessonWithAI, transformBlockWithAI, fetchYouTubeTranscriptNative } from './api/ai.js';
 import { submitHomework, getHomeworkSubmissions } from './api/homework.js';
-import { updateRoomState, getRoomState } from './api/rooms.js';
+import { updateRoomState, getRoomState, recordStudentHeartbeat } from './api/rooms.js';
 
 const JSON_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -26,17 +26,16 @@ export default {
     const method = request.method;
 
     try {
-      // Lazy schema initialization
       await ensureTables(env);
 
-      // --- AUTH ROUTER ---
+      // AUTH
       if (path === '/api/teacher/login' && method === 'POST') {
         const body = await request.json();
         const res = await verifyTeacherLogin(env, body.password);
         return res.success ? jsonResponse({ success: true }) : jsonResponse({ error: 'Invalid password' }, 401);
       }
 
-      // --- AI & TRANSCRIPT ROUTER ---
+      // AI & TRANSCRIPTS
       if (path === '/api/ai/generate' && method === 'POST') {
         const payload = await request.json();
         const res = await generateFullLessonWithAI(env, payload);
@@ -53,14 +52,14 @@ export default {
         const { url: ytUrl } = await request.json();
         if (!ytUrl) return jsonResponse({ error: 'No URL provided' }, 400);
 
-        const data = await fetchYouTubeTranscriptNative(ytUrl, env);
+        const data = await fetchYouTubeTranscriptNative(ytUrl);
         if (data && (data.transcript || data.title)) {
           return jsonResponse({ success: true, transcript: data.transcript, title: data.title });
         }
-        return jsonResponse({ success: false, message: 'Subtitles not found. Please paste transcript manually.' });
+        return jsonResponse({ success: false, message: 'Subtitles not found.' });
       }
 
-      // --- LESSON CRUD ROUTER ---
+      // LESSONS
       if (path === '/api/lessons' && method === 'GET') {
         const list = await getLessons(env);
         return jsonResponse(list);
@@ -86,7 +85,7 @@ export default {
         return res.error ? jsonResponse({ error: res.error }, 403) : jsonResponse(res);
       }
 
-      // --- HOMEWORK ROUTER ---
+      // HOMEWORK
       if (path === '/api/homework/submit' && method === 'POST') {
         const payload = await request.json();
         const res = await submitHomework(env, payload);
@@ -100,7 +99,13 @@ export default {
         return jsonResponse(list);
       }
 
-      // --- REALTIME ROOM STATE ROUTER ---
+      // ROOM STATE & STUDENT HEARTBEAT
+      if (path.match(/\/api\/rooms\/[^/]+\/heartbeat/) && method === 'POST') {
+        const roomId = path.split('/')[3];
+        const res = await recordStudentHeartbeat(env, roomId);
+        return jsonResponse(res);
+      }
+
       if (path.match(/\/api\/rooms\/[^/]+\/state/) && method === 'GET') {
         const roomId = path.split('/')[3];
         const state = await getRoomState(env, roomId);
@@ -115,9 +120,8 @@ export default {
       }
 
       return jsonResponse({ error: 'Endpoint not found: ' + path }, 404);
-
     } catch (err) {
-      console.error('Worker Execution Error:', err);
+      console.error('Worker Router Error:', err);
       return jsonResponse({ error: err.message || 'Internal Server Error' }, 500);
     }
   }
