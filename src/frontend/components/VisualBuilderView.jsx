@@ -79,7 +79,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
       const found = availableSourceBlocks.find(b => b.id === overrideBlockId);
       if (found) {
         if (found.type === 'grammar_card') {
-          return `Grammar Rule Title: ${found.title || ''}\nFormula: ${found.formula || ''}\nExplanation: ${found.explanation || ''}\nExamples: ${(found.examples || []).join('; ')}`;
+          return `Grammar Rule: ${found.title || ''}\nFormula: ${found.formula || ''}\nExplanation: ${found.explanation || ''}\nExamples: ${(found.examples || []).join('; ')}`;
         }
         return found.text || found.transcript || found.explanation || JSON.stringify(found);
       }
@@ -91,7 +91,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
           if (b && b.type === 'text' && b.text) contextText += b.text + '\n';
           if (b && b.type === 'video' && b.transcript) contextText += b.transcript + '\n';
           if (b && b.type === 'grammar_card') {
-            contextText += `Grammar Rule (${b.title}): Formula: ${b.formula || ''} - Explanation: ${b.explanation || ''} - Examples: ${(b.examples || []).join('; ')}\n`;
+            contextText += `Grammar Rule (${b.title}): Formula: ${b.formula || ''} - Explanation: ${b.explanation || ''}\n`;
           }
         });
       }
@@ -125,18 +125,18 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     else if (type === 'video') { newBlock.title = 'Посмотрите видео:'; newBlock.url = ''; }
     else if (type === 'audio') { newBlock.title = 'Прослушайте аудиозапись:'; newBlock.url = ''; newBlock.transcript = ''; }
     else if (type === 'image') { newBlock.caption = ''; newBlock.images = []; }
-    else if (type === 'grammar_card') { newBlock.title = 'Правило грамматики'; newBlock.formula = 'Subject + Verb'; newBlock.explanation = 'Объяснение правила...'; newBlock.examples = ['Пример использования']; }
-    else if (type === 'teacher_notes') { newBlock.aim = 'To introduce target collocations...'; newBlock.speech = 'Look at these sentences and choose the best option.'; }
-    else if (type === 'inline_select') { newBlock.instruction = 'Выберите правильный вариант из выпадающего списка:'; newBlock.text = '1. We can [stop over* | set off] at Brussels.\n2. I like traveling [off the beaten path* | steer clear of].'; }
+    else if (type === 'grammar_card') { newBlock.title = 'Правило грамматики'; newBlock.formula = 'Subject + Verb'; newBlock.explanation = 'Объяснение правила...'; newBlock.examples = ['Пример предложения']; }
+    else if (type === 'teacher_notes') { newBlock.aim = 'To introduce target vocabulary...'; newBlock.speech = 'Look at these sentences and choose the best option.'; }
+    else if (type === 'inline_select') { newBlock.instruction = 'Выберите правильный вариант из выпадающего списка:'; newBlock.text = '1. By next year they [will have completed* | completed] their project.\n2. We should [focus on* | ignore] the core message.'; }
     else if (type === 'spinning_wheel') { newBlock.title = '🎡 Speaking Warm-Up Wheel'; newBlock.instruction = 'Крутите колесо и ответьте на выпавший вопрос!'; newBlock.items = ['What is your favorite travel memory?', 'Have you ever been lost in a city?', 'What country would you visit tomorrow?', 'Do you prefer beach or mountains?']; newBlock.eliminateMode = false; }
     else if (type === 'flashcards') { newBlock.title = 'Словарный запас'; newBlock.cards = [{ front: 'Word', back: 'Перевод', example: 'Пример предложения' }]; }
     else if (type === 'multiple_choice') { newBlock.question = 'Вопрос по материалу?'; newBlock.options = ['Вариант A', 'Вариант B', 'Вариант C']; newBlock.correct = 0; }
     else if (type === 'gap_fill') { newBlock.instruction = 'Вставьте пропущенное слово:'; newBlock.text = '1. Yesterday she [went] home.'; newBlock.answers = ['went']; }
-    else if (type === 'gap_fill_bank') { newBlock.instruction = 'Заполните пропуски словами из банка:'; newBlock.text = 'Sentence with [word].'; newBlock.distractors = ['fake']; }
+    else if (type === 'gap_fill_bank') { newBlock.instruction = '🧩 Заполните пропуски словами из банка:'; newBlock.text = 'Consistent [practice] is the foundation of mastering any foreign [language].'; newBlock.distractors = ['barrier', 'mistake']; }
     else if (type === 'matching') { newBlock.instruction = 'Соедините пары:'; newBlock.pairs = [{ left: 'Word', right: 'Перевод' }]; }
-    else if (type === 'sentence_reorder') { newBlock.instruction = '🧩 Соберите предложение из слов:'; newBlock.sentence = 'She had never seen such a dress.'; }
-    else if (type === 'categorization') { newBlock.instruction = '📦 Распределите слова по категориям:'; newBlock.categories = ['Формальный', 'Неформальный']; newBlock.items = [{ id: 'it-1', text: 'Tuxedo', categoryIndex: 0 }, { id: 'it-2', text: 'Hoodie', categoryIndex: 1 }]; }
-    else if (type === 'open_input') { newBlock.prompt = 'Вопрос для обсуждения?'; }
+    else if (type === 'sentence_reorder') { newBlock.instruction = '🧩 Соберите предложение из слов:'; newBlock.sentence = 'She had never seen such a dress before.'; }
+    else if (type === 'categorization') { newBlock.instruction = '📦 Распределите слова по категориям:'; newBlock.categories = ['Формальный стиль', 'Разговорный стиль']; newBlock.items = [{ id: 'it-1', text: 'Furthermore', categoryIndex: 0 }, { id: 'it-2', text: 'Hey guys', categoryIndex: 1 }, { id: 'it-3', text: 'Consequently', categoryIndex: 0 }, { id: 'it-4', text: 'Catch you later', categoryIndex: 1 }]; }
+    else if (type === 'open_input') { newBlock.prompt = '💬 Вопрос для обсуждения:\n1. Что вы думаете по этой теме?'; }
 
     const updatedPages = [...(lesson.pages || [])];
     if (!updatedPages[activePageIndex]) {
@@ -166,9 +166,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
-  const handleDragStart = (idx) => {
-    setDraggedBlockIdx(idx);
-  };
+  const handleDragStart = (idx) => setDraggedBlockIdx(idx);
 
   const handleDropOnBlock = (targetIdx) => {
     if (draggedBlockIdx === null || draggedBlockIdx === targetIdx) return;
@@ -192,7 +190,6 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
 
   const handleOpenAiModal = (block, blockIdx) => {
     setAiModalTarget({ block, blockIdx });
-
     const isAnchor = block.type === 'text' || block.type === 'grammar_card' || block.type === 'video' || block.type === 'audio';
     if (isAnchor) {
       setSelectedSourceId(block.id);
@@ -204,6 +201,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     if (block.type === 'grammar_card') setSelectedTasks(['grammar_quiz']);
     else if (block.type === 'matching') setSelectedTasks(['matching']);
     else if (block.type === 'flashcards') setSelectedTasks(['flashcards']);
+    else if (block.type === 'categorization') setSelectedTasks(['categorization']);
     else setSelectedTasks(['listening']);
   };
 
