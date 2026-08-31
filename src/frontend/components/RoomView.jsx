@@ -2,96 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BlockRenderer } from './BlockRenderer.jsx';
 import { triggerConfetti, playVictorySound } from '../utils/sounds.js';
 
-const ClassroomTimer = () => {
-  const [secondsLeft, setSecondsLeft] = useState(120);
-  const [isActive, setIsActive] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const timerRef = useRef(null);
-
-  useEffect(() => {
-    if (isActive && secondsLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setSecondsLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            setIsActive(false);
-            playVictorySound();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      clearInterval(timerRef.current);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [isActive, secondsLeft]);
-
-  const setPreset = (sec) => {
-    setIsActive(false);
-    setSecondsLeft(sec);
-  };
-
-  const formatTime = (totalSec) => {
-    const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  return (
-    <div className="fixed bottom-6 right-6 z-40 bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-2xl rounded-3xl p-3 transition-all duration-300">
-      {!isExpanded ? (
-        <button
-          onClick={() => setIsExpanded(true)}
-          className="flex items-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 rounded-2xl text-xs font-extrabold cursor-pointer transition shadow-2xs"
-        >
-          <span>⏱️ Таймер</span>
-          <span className={`px-2 py-0.5 rounded-lg font-mono ${secondsLeft === 0 ? 'bg-rose-600 text-white animate-pulse' : 'bg-white text-indigo-700'}`}>
-            {formatTime(secondsLeft)}
-          </span>
-        </button>
-      ) : (
-        <div className="space-y-3 w-56 p-1">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-            <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-              ⏱️ Таймер этапа
-            </span>
-            <button onClick={() => setIsExpanded(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs p-1 cursor-pointer">
-              ✕
-            </button>
-          </div>
-
-          <div className={`text-center py-2 font-mono text-3xl font-extrabold rounded-2xl ${secondsLeft === 0 ? 'bg-rose-50 text-rose-600 animate-pulse' : 'bg-slate-50 text-slate-900'}`}>
-            {formatTime(secondsLeft)}
-          </div>
-
-          <div className="flex gap-1.5 justify-center">
-            <button onClick={() => setPreset(60)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl cursor-pointer">1m</button>
-            <button onClick={() => setPreset(120)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl cursor-pointer">2m</button>
-            <button onClick={() => setPreset(180)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl cursor-pointer">3m</button>
-            <button onClick={() => setPreset(300)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-xl cursor-pointer">5m</button>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => setIsActive(!isActive)}
-              className={`flex-1 py-2 text-xs font-extrabold text-white rounded-xl shadow-xs transition cursor-pointer ${isActive ? 'bg-amber-500 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-            >
-              {isActive ? '⏸ Пауза' : '▶ Старт'}
-            </button>
-            <button
-              onClick={() => { setIsActive(false); setSecondsLeft(120); }}
-              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
-            >
-              🔄
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [currentPageIdx, setCurrentPageIdx] = useState(0);
   const currentPageIdxRef = useRef(currentPageIdx);
@@ -104,6 +14,13 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [hasStartedHomework, setHasStartedHomework] = useState(false);
 
   const debounceTimerRef = useRef(null);
+
+  // Detect whether the user is in self-paced homework or trainer mode
+  const isHomeworkMode = React.useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return !isTeacher && (params.has('homework') || params.has('trainer') || params.get('role') !== 'student');
+  }, [isTeacher]);
 
   const normalizedPages = React.useMemo(() => {
     if (!activeLesson) return [{ id: 'p1', title: 'Part 1', blocks: [] }];
@@ -134,6 +51,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const pageBlocks = activePage.blocks || [];
   const progressPct = Math.round(((safePageIdx + 1) / totalPages) * 100);
 
+  // Load saved local progress
   useEffect(() => {
     if (!roomId) return;
     try {
@@ -163,7 +81,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }, 400);
   }, [roomId, isTeacher]);
 
-  // Student Presence Heartbeat
+  // Student presence heartbeat for live classes
   useEffect(() => {
     if (!roomId || isTeacher) return;
     const sendHeartbeat = () => {
@@ -174,9 +92,9 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return () => clearInterval(interval);
   }, [roomId, isTeacher]);
 
-  // Polling Room State
+  // Polling room state (Only for live classroom; NEVER resets homework page position)
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || isHomeworkMode) return;
 
     const interval = setInterval(async () => {
       try {
@@ -185,10 +103,12 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         
         setIsStudentOnline(data.isOnline || false);
 
-        if (!isTeacher && typeof data.page_idx === 'number' && data.page_idx !== currentPageIdxRef.current) {
+        // Only sync page if in live synchronous student mode and teacher explicitly changed it
+        if (!isTeacher && !isHomeworkMode && typeof data.page_idx === 'number' && data.page_idx !== currentPageIdxRef.current) {
           setCurrentPageIdx(data.page_idx);
         }
 
+        // Merge answers cleanly
         const serverAnswers = data.student_answers;
         if (serverAnswers && Object.keys(serverAnswers).length > 0) {
           setUserAnswers(prev => {
@@ -209,7 +129,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [roomId, isTeacher]);
+  }, [roomId, isTeacher, isHomeworkMode]);
 
   const handlePageChange = (newIdx) => {
     const safeIdx = Math.max(0, Math.min(newIdx, totalPages - 1));
@@ -364,9 +284,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 relative">
-      <ClassroomTimer />
-
+    <div className="max-w-3xl mx-auto space-y-6">
       {!isTeacher && !hasStartedHomework && (
         <div className="bg-white p-8 sm:p-10 rounded-3xl border border-slate-200 shadow-xl text-center space-y-4 my-8">
           <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto text-3xl font-extrabold">🏠</div>
@@ -472,12 +390,12 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 )}
               </div>
 
-              {/* NAVIGATION */}
-              <div className="flex justify-between items-center pt-2">
+              {/* PAGE NAVIGATION CONTROLS */}
+              <div className="flex justify-between items-center pt-4">
                 <button
                   disabled={safePageIdx === 0}
                   onClick={() => handlePageChange(safePageIdx - 1)}
-                  className="px-6 py-3 border border-slate-200 text-slate-700 font-extrabold rounded-2xl disabled:opacity-30 hover:bg-slate-100 text-sm transition cursor-pointer"
+                  className="px-6 py-3.5 border border-slate-200 text-slate-700 font-extrabold rounded-2xl disabled:opacity-30 hover:bg-slate-100 text-sm transition cursor-pointer"
                 >
                   ← Назад
                 </button>
@@ -485,14 +403,14 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 {safePageIdx < totalPages - 1 ? (
                   <button
                     onClick={() => handlePageChange(safePageIdx + 1)}
-                    className="px-8 py-3 bg-indigo-600 text-white font-extrabold rounded-2xl hover:bg-indigo-700 text-sm shadow-md transition cursor-pointer"
+                    className="px-8 py-3.5 bg-indigo-600 text-white font-extrabold rounded-2xl hover:bg-indigo-700 text-sm shadow-md transition cursor-pointer"
                   >
                     Далее →
                   </button>
                 ) : (
                   <button
                     onClick={handleFinishLesson}
-                    className="px-8 py-3 bg-emerald-600 text-white font-extrabold rounded-2xl hover:bg-emerald-700 text-sm shadow-md transition cursor-pointer"
+                    className="px-8 py-3.5 bg-emerald-600 text-white font-extrabold rounded-2xl hover:bg-emerald-700 text-sm shadow-md transition cursor-pointer"
                   >
                     {isTeacher ? 'Завершить урок 🎉' : 'Сдать ДЗ 🎉'}
                   </button>
