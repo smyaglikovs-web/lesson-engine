@@ -24,13 +24,10 @@ export default function App() {
   const [viewSubmissionsLesson, setViewSubmissionsLesson] = useState(null);
 
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('teacher_jwt') || 'dev_token_123';
-    const pass = localStorage.getItem('teacher_pass') || 'teacher123';
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      'x-teacher-password': pass
-    };
+    const token = localStorage.getItem('teacher_jwt');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
   };
 
   const fetchLessons = async () => {
@@ -49,8 +46,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    const isAuth = localStorage.getItem('teacher_auth') === 'true' || !!localStorage.getItem('teacher_jwt');
-    if (isAuth) {
+    const token = localStorage.getItem('teacher_jwt');
+    if (token) {
       setIsAuthenticated(true);
       setIsTeacher(true);
       fetchLessons();
@@ -78,7 +75,7 @@ export default function App() {
     }
 
     if (activeRoomId) {
-      const teacher = roleParam === 'teacher' && isAuth;
+      const teacher = roleParam === 'teacher' && !!token;
       setIsTeacher(teacher);
       openRoomSession(activeRoomId, teacher);
       return;
@@ -87,23 +84,11 @@ export default function App() {
     setIsTeacher(true);
   }, []);
 
-  // RESILIENT LOGIN (Instant local entry + background edge sync)
+  // Strict Server-Side Authentication
   const handleTeacherLogin = async (passwordInput) => {
     const clean = (passwordInput || '').trim();
+    if (!clean) return;
 
-    // 1. Direct match for default credentials (works 100% offline & in local dev)
-    if (clean === 'teacher123') {
-      localStorage.setItem('teacher_auth', 'true');
-      localStorage.setItem('teacher_pass', clean);
-      localStorage.setItem('teacher_jwt', 'dev_teacher_token_123');
-      setIsAuthenticated(true);
-      setIsTeacher(true);
-      setLoginError(false);
-      fetchLessons();
-      return;
-    }
-
-    // 2. Network verification for custom credentials
     try {
       const res = await fetch('/api/teacher/login', {
         method: 'POST',
@@ -112,10 +97,8 @@ export default function App() {
       });
       const data = await res.json();
 
-      if (res.ok && (data.success || data.token)) {
-        localStorage.setItem('teacher_auth', 'true');
-        localStorage.setItem('teacher_pass', clean);
-        if (data.token) localStorage.setItem('teacher_jwt', data.token);
+      if (res.ok && data.token) {
+        localStorage.setItem('teacher_jwt', data.token);
         setIsAuthenticated(true);
         setIsTeacher(true);
         setLoginError(false);
@@ -124,22 +107,11 @@ export default function App() {
         setLoginError(true);
       }
     } catch (e) {
-      // Fallback if local dev proxy is offline
-      if (clean === 'teacher123') {
-        localStorage.setItem('teacher_auth', 'true');
-        setIsAuthenticated(true);
-        setIsTeacher(true);
-        setLoginError(false);
-        fetchLessons();
-      } else {
-        setLoginError(true);
-      }
+      setLoginError(true);
     }
   };
 
   const handleTeacherLogout = () => {
-    localStorage.removeItem('teacher_auth');
-    localStorage.removeItem('teacher_pass');
     localStorage.removeItem('teacher_jwt');
     setIsAuthenticated(false);
   };
@@ -148,7 +120,7 @@ export default function App() {
     try {
       const res = await fetch('/api/rooms/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ lessonId })
       });
       const data = await res.json();
@@ -157,10 +129,7 @@ export default function App() {
         openRoomSession(data.sessionId, true);
       }
     } catch (e) {
-      // Fallback session ID if network fails
-      const fallbackId = 'ses_' + Date.now();
-      window.history.pushState({}, '', `/?room=${fallbackId}&role=teacher`);
-      openLesson(lessonId, false, true);
+      alert('Ошибка запуска сессии');
     }
   };
 
@@ -178,7 +147,6 @@ export default function App() {
       setIsTeacher(teacherRole);
       setView('room');
     } catch (e) {
-      // Fallback
       openLesson(targetRoomId, false, teacherRole);
     }
   };
