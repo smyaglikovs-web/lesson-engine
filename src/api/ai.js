@@ -45,68 +45,81 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 5500) {
   }
 }
 
-// BULLETPROOF BLOCK STRUCTURE SANITIZER
+// --------------------------------------------------------------------------
+// BULLETPROOF BLOCK STRUCTURE SANITIZER & TYPE NORMALIZER
+// --------------------------------------------------------------------------
 export function sanitizeBlockStructure(b) {
   if (!b || typeof b !== 'object') return [b];
 
   let type = String(b.type || 'text').toLowerCase().trim();
-  if (type === 'header' || type === 'title') type = 'heading';
-  if (type === 'paragraph' || type === 'reading' || type === 'article') type = 'text';
-  if (type === 'quiz' || type === 'question' || type === 'true_false') type = 'multiple_choice';
-  if (type === 'vocab' || type === 'words') type = 'flashcards';
-  if (type === 'rule' || type === 'grammar') type = 'grammar_card';
-  if (type === 'reorder' || type === 'sentence_order' || type === 'unscramble') type = 'sentence_reorder';
-  if (type === 'categories' || type === 'bucket') type = 'categorization';
-  if (type === 'inline' || type === 'select_gap' || type === 'drop_down') type = 'inline_select';
-  if (type === 'wheel' || type === 'roulette') type = 'spinning_wheel';
-  if (type === 'notes' || type === 'teacher_notes') type = 'teacher_notes';
-  if (type === 'drag-and-drop' || type === 'word_bank') type = 'gap_fill_bank';
+  
+  // Normalization mapping for all creative LLM naming variations
+  if (type === 'header' || type === 'title' || type === 'h1' || type === 'h2' || type === 'h3') type = 'heading';
+  if (type === 'paragraph' || type === 'reading' || type === 'article' || type === 'story' || type === 'reading_comprehension' || type === 'reading comprehension') type = 'text';
+  if (type === 'quiz' || type === 'question' || type === 'true_false' || type === 'mc' || type === 'multiple-choice' || type === 'error-analysis' || type === 'error_analysis') type = 'multiple_choice';
+  if (type === 'vocab' || type === 'words' || type === 'flashcard' || type === 'cards' || type === 'vocabulary_building' || type === 'vocabulary building') type = 'flashcards';
+  if (type === 'rule' || type === 'grammar' || type === 'grammar-card' || type === 'grammarcard' || type === 'grammar_focus' || type === 'grammar focus') type = 'grammar_card';
+  if (type === 'reorder' || type === 'sentence_order' || type === 'unscramble' || type === 'sentence-reorder' || type === 'sentence-construction' || type === 'sentence_construction') type = 'sentence_reorder';
+  if (type === 'categories' || type === 'bucket' || type === 'sorting' || type === 'category') type = 'categorization';
+  if (type === 'inline' || type === 'select_gap' || type === 'drop_down' || type === 'dropdown_select' || type === 'inline-select') type = 'inline_select';
+  if (type === 'wheel' || type === 'roulette' || type === 'spinning-wheel' || type === 'speaking_wheel') type = 'spinning_wheel';
+  if (type === 'notes' || type === 'teacher_notes' || type === 'teacher-notes') type = 'teacher_notes';
+  if (type === 'drag-and-drop' || type === 'word_bank' || type === 'drag_and_drop' || type === 'gap-fill-bank') type = 'gap_fill_bank';
+  if (type === 'gapfill' || type === 'gap-fill' || type === 'fill_gap' || type === 'fill-in-the-blank' || type === 'fill_in_the_blank') type = 'gap_fill';
+  if (type === 'url' || type === 'website' || type === 'web_link' || type === 'embed') type = 'link';
+  if (type === 'prompt' || type === 'speaking' || type === 'discussion' || type === 'question_input' || type === 'writing') type = 'open_input';
 
   b.type = type;
 
-  // 1. MATCHING NORMALIZATION (Handles any LLM data shape: tuples, key-values, items)
+  // 1. MATCHING NORMALIZATION (Enforces 1-to-1 unique pairs)
   if (b.type === 'matching') {
     let rawPairs = b.pairs || b.items || b.matches || b.data || b.questions || [];
     let normalizedPairs = [];
+    const usedRightVals = new Set();
 
     if (Array.isArray(rawPairs)) {
       rawPairs.forEach((p, idx) => {
-        if (Array.isArray(p)) {
-          // Tuple format: ["Word", "Definition"]
-          if (p.length >= 2) {
-            normalizedPairs.push({ left: String(p[0]).trim(), right: String(p[1]).trim() });
-          }
+        let leftVal = '';
+        let rightVal = '';
+
+        if (Array.isArray(p) && p.length >= 2) {
+          leftVal = String(p[0]).trim();
+          rightVal = String(p[1]).trim();
         } else if (p && typeof p === 'object') {
-          // Object format: { left, right } or { word, translation } or { term, definition }
-          const leftVal = p.left || p.term || p.word || p.item || p.front || p.key || p.question || Object.keys(p)[0] || `Word ${idx + 1}`;
-          const rightVal = p.right || p.definition || p.match || p.answer || p.back || p.value || p.translation || p.meaning || (Object.keys(p).length > 1 ? p[Object.keys(p)[1]] : Object.values(p)[0]) || `Match ${idx + 1}`;
-          normalizedPairs.push({ left: String(leftVal).trim(), right: String(rightVal).trim() });
+          leftVal = p.left || p.term || p.word || p.item || p.front || p.key || p.question || Object.keys(p)[0] || `Word ${idx + 1}`;
+          rightVal = p.right || p.definition || p.match || p.answer || p.back || p.value || p.translation || p.meaning || (Object.keys(p).length > 1 ? p[Object.keys(p)[1]] : Object.values(p)[0]) || `Match ${idx + 1}`;
         } else if (typeof p === 'string') {
-          // String format: "Word - Definition"
           const splitParts = p.split(/[:\-\—\➔\=]/);
           if (splitParts.length >= 2) {
-            normalizedPairs.push({ left: splitParts[0].trim(), right: splitParts[1].trim() });
+            leftVal = splitParts[0].trim();
+            rightVal = splitParts.slice(1).join(' ').trim();
           }
         }
-      });
-    } else if (rawPairs && typeof rawPairs === 'object') {
-      // Key-Value map: { "Word1": "Definition1", "Word2": "Definition2" }
-      Object.entries(rawPairs).forEach(([k, v]) => {
-        normalizedPairs.push({ left: String(k).trim(), right: String(v).trim() });
+
+        leftVal = String(leftVal).trim();
+        rightVal = String(rightVal).trim();
+
+        if (leftVal && rightVal) {
+          // Disambiguate duplicate right-side values
+          if (usedRightVals.has(rightVal.toLowerCase())) {
+            rightVal = `${rightVal} (${leftVal.slice(0, 12)}...)`;
+          }
+          usedRightVals.add(rightVal.toLowerCase());
+          normalizedPairs.push({ left: leftVal, right: rightVal });
+        }
       });
     }
 
-    // Fail-safe: ensure pairs is NEVER empty
     if (normalizedPairs.length === 0) {
       normalizedPairs = [
-        { left: 'Key Concept', right: 'Основное понятие / Ключевая идея' },
-        { left: 'To engage with', right: 'Взаимодействовать / Погружаться' },
-        { left: 'Perspective', right: 'Точка зрения / Взгляд' },
-        { left: 'Significance', right: 'Значимость / Важность' }
+        { left: 'Key Concept', right: 'Основное понятие (main idea)' },
+        { left: 'To engage with', right: 'Взаимодействовать (participate actively)' },
+        { left: 'Perspective', right: 'Точка зрения (viewpoint)' },
+        { left: 'Significance', right: 'Значимость (importance)' }
       ];
     }
 
-    b.instruction = b.instruction || 'Соедините слова и их значения / переводы:';
+    b.instruction = b.instruction || 'Match the words with their definitions / translations:';
     b.pairs = normalizedPairs;
   }
 
@@ -119,13 +132,13 @@ export function sanitizeBlockStructure(b) {
     if (Array.isArray(rawOpts)) {
       rawOpts.forEach((opt, idx) => {
         if (typeof opt === 'string') {
-          cleanOptions.push(opt);
+          cleanOptions.push(opt.trim());
         } else if (opt && typeof opt === 'object') {
           const textVal = opt.text || opt.option || opt.value || opt.label || opt.answer || JSON.stringify(opt);
-          cleanOptions.push(String(textVal));
+          cleanOptions.push(String(textVal).trim());
           if (opt.isCorrect === true || opt.correct === true) detectedCorrect = idx;
         } else {
-          cleanOptions.push(String(opt));
+          cleanOptions.push(String(opt).trim());
         }
       });
     }
@@ -138,19 +151,20 @@ export function sanitizeBlockStructure(b) {
   // 3. CATEGORIZATION NORMALIZATION
   if (b.type === 'categorization') {
     if (!Array.isArray(b.categories) || b.categories.length === 0) {
-      b.categories = ['Category 1', 'Category 2'];
+      b.categories = ['Category A', 'Category B'];
     }
     const rawItems = Array.isArray(b.items) ? b.items : [];
     b.items = rawItems.map((it, idx) => {
       if (typeof it === 'string') {
-        return { id: `it-${idx}-${Date.now()}`, text: it, categoryIndex: idx % b.categories.length };
+        return { id: `it-${idx}-${Date.now()}`, text: it.trim(), categoryIndex: idx % b.categories.length };
       }
       return {
         id: it.id || `it-${idx}-${Date.now()}`,
-        text: it.text || `Item ${idx + 1}`,
+        text: String(it.text || `Item ${idx + 1}`).trim(),
         categoryIndex: typeof it.categoryIndex === 'number' ? it.categoryIndex : (idx % b.categories.length)
       };
     });
+    b.instruction = b.instruction || 'Sort the items into the correct categories:';
   }
 
   // 4. FLASHCARDS NORMALIZATION
@@ -159,28 +173,87 @@ export function sanitizeBlockStructure(b) {
     b.cards = rawCards.map(c => {
       if (typeof c === 'object' && c !== null) {
         return {
-          front: String(c.front || c.word || c.term || 'Word'),
-          back: String(c.back || c.translation || c.definition || 'Translation'),
-          example: String(c.example || c.sentence || '')
+          front: String(c.front || c.word || c.term || 'Target Word').trim(),
+          back: String(c.back || c.translation || c.definition || 'Meaning').trim(),
+          example: String(c.example || c.sentence || '').trim()
         };
       }
-      return { front: 'Word', back: 'Translation', example: '' };
+      return { front: 'Target Word', back: 'Meaning', example: '' };
     });
+    b.title = b.title || 'Key Target Vocabulary';
   }
 
-  // 5. GAP FILL NORMALIZATION
+  // 5. GAP FILL NORMALIZATION & DASH FILTER
   if (b.type === 'gap_fill') {
-    if (!Array.isArray(b.answers) || b.answers.length === 0) {
-      const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)].map(m => m[1].trim());
-      b.answers = matches.length > 0 ? matches : ['answer'];
+    b.text = (b.text || '').replace(/\[[-_.\s]{2,}\]/g, '[answer]');
+    const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)]
+      .map(m => m[1].trim())
+      .filter(w => !/^[-_.\s]+$/.test(w));
+    b.answers = matches.length > 0 ? matches : ['answer'];
+    b.instruction = b.instruction || 'Type the missing words in the blanks:';
+  }
+
+  // 6. GAP FILL BANK (DRAG & DROP) NORMALIZATION
+  if (b.type === 'gap_fill_bank') {
+    b.text = (b.text || '').replace(/\[[-_.\s]{2,}\]/g, '[practice]');
+    let distractors = Array.isArray(b.distractors) ? b.distractors : [];
+    distractors = distractors
+      .map(d => String(d).trim())
+      .filter(d => Boolean(d) && !/^[-_.\s]+$/.test(d));
+    b.distractors = distractors.length > 0 ? distractors : ['barrier', 'hesitation'];
+    b.instruction = b.instruction || 'Fill the gaps using the correct words from the bank:';
+  }
+
+  // 7. MULTI-SENTENCE REORDER NORMALIZATION
+  if (b.type === 'sentence_reorder') {
+    let sentencesList = [];
+    if (Array.isArray(b.sentences) && b.sentences.length > 0) {
+      sentencesList = b.sentences.map(s => String(s).trim()).filter(Boolean);
+    } else if (b.sentence && typeof b.sentence === 'string') {
+      sentencesList = [b.sentence.trim()];
+    }
+
+    if (sentencesList.length === 0) {
+      sentencesList = ['Consistent daily practice is the key to fluency.'];
+    }
+
+    b.sentences = sentencesList;
+    b.sentence = sentencesList[0];
+    b.instruction = b.instruction || 'Put the words in order to form correct sentences:';
+  }
+
+  // 8. SPINNING WHEEL NORMALIZATION
+  if (b.type === 'spinning_wheel') {
+    let items = Array.isArray(b.items) ? b.items : [];
+    items = items.map(it => String(it).trim()).filter(Boolean);
+    if (items.length === 0) {
+      items = [
+        'How would you apply this concept in real life?',
+        'Describe an experience connected to this topic.',
+        'What was the most interesting part of this lesson?',
+        'Summarize the core message in 2 sentences.'
+      ];
+    }
+    b.items = items;
+    b.title = b.title || '🎡 Speaking & Discussion Roulette';
+    b.instruction = b.instruction || 'Spin the wheel and answer the selected question!';
+    b.eliminateMode = b.eliminateMode !== undefined ? b.eliminateMode : true;
+  }
+
+  // 9. INLINE SELECT NORMALIZATION
+  if (b.type === 'inline_select') {
+    b.instruction = b.instruction || 'Choose the correct word in context:';
+    if (!b.text || !b.text.includes('[')) {
+      b.text = '1. We must [focus on* | ignore] our primary objective.\n2. She [succeeded* | failed] in completing the project on time.';
     }
   }
 
-  // 6. GAP FILL BANK NORMALIZATION
-  if (b.type === 'gap_fill_bank') {
-    if (!Array.isArray(b.distractors)) {
-      b.distractors = ['barrier', 'hesitation'];
-    }
+  // 10. LINK / EMBED BLOCK NORMALIZATION
+  if (b.type === 'link') {
+    b.url = b.url || 'https://en.wikipedia.org';
+    b.title = b.title || 'Resource Link';
+    b.description = b.description || 'Click to open reference material.';
+    b.displayMode = b.displayMode || 'modal';
   }
 
   return [b];
@@ -229,7 +302,7 @@ export function cleanAndParseJson(rawText) {
   }
 }
 
-export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2500) {
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2800) {
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
@@ -246,7 +319,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 5000);
+        }, 5500);
 
         if (res.ok) {
           const data = await res.json();
@@ -270,7 +343,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             contents: [{ role: 'user', parts: [{ text: userContent }] }],
             generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
           })
-        }, 5000);
+        }, 5500);
 
         if (gRes.ok) {
           const gData = await gRes.json();
@@ -373,8 +446,8 @@ Evaluate the student's text for task achievement, grammar accuracy, vocabulary r
   "rubricScore": 4,
   "maxRubric": 5,
   "cefrEstimate": "${level}",
-  "feedback": "Clear and well-structured response...",
-  "corrections": ["Original phrase -> Corrected phrase"],
+  "feedback": "Clear and well-structured response demonstrating good control of sentence structures.",
+  "corrections": ["Original error -> Corrected phrase"],
   "strengths": ["Good cohesion", "Appropriate register"]
 }`;
 
@@ -421,9 +494,9 @@ export async function generateFullLessonWithAI(env, payload) {
   const audienceContext = context ? `Target Student Context: "${context}"` : 'General Adult ESL Learners';
   const keywordConstraints = targetKeywords.length > 0 
     ? `MANDATORY KEYWORDS TO TEST: ${JSON.stringify(targetKeywords)}`
-    : `Extract 6-8 high-yield vocabulary items for topic "${resolvedTopic}".`;
+    : `Extract 6-8 high-yield vocabulary items specifically relevant to "${resolvedTopic}".`;
 
-  // STAGE 1: Lexical Profiler
+  // STAGE 1: Lexical Profiler (Strict distinct example sentences)
   const stage1SystemPrompt = `[ROLE]
 You are a CELTA/DELTA Master Methodologist.
 
@@ -434,18 +507,18 @@ ${audienceContext}
 ${keywordConstraints}
 
 [TASK]
-Extract/profile 6-8 target vocabulary items, 3 lead-in discussion questions, and the target grammar rule for this topic.
+Profile 6-8 target vocabulary words/phrases, 3 lead-in discussion questions, and the target grammar rule.
 
-[CONSTRAINTS]
-- Output MUST be valid JSON only.
-- 6 to 8 vocabulary items with front (English word/phrase), back (Russian translation or definition), and example sentence.
-- 3 warm-up discussion questions.
+[CRITICAL RULES FOR EXAMPLES]
+- Every vocabulary item MUST have a UNIQUE, natural example sentence (10-14 words long).
+- NEVER reuse the same stem or word across examples for different cards.
+- Each example must clearly illustrate the meaning of THAT specific word in everyday context.
 
 [OUTPUT FORMAT]
 {
-  "warmupQuestions": ["Question 1?", "Question 2?", "Question 3?"],
+  "warmupQuestions": ["Warm-up question 1?", "Warm-up question 2?", "Warm-up question 3?"],
   "targetWords": [
-    { "front": "word/phrase", "back": "translation or definition", "example": "Context sentence." }
+    { "front": "word/phrase", "back": "Russian translation or short definition", "example": "Natural 10-14 word context sentence illustrating the word." }
   ],
   "grammarTitle": "Target Grammar Rule",
   "grammarFormula": "Subject + Verb Structure",
@@ -456,7 +529,7 @@ Extract/profile 6-8 target vocabulary items, 3 lead-in discussion questions, and
     ? `Source Material / Transcript:\n${text}`
     : `Generate high-yield materials for Topic: "${resolvedTopic}". Context: ${audienceContext}`;
 
-  const stage1Result = await runAiPipeline(env, stage1SystemPrompt, userContextPrompt, 1200);
+  const stage1Result = await runAiPipeline(env, stage1SystemPrompt, userContextPrompt, 1400);
   const profile = stage1Result.data || {
     warmupQuestions: [
       `What comes to your mind first when you think about ${resolvedTopic}?`,
@@ -464,14 +537,14 @@ Extract/profile 6-8 target vocabulary items, 3 lead-in discussion questions, and
       "Why is this topic relevant today?"
     ],
     targetWords: targetKeywords.length > 0 
-      ? targetKeywords.map(k => ({ front: k, back: 'Ключевое понятие', example: `Understanding ${k} is crucial.` }))
+      ? targetKeywords.map(k => ({ front: k, back: 'Ключевое понятие', example: `Mastering ${k} helps learners express their ideas with greater confidence.` }))
       : [
-          { front: 'Key Concept', back: 'Основное понятие', example: `Understanding this is crucial for ${resolvedTopic}.` },
-          { front: 'To engage with', back: 'Взаимодействовать', example: 'Students engage actively with materials.' },
-          { front: 'Perspective', back: 'Точка зрения', example: 'A fresh perspective changes everything.' },
-          { front: 'Significance', back: 'Значимость', example: 'The cultural significance is undeniable.' },
-          { front: 'To cultivate', back: 'Развивать', example: 'Practice helps cultivate fluency.' },
-          { front: 'Outcome', back: 'Результат', example: 'The outcome exceeded our expectations.' }
+          { front: 'Key Concept', back: 'Основное понятие', example: 'Understanding this key concept will help you grasp the whole lesson easily.' },
+          { front: 'To engage with', back: 'Взаимодействовать', example: 'Students should engage with the material through interactive discussions every day.' },
+          { front: 'Perspective', back: 'Точка зрения', example: 'Listening to different opinions gives you a much broader perspective on life.' },
+          { front: 'Significance', back: 'Значимость', example: 'The historical significance of this discovery cannot be overstated by modern scientists.' },
+          { front: 'To cultivate', back: 'Развивать', example: 'Consistent reading helps cultivate a rich and expressive vocabulary over time.' },
+          { front: 'Outcome', back: 'Результат', example: 'Hard work and persistence will always produce a positive learning outcome.' }
         ],
     grammarTitle: 'Present Perfect & Key Stems',
     grammarFormula: 'Subject + have/has + V3',
@@ -489,16 +562,16 @@ Topic: "${resolvedTopic}"
 Target vocabulary to naturally weave into the story: ${wordsToWeave}
 
 [TASK]
-Write a rich 250-320 word educational story/passage for this lesson.
+Write a rich 240-300 word educational story/passage for this lesson.
 
 [CONSTRAINTS]
 - Text MUST be 100% natural English adapted strictly to CEFR ${level}.
-- Output JSON root object only.
+- Return JSON root object only.
 
 [OUTPUT FORMAT]
 {
   "title": "${resolvedTopic}",
-  "storyText": "Complete 250-320 word reading passage here..."
+  "storyText": "Complete 240-300 word reading passage here..."
 }`;
 
   const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${resolvedTopic}\nContext: ${audienceContext}\nProvided notes: ${text.substring(0, 400)}`, 1400);
@@ -513,27 +586,29 @@ Write a rich 250-320 word educational story/passage for this lesson.
 You are an ELT Materials Task Creator.
 
 [CONTEXT]
-Target Level: ${level}
+Target Level: ${level} (${cefrRules})
 Story context: "${storyText.substring(0, 300)}..."
 Target vocabulary: ${JSON.stringify(profile.targetWords)}
-Format: ${format === 'live' ? 'Live teacher-led lesson with oral discussion' : 'Self-paced auto-graded homework'}
+Format: ${format === 'live' ? 'Live teacher-led lesson' : 'Self-paced auto-graded homework'}
 
-[TASK]
-Generate exercise blocks matching the requested tasks: ${JSON.stringify(tasksToGenerate)}.
-
-[CONSTRAINTS]
-- Return a JSON object with a "blocks" array.
-- For "matching", generate 6 distinct pairs formatted strictly as: { "left": "term/phrase", "right": "definition/translation" }.
-- For "gap_fill_bank", put 4-5 target words in brackets [word] in a cohesive paragraph and provide 3 distractors.
-- For "multiple_choice", provide 3 questions with 3-4 options and correct index.
-- For "sentence_reorder", provide a sentence drilling target grammar.
+[CRITICAL TASK CONSTRAINTS]
+1. For "matching": Generate 6 pairs where EVERY right-side definition is 100% UNIQUE. Never repeat the same category or right-side text.
+2. For "gap_fill_bank": 
+   - CRITICAL: Put the ACTUAL vocabulary word inside brackets, like [${profile.targetWords[0]?.front || 'concept'}]. 
+   - NEVER use dashes, underscores, or dots inside brackets (NO [---], NO [___]).
+   - Provide 2-3 distractor words in "distractors".
+3. For "sentence_reorder": 
+   - Generate an array of 4 to 5 distinct sentences in "sentences".
+   - Each sentence MUST be strictly 8 to 14 words long.
+4. For "inline_select":
+   - Put options in brackets separated by | and mark the correct option with an asterisk (*), e.g. [correct* | wrong].
 
 [OUTPUT FORMAT]
 {
   "blocks": [
     {
       "type": "matching",
-      "instruction": "Match the words with their definitions:",
+      "instruction": "Match the words with their definitions / translations:",
       "pairs": [
         { "left": "${profile.targetWords[0]?.front || 'Word 1'}", "right": "${profile.targetWords[0]?.back || 'Meaning 1'}" },
         { "left": "${profile.targetWords[1]?.front || 'Word 2'}", "right": "${profile.targetWords[1]?.back || 'Meaning 2'}" },
@@ -543,26 +618,31 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(tasksToG
     },
     { 
       "type": "gap_fill_bank", 
-      "instruction": "Fill the gaps using words from the bank:", 
-      "text": "Paragraph with [${profile.targetWords[0]?.front || 'target'}] and [${profile.targetWords[1]?.front || 'concept'}]...", 
-      "distractors": ["barrier", "hesitation"] 
+      "instruction": "Fill the gaps using the correct words from the bank:", 
+      "text": "A cohesive paragraph containing [${profile.targetWords[0]?.front || 'target'}] and [${profile.targetWords[1]?.front || 'concept'}] in brackets...", 
+      "distractors": ["barrier", "hesitation", "distraction"] 
     },
     { 
       "type": "multiple_choice", 
-      "question": "Comprehension question?", 
-      "options": ["Correct option", "Distractor 1", "Distractor 2"], 
+      "question": "Comprehension question text?", 
+      "options": ["Correct option", "Plausible distractor 1", "Plausible distractor 2"], 
       "correct": 0, 
-      "explanation": "Why this is correct based on context" 
+      "explanation": "Why this answer is correct based on context." 
     },
     { 
       "type": "sentence_reorder", 
-      "instruction": "Put the words in order:", 
-      "sentence": "She had never seen such a dress before." 
+      "instruction": "Put the words in order to form correct sentences:", 
+      "sentences": [
+        "Consistent daily practice is the key to speaking fluently.",
+        "She had never encountered such a challenging problem before.",
+        "They decided to explore different perspectives on this issue.",
+        "Learning a new skill requires both patience and dedication."
+      ]
     }
   ]
 }`;
 
-  const stage3Result = await runAiPipeline(env, stage3SystemPrompt, `Generate exercises for: ${JSON.stringify(tasksToGenerate)}`, 2200);
+  const stage3Result = await runAiPipeline(env, stage3SystemPrompt, `Generate exercises for: ${JSON.stringify(tasksToGenerate)}`, 2400);
   let synthesizedBlocks = stage3Result.data?.blocks || [];
 
   let cleanTaskBlocks = [];
@@ -572,24 +652,33 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(tasksToG
     else cleanTaskBlocks.push(res);
   });
 
-  // Fail-safe default blocks if AI missed any
   if (cleanTaskBlocks.length === 0) {
     cleanTaskBlocks = [
       {
         type: 'matching',
-        instruction: 'Match the words with their meanings:',
+        instruction: 'Match the words with their definitions:',
         pairs: profile.targetWords.slice(0, 6).map(w => ({ left: w.front, right: w.back }))
       },
       {
         type: 'gap_fill_bank',
-        instruction: 'Fill in the blanks using words from the bank:',
-        text: `Consistent [practice] is the foundation of mastering [communication] in any language.`,
+        instruction: 'Fill the gaps using the correct words from the bank:',
+        text: `Consistent [practice] is the foundation of mastering any foreign [language].`,
         distractors: ['barrier', 'hesitation']
+      },
+      {
+        type: 'sentence_reorder',
+        instruction: 'Put the words in order to form correct sentences:',
+        sentences: [
+          'Consistent daily practice is the key to speaking fluently.',
+          'She had never encountered such a challenging situation before.',
+          'They decided to explore different perspectives on this issue.',
+          'Learning a new skill requires both patience and dedication.'
+        ]
       }
     ];
   }
 
-  // STAGE 4: Assemble Complete Lesson
+  // STAGE 4: Assemble Complete Lesson Structure
   const assembledLesson = {
     id: 'lesson_' + Date.now(),
     title: resolvedTopic,
@@ -599,7 +688,7 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(tasksToG
     pages: [
       {
         id: 'p1',
-        title: 'Part 1: Warm-up, Vocab & Story',
+        title: 'Part 1: Warm-up, Vocab & Reading',
         blocks: [
           { id: `b_h1_${Date.now()}`, type: 'heading', level: 1, text: resolvedTopic },
           { 
@@ -635,7 +724,7 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(tasksToG
           title: profile.grammarTitle, 
           formula: profile.grammarFormula, 
           explanation: profile.grammarExplanation, 
-          examples: [`Example: ${profile.targetWords[0]?.example || 'Consistent practice yields results.'}`] 
+          examples: [`Example: ${profile.targetWords[0]?.example || 'Consistent practice yields great results.'}`] 
         }
       ]
     });
@@ -646,7 +735,7 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(tasksToG
       id: 'p_practice',
       title: `Part ${assembledLesson.pages.length + 1}: Practice & Application`,
       blocks: [
-        { id: `b_ph_${Date.now()}`, type: 'heading', level: 2, text: 'Interactive Practice' },
+        { id: `b_ph_${Date.now()}`, type: 'heading', level: 2, text: 'Interactive Exercises' },
         ...cleanTaskBlocks
       ]
     });
@@ -681,7 +770,7 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(tasksToG
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Transforms or Fills any single block)
+// 1-CLICK BLOCK AI ASSISTANT (All 10 Tools Fully Handled)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -709,44 +798,83 @@ export async function transformBlockWithAI(env, payload) {
   let rawContext = sourceText || sourceBlock.text || sourceBlock.explanation || sourceBlock.transcript || JSON.stringify(sourceBlock);
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  // Explicit schema instructions for matching and all block types
   let tasksInstructions = '';
 
   if (actions.includes('matching')) {
     tasksInstructions += `
-- GENERATE 1 "matching" block with 6 pairs configured as "${matchingType}" based directly on context words.
-  Schema: { "type": "matching", "instruction": "Match the words with their definitions / translations:", "pairs": [ { "left": "term", "right": "definition or translation" } ] }`;
+- GENERATE 1 "matching" block with 6 distinct pairs (${matchingType} style).
+  CRITICAL: Every right-side value MUST be unique.
+  Schema: { "type": "matching", "instruction": "Match the words with their meanings:", "pairs": [ { "left": "term", "right": "unique definition or translation" } ] }`;
   }
 
   if (actions.includes('flashcards')) {
     const backStyle = flashcardType === 'russian' ? 'Russian translation' : 'English definition';
     tasksInstructions += `
 - GENERATE 1 "flashcards" block with 6 target vocabulary words.
-  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "word", "back": "${backStyle}", "example": "Context sentence." } ] }`;
+  CRITICAL: Each card must have a distinct, natural 10-14 word context sentence.
+  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "word", "back": "${backStyle}", "example": "Natural 10-14 word sentence." } ] }`;
   }
 
-  if (actions.includes('listening') || actions.includes('multiple_choice')) {
+  if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('grammar_quiz')) {
     tasksInstructions += `
-- GENERATE 1 "multiple_choice" block with 3 comprehension questions.
+- GENERATE 1 "multiple_choice" block with 3 questions.
   Schema: { "type": "multiple_choice", "question": "Question text?", "options": ["Correct", "Wrong 1", "Wrong 2"], "correct": 0, "explanation": "Why this is correct." }`;
   }
 
-  if (actions.includes('gap_fill')) {
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill" block with 4 sentences containing [target words] in brackets.
+  CRITICAL: Never put dashes inside brackets.
   Schema: { "type": "gap_fill", "instruction": "Fill the missing words:", "text": "1. She [went] home.\\n2. They [have seen] it.", "answers": ["went", "have seen"] }`;
   }
 
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets and 3 distractors.
-  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps from the bank:", "text": "A paragraph with [word1] and [word2]...", "distractors": ["wrong1", "wrong2"] }`;
+  CRITICAL: NEVER put dashes [---] in brackets. Put the actual words inside brackets.
+  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "A cohesive passage with [word1] and [word2] in brackets...", "distractors": ["wrong1", "wrong2", "wrong3"] }`;
   }
 
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
-- GENERATE 1 "sentence_reorder" block with a rich target sentence from context.
-  Schema: { "type": "sentence_reorder", "instruction": "Put words in order:", "sentence": "Complete target sentence here." }`;
+- GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences (each strictly 8 to 14 words).
+  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Sentence one is eight to twelve words.", "Sentence two drills target grammar and vocabulary."] }`;
+  }
+
+  if (actions.includes('spinning_wheel')) {
+    tasksInstructions += `
+- GENERATE 1 "spinning_wheel" block with 6 to 8 communicative discussion questions.
+  Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"], "eliminateMode": true }`;
+  }
+
+  if (actions.includes('categorization')) {
+    tasksInstructions += `
+- GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 to 8 items to sort.
+  Schema: { "type": "categorization", "instruction": "Sort the words into the correct boxes:", "categories": ["Category 1", "Category 2"], "items": [ { "id": "it-1", "text": "Word 1", "categoryIndex": 0 }, { "id": "it-2", "text": "Word 2", "categoryIndex": 1 } ] }`;
+  }
+
+  if (actions.includes('inline_select')) {
+    tasksInstructions += `
+- GENERATE 1 "inline_select" block with 4 sentences containing [option1* | option2] dropdowns where the asterisk (*) marks the correct answer.
+  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. We should [focus on* | ignore] the main goal.\\n2. She [completed* | missed] the assignment." }`;
+  }
+
+  if (actions.includes('generate_grammar_card')) {
+    tasksInstructions += `
+- GENERATE 1 "grammar_card" block detailing the target grammar rule.
+  Schema: { "type": "grammar_card", "title": "Rule Name", "formula": "Subject + Formula", "explanation": "Clear explanation of usage.", "examples": ["Example 1", "Example 2"] }`;
+  }
+
+  if (actions.includes('generate_text_passage') || actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
+    tasksInstructions += `
+- GENERATE 1 "text" block with an engaging reading passage (${targetLength} words) adapted to level ${level}.
+  Schema: { "type": "text", "text": "Full reading passage here..." }`;
+  }
+
+  if (actions.includes('discussion')) {
+    tasksInstructions += `
+- GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts.
+  Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. Question 1?\\n2. Question 2?" }`;
   }
 
   const prompt = `[ROLE]
@@ -757,12 +885,12 @@ Target CEFR Level: ${level} (${cefrRules})
 Source Context: "${safeContextData}"
 
 [TASK]
-Generate exercise blocks for requested actions:
+Generate exercise blocks matching the requested actions:
 ${tasksInstructions}
 
 [CONSTRAINTS]
 - Return a JSON object with a "blocks" array.
-- For "matching", generate pairs with explicit "left" and "right" keys.
+- Follow each block type schema strictly.
 
 [OUTPUT FORMAT]
 {
@@ -770,7 +898,7 @@ ${tasksInstructions}
 }`;
 
   try {
-    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContextData}`, 2200);
+    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContextData}`, 2400);
     const rawList = result.data?.blocks || result.data?.newBlocks || (Array.isArray(result.data) ? result.data : [result.data]);
 
     let cleanBlocks = [];
