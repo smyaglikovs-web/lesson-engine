@@ -24,7 +24,7 @@ export const BuilderAiModal = ({
   const isGrammarBlock = blockType === 'grammar_card';
   const isMatchingBlock = blockType === 'matching';
   const isFlashcardBlock = blockType === 'flashcards';
-  const isHeavyAnchor = isTextBlock || isGrammarBlock || blockType === 'video' || blockType === 'audio';
+  const isHeavyAnchor = isTextBlock || isGrammarBlock || blockType === 'video' || blockType === 'audio' || blockType === 'link';
 
   const taskCount = selectedTasks.length;
 
@@ -34,7 +34,7 @@ export const BuilderAiModal = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
         
         {/* HEADER */}
         <div className="flex justify-between items-center pb-3 border-b border-slate-100">
@@ -44,7 +44,13 @@ export const BuilderAiModal = ({
               AI Assistant for Block #{aiModalTarget.blockIdx + 1} ({blockType?.replace(/_/g, ' ') || 'block'})
             </h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1 cursor-pointer">✕</button>
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1 cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
 
         {/* CEFR LEVEL SELECTOR (A1 to C2) */}
@@ -156,7 +162,7 @@ export const BuilderAiModal = ({
         {/* 1-CLICK DIRECT BLOCK AUTO-FILL BUTTON */}
         {!isHeavyAnchor && (
           <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-2xl border border-indigo-100 space-y-2">
-            <p className="text-xs font-bold text-indigo-900">🪄 Populate THIS empty block from chosen source context?</p>
+            <p className="text-xs font-bold text-indigo-900">🪄 Auto-populate THIS empty block from context?</p>
             <button
               type="button"
               onClick={handleFillSingleBlock}
@@ -179,7 +185,7 @@ export const BuilderAiModal = ({
                 disabled={aiGenerating}
                 className="p-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-bold text-slate-800 transition cursor-pointer text-left hover:bg-indigo-50/50"
               >
-                📖 Expand Text (~400 words)
+                📖 Expand Text (~400w)
               </button>
               <button
                 type="button"
@@ -187,7 +193,7 @@ export const BuilderAiModal = ({
                 disabled={aiGenerating}
                 className="p-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-bold text-slate-800 transition cursor-pointer text-left hover:bg-indigo-50/50"
               >
-                ✂️ Shorten Text (~150 words)
+                ✂️ Shorten Text (~150w)
               </button>
               <button
                 type="button"
@@ -195,58 +201,148 @@ export const BuilderAiModal = ({
                 disabled={aiGenerating}
                 className="p-2.5 bg-indigo-50 border border-indigo-200 hover:border-indigo-500 rounded-xl text-xs font-bold text-indigo-900 transition cursor-pointer text-left hover:bg-indigo-100"
               >
-                🎚️ Rewrite for Level [{modalLevel}]
+                🎚️ Level [{modalLevel}]
               </button>
             </div>
           </div>
         )}
 
-        {/* MULTI-TASK CHECKLIST FOR HEAVY ANCHORS */}
+        {/* ALL 10 EXERCISE TASKS SELECTION CHECKLIST */}
         {isHeavyAnchor && (
           <div className="space-y-2.5">
-            <p className="text-xs text-slate-500 font-medium">Select 1 or more practice tasks to generate based on this anchor content:</p>
+            <p className="text-xs text-slate-500 font-medium">Select 1 or more exercises to generate from this anchor content:</p>
 
-            <div className="space-y-2 text-sm font-semibold">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-semibold">
               {isGrammarBlock ? (
                 <>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('grammar_transform')} onChange={() => toggleTaskSelection('grammar_transform')} className="w-4 h-4 accent-indigo-600 rounded" />
-                    <span>✏️ Grammar Sentence Transformations</span>
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('grammar_transform')} 
+                      onChange={() => toggleTaskSelection('grammar_transform')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>✏️ Sentence Transformations</span>
                   </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('grammar_quiz')} onChange={() => toggleTaskSelection('grammar_quiz')} className="w-4 h-4 accent-indigo-600 rounded" />
-                    <span>❓ Grammar Multiple Choice Drill</span>
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('grammar_quiz')} 
+                      onChange={() => toggleTaskSelection('grammar_quiz')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>❓ Multiple Choice Drill</span>
                   </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('discussion')} onChange={() => toggleTaskSelection('discussion')} className="w-4 h-4 accent-indigo-600 rounded" />
-                    <span>💬 Speaking Questions Using This Grammar</span>
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition sm:col-span-2">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('discussion')} 
+                      onChange={() => toggleTaskSelection('discussion')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>💬 Speaking Questions (Using Rule)</span>
                   </label>
                 </>
               ) : (
                 <>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('listening')} onChange={() => toggleTaskSelection('listening')} className="w-4 h-4 accent-indigo-600 rounded" />
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('listening')} 
+                      onChange={() => toggleTaskSelection('listening')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
                     <span>🎧 Comprehension Questions</span>
                   </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('flashcards')} onChange={() => toggleTaskSelection('flashcards')} className="w-4 h-4 accent-indigo-600 rounded" />
-                    <span>🎴 Vocabulary Flashcards</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('true_false')} onChange={() => toggleTaskSelection('true_false')} className="w-4 h-4 accent-indigo-600 rounded" />
+
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('true_false')} 
+                      onChange={() => toggleTaskSelection('true_false')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
                     <span>❓ True / False Questions</span>
                   </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('gap_fill')} onChange={() => toggleTaskSelection('gap_fill')} className="w-4 h-4 accent-indigo-600 rounded" />
-                    <span>✏️ Gap-Fill Exercises</span>
+
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('flashcards')} 
+                      onChange={() => toggleTaskSelection('flashcards')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>🎴 Vocabulary Flashcards</span>
                   </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('matching')} onChange={() => toggleTaskSelection('matching')} className="w-4 h-4 accent-indigo-600 rounded" />
+
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('matching')} 
+                      onChange={() => toggleTaskSelection('matching')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
                     <span>🔗 Pair Matching</span>
                   </label>
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
-                    <input type="checkbox" checked={selectedTasks.includes('spinning_wheel')} onChange={() => toggleTaskSelection('spinning_wheel')} className="w-4 h-4 accent-indigo-600 rounded" />
-                    <span>🎡 Speaking Discussion Wheel</span>
+
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('gap_fill')} 
+                      onChange={() => toggleTaskSelection('gap_fill')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>✏️ Gap-Fill (Input)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('gap_fill_bank')} 
+                      onChange={() => toggleTaskSelection('gap_fill_bank')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>🧩 Drag & Drop Word Bank</span>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('sentence_reorder')} 
+                      onChange={() => toggleTaskSelection('sentence_reorder')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>🔤 Sentence Unscramble</span>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('inline_select')} 
+                      onChange={() => toggleTaskSelection('inline_select')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>🔽 Inline Dropdown Select</span>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('categorization')} 
+                      onChange={() => toggleTaskSelection('categorization')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>📦 Categorization Boxes</span>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 cursor-pointer hover:bg-indigo-50/50 transition">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.includes('spinning_wheel')} 
+                      onChange={() => toggleTaskSelection('spinning_wheel')} 
+                      className="w-4 h-4 accent-indigo-600 rounded" 
+                    />
+                    <span>🎡 Speaking Roulette</span>
                   </label>
                 </>
               )}
@@ -256,12 +352,17 @@ export const BuilderAiModal = ({
 
         {/* ACTION BUTTONS */}
         <div className="flex justify-end gap-3 pt-2">
-          <button onClick={onClose} className="px-5 py-2.5 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer">
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="px-5 py-2.5 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+          >
             Cancel
           </button>
           {isHeavyAnchor && (
             <button
-              onClick={() => onExecute()}
+              type="button"
+              onClick={() => onExecute(selectedTasks)}
               disabled={taskCount === 0 || aiGenerating}
               className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-extrabold rounded-2xl text-xs shadow-md disabled:opacity-40 cursor-pointer transition"
             >
