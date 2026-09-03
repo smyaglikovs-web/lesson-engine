@@ -1,5 +1,12 @@
 import React from 'react';
-import { BlockHeading, BlockText, BlockImage, BlockVideo, BlockAudio, BlockGrammarCard } from './BlockMedia.jsx';
+import { 
+  BlockHeading, 
+  BlockText, 
+  BlockImage, 
+  BlockVideo, 
+  BlockAudio, 
+  BlockGrammarCard 
+} from './BlockMedia.jsx';
 import { BlockMultipleChoice } from './BlockMultipleChoice.jsx';
 import { BlockMatching } from './BlockMatching.jsx';
 import { BlockGapFill } from './BlockGapFill.jsx';
@@ -11,30 +18,36 @@ import { BlockCategorization } from './BlockCategorization.jsx';
 import { BlockInlineSelect } from './BlockInlineSelect.jsx';
 import { BlockTeacherNotes } from './BlockTeacherNotes.jsx';
 import { BlockSpinningWheel } from './BlockSpinningWheel.jsx';
+import { BlockLink } from './BlockLink.jsx';
+
+export const normalizeBlockType = (rawType = '') => {
+  let t = String(rawType || 'text').toLowerCase().trim();
+  
+  if (t === 'header' || t === 'title' || t === 'h1' || t === 'h2' || t === 'h3') return 'heading';
+  if (t === 'paragraph' || t === 'reading' || t === 'article' || t === 'content' || t === 'story' || t === 'reading_comprehension' || t === 'reading comprehension') return 'text';
+  if (t === 'quiz' || t === 'question' || t === 'true_false' || t === 'mc' || t === 'multiple-choice' || t === 'error-analysis' || t === 'error_analysis') return 'multiple_choice';
+  if (t === 'vocab' || t === 'words' || t === 'flashcard' || t === 'cards' || t === 'vocabulary_building' || t === 'vocabulary building') return 'flashcards';
+  if (t === 'prompt' || t === 'speaking' || t === 'discussion' || t === 'question_input' || t === 'writing') return 'open_input';
+  if (t === 'rule' || t === 'grammar' || t === 'grammar-card' || t === 'grammarcard' || t === 'grammar_focus' || t === 'grammar focus') return 'grammar_card';
+  if (t === 'gapfill' || t === 'gap-fill' || t === 'fill_gap' || t === 'fill-in-the-blank' || t === 'fill_in_the_blank') return 'gap_fill';
+  if (t === 'gapfill_bank' || t === 'gap-fill-bank' || t === 'word_bank' || t === 'wordbank' || t === 'drag-and-drop' || t === 'drag_and_drop') return 'gap_fill_bank';
+  if (t === 'reorder' || t === 'reorder_sentence' || t === 'sentence-reorder' || t === 'unscramble' || t === 'sentence-construction' || t === 'sentence_construction') return 'sentence_reorder';
+  if (t === 'categories' || t === 'bucket' || t === 'sorting' || t === 'category') return 'categorization';
+  if (t === 'inline' || t === 'inline_select' || t === 'dropdown_select' || t === 'select_gap' || t === 'drop_down' || t === 'inline-select') return 'inline_select';
+  if (t === 'teacher_notes' || t === 'teacher-notes' || t === 'notes') return 'teacher_notes';
+  if (t === 'spinning_wheel' || t === 'wheel' || t === 'roulette' || t === 'speaking_wheel' || t === 'spinning-wheel') return 'spinning_wheel';
+  if (t === 'url' || t === 'link' || t === 'website' || t === 'web_link' || t === 'embed') return 'link';
+
+  return t;
+};
 
 export const BlockRenderer = ({ block, value, onChange, isTeacher, onEditMedia }) => {
   if (!block || typeof block !== 'object') return null;
 
-  let rawType = String(block.type || 'text').toLowerCase().trim();
+  const normalizedType = normalizeBlockType(block.type);
+  const normalizedBlock = { ...block, type: normalizedType };
 
-  // Auto-map loose naming to canonical engine block types
-  if (rawType === 'header' || rawType === 'title' || rawType === 'h1' || rawType === 'h2' || rawType === 'h3') rawType = 'heading';
-  if (rawType === 'paragraph' || rawType === 'reading' || rawType === 'article' || rawType === 'content' || rawType === 'story') rawType = 'text';
-  if (rawType === 'quiz' || rawType === 'question' || rawType === 'true_false' || rawType === 'mc' || rawType === 'multiple-choice') rawType = 'multiple_choice';
-  if (rawType === 'vocab' || rawType === 'words' || rawType === 'flashcard' || rawType === 'cards') rawType = 'flashcards';
-  if (rawType === 'prompt' || rawType === 'speaking' || rawType === 'discussion' || rawType === 'question_input') rawType = 'open_input';
-  if (rawType === 'rule' || rawType === 'grammar' || rawType === 'grammar-card' || rawType === 'grammarcard') rawType = 'grammar_card';
-  if (rawType === 'gapfill' || rawType === 'gap-fill' || rawType === 'fill_gap') rawType = 'gap_fill';
-  if (rawType === 'gapfill_bank' || rawType === 'gap-fill-bank' || rawType === 'word_bank' || rawType === 'wordbank') rawType = 'gap_fill_bank';
-  if (rawType === 'reorder' || rawType === 'reorder_sentence' || rawType === 'sentence-reorder') rawType = 'sentence_reorder';
-  if (rawType === 'categories' || rawType === 'bucket') rawType = 'categorization';
-  if (rawType === 'inline_select' || rawType === 'inline-select' || rawType === 'dropdown_select' || rawType === 'select_gap') rawType = 'inline_select';
-  if (rawType === 'teacher_notes' || rawType === 'teacher-notes' || rawType === 'notes') rawType = 'teacher_notes';
-  if (rawType === 'spinning_wheel' || rawType === 'wheel' || rawType === 'roulette') rawType = 'spinning_wheel';
-
-  const normalizedBlock = { ...block, type: rawType };
-
-  switch (rawType) {
+  switch (normalizedType) {
     case 'heading': 
       return <BlockHeading block={normalizedBlock} />;
     case 'text': 
@@ -45,6 +58,8 @@ export const BlockRenderer = ({ block, value, onChange, isTeacher, onEditMedia }
       return <BlockVideo block={normalizedBlock} onEditMedia={onEditMedia} />;
     case 'audio': 
       return <BlockAudio block={normalizedBlock} onEditMedia={onEditMedia} />;
+    case 'link':
+      return <BlockLink block={normalizedBlock} />;
     case 'grammar_card': 
       return <BlockGrammarCard block={normalizedBlock} />;
     case 'flashcards': 
