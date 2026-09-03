@@ -124,7 +124,13 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     const type = normalizeBlockType(rawType);
     const newBlock = { id: 'b-' + Date.now(), type };
 
-    if (type === 'heading') { 
+    if (rawType === 'true_false') {
+      newBlock.type = 'multiple_choice';
+      newBlock.question = 'Утверждение по материалу (True / False):';
+      newBlock.options = ['True', 'False'];
+      newBlock.correct = 0;
+    }
+    else if (type === 'heading') { 
       newBlock.level = 2; 
       newBlock.text = 'Новый раздел'; 
     }
@@ -287,7 +293,11 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
       setSelectedSourceId(nearestSource ? nearestSource.id : '');
     }
 
-    if (normType === 'grammar_card') setSelectedTasks(['grammar_quiz']);
+    const isTrueFalseBlock = normType === 'multiple_choice' && Array.isArray(block.options) && 
+      block.options.length === 2 && block.options.includes('True') && block.options.includes('False');
+
+    if (isTrueFalseBlock) setSelectedTasks(['true_false']);
+    else if (normType === 'grammar_card') setSelectedTasks(['grammar_quiz']);
     else if (normType === 'matching') setSelectedTasks(['matching']);
     else if (normType === 'flashcards') setSelectedTasks(['flashcards']);
     else if (normType === 'categorization') setSelectedTasks(['categorization']);
@@ -331,12 +341,18 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         const isSingleFill = actionsToRun.includes('fill_this_block') || actionsToRun.includes('expand_text') || actionsToRun.includes('shorten_text') || actionsToRun.includes('refine_level');
 
         if (isSingleFill && blocksWithIds.length > 0) {
+          // Fill target block with first result item
           const filledBlock = {
             ...blocksWithIds[0],
             id: aiModalTarget.block.id,
-            type: aiModalTarget.block.type
+            type: blocksWithIds[0].type || aiModalTarget.block.type
           };
           currentBlocks[aiModalTarget.blockIdx] = filledBlock;
+
+          // If multiple items generated (e.g. 3 questions), insert remaining ones directly below
+          if (blocksWithIds.length > 1) {
+            currentBlocks.splice(aiModalTarget.blockIdx + 1, 0, ...blocksWithIds.slice(1));
+          }
         } else {
           const insertIdx = aiModalTarget.blockIdx + 1;
           currentBlocks.splice(insertIdx, 0, ...blocksWithIds);
