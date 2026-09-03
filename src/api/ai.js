@@ -584,7 +584,7 @@ Write a rich 240-300 word educational story/passage for this lesson strictly ada
   const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${resolvedTopic}\nContext: ${audienceContext}\nNotes: ${text.substring(0, 400)}`, 1400);
   const storyText = stage2Result.data?.storyText || `${resolvedTopic} is an essential part of modern communication. By exploring key vocabulary and structures, learners develop natural conversational fluency.`;
 
-  // STAGE 3: Parallel Task Synthesis
+  // STAGE 3: Parallel Task Synthesis (Comprehensive Schema Hints)
   const tasksToGenerate = Array.isArray(selectedTasks) && selectedTasks.length > 0 
     ? selectedTasks 
     : ['multiple_choice', 'gap_fill_bank', 'matching', 'sentence_reorder'];
@@ -595,44 +595,20 @@ Target Level: ${level}
 Story context: "${storyText.substring(0, 300)}..."
 Target vocabulary: ${JSON.stringify(profile.targetWords)}
 
-Generate exercise blocks matching: ${JSON.stringify(tasksToGenerate)}.
-- For "matching": 6 unique pairs.
-- For "gap_fill_bank": put words in [brackets] inside a paragraph and provide 3 distractors.
-- For "sentence_reorder": 4-5 sentences in "sentences" (8-14 words each).
+Generate exercise blocks matching the requested types: ${JSON.stringify(tasksToGenerate)}.
+
+CRITICAL TASK SCHEMAS:
+- "matching": { "type": "matching", "instruction": "...", "pairs": [ { "left": "term", "right": "unique definition" } ] }
+- "gap_fill_bank": { "type": "gap_fill_bank", "instruction": "...", "text": "Paragraph with [word1] and [word2]...", "distractors": ["distractor1", "distractor2"] }
+- "gap_fill": { "type": "gap_fill", "instruction": "...", "text": "1. She [went]...\\n2. They [saw]...", "answers": ["went", "saw"] }
+- "multiple_choice": { "type": "multiple_choice", "question": "...", "options": ["Correct", "Wrong 1", "Wrong 2"], "correct": 0, "explanation": "..." }
+- "sentence_reorder": { "type": "sentence_reorder", "instruction": "...", "sentences": ["Sentence one (8-14 words).", "Sentence two (8-14 words)."] }
+- "inline_select": { "type": "inline_select", "instruction": "...", "text": "1. She [chose* | refused] the offer.\\n2. They [agreed* | denied]." }
+- "categorization": { "type": "categorization", "instruction": "...", "categories": ["Cat 1", "Cat 2"], "items": [ { "id": "it-1", "text": "Item 1", "categoryIndex": 0 } ] }
 
 [OUTPUT FORMAT]
 {
-  "blocks": [
-    {
-      "type": "matching",
-      "instruction": "Match the words with their definitions / translations:",
-      "pairs": [
-        { "left": "${profile.targetWords[0]?.front || 'Word 1'}", "right": "${profile.targetWords[0]?.back || 'Meaning 1'}" },
-        { "left": "${profile.targetWords[1]?.front || 'Word 2'}", "right": "${profile.targetWords[1]?.back || 'Meaning 2'}" }
-      ]
-    },
-    { 
-      "type": "gap_fill_bank", 
-      "instruction": "Fill the gaps using the correct words from the bank:", 
-      "text": "A cohesive paragraph containing [${profile.targetWords[0]?.front || 'target'}] and [${profile.targetWords[1]?.front || 'concept'}] in brackets...", 
-      "distractors": ["barrier", "hesitation", "distraction"] 
-    },
-    { 
-      "type": "multiple_choice", 
-      "question": "Comprehension question text?", 
-      "options": ["Correct option", "Distractor 1", "Distractor 2"], 
-      "correct": 0, 
-      "explanation": "Why this answer is correct." 
-    },
-    { 
-      "type": "sentence_reorder", 
-      "instruction": "Put the words in order to form correct sentences:", 
-      "sentences": [
-        "Consistent daily practice is the key to speaking fluently.",
-        "She had never encountered such a challenging problem before."
-      ]
-    }
-  ]
+  "blocks": [ ... ]
 }`;
 
   const stage3Result = await runAiPipeline(env, stage3SystemPrompt, `Generate exercises for: ${JSON.stringify(tasksToGenerate)}`, 2400);
@@ -669,7 +645,7 @@ Generate exercise blocks matching: ${JSON.stringify(tasksToGenerate)}.
     ];
   }
 
-  // Assemble Complete Lesson Structure
+  // STAGE 4: Assemble Complete Lesson Structure
   const assembledLesson = {
     id: 'lesson_' + Date.now(),
     title: resolvedTopic,
@@ -732,7 +708,21 @@ Generate exercise blocks matching: ${JSON.stringify(tasksToGenerate)}.
     });
   }
 
-  if (finalTask !== 'none') {
+  // ACCURATE WRAP-UP TASK SELECTION (Writing vs Speaking vs None)
+  if (finalTask === 'writing') {
+    assembledLesson.pages.push({
+      id: 'p_production',
+      title: `Part ${assembledLesson.pages.length + 1}: Production & Writing`,
+      blocks: [
+        { id: `b_prodh_${Date.now()}`, type: 'heading', level: 2, text: 'Writing Submission' },
+        {
+          id: `b_write_${Date.now()}`,
+          type: 'open_input',
+          prompt: `📝 Final Writing Task:\nWrite a short paragraph (70-100 words) summarizing your thoughts on "${resolvedTopic}". In your answer, use at least 3 target vocabulary words and the key structures from this lesson.`
+        }
+      ]
+    });
+  } else if (finalTask === 'speaking') {
     assembledLesson.pages.push({
       id: 'p_production',
       title: `Part ${assembledLesson.pages.length + 1}: Production & Wrap-up`,
