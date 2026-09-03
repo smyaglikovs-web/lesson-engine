@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { LessonCardSkeleton } from './ui/Skeleton.jsx';
 
 export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, onDeleteLesson, onViewSubmissions, onEditLesson }) => {
   const fileInputRef = useRef(null);
@@ -7,7 +8,6 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
   const [filterLevel, setFilterLevel] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Fetch Folders from API
   const fetchFolders = async () => {
     try {
       const res = await fetch('/api/folders');
@@ -39,7 +39,6 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
     } catch (e) {}
   };
 
-  // Instant responsive client-side filtering
   const filteredLessons = lessons.filter(l => {
     const matchFolder = !activeFolder || l.folder_name === activeFolder;
     const matchLevel = !filterLevel || l.level === filterLevel;
@@ -89,10 +88,10 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
               reader.onload = async event => {
                 try {
                   const imported = JSON.parse(event.target.result);
-                  const password = localStorage.getItem('teacher_pass') || 'teacher123';
+                  const token = localStorage.getItem('teacher_jwt');
                   await fetch('/api/lessons', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-teacher-password': password },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ ...imported, id: 'lesson-' + Date.now(), title: `${imported.title} (Import)` })
                   });
                   window.location.reload();
@@ -173,9 +172,14 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
         />
       </div>
 
-      {/* LESSON CARDS GRID */}
+      {/* LOADING SKELETON STATE */}
       {loading ? (
-        <div className="text-center py-20 text-slate-400 font-medium">Загрузка из Cloudflare D1...</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <LessonCardSkeleton />
+          <LessonCardSkeleton />
+          <LessonCardSkeleton />
+          <LessonCardSkeleton />
+        </div>
       ) : filteredLessons.length === 0 ? (
         <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-3">
           <span className="text-4xl block">📚</span>
