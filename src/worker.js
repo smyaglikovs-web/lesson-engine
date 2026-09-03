@@ -9,7 +9,7 @@ import {
   deleteFolder 
 } from './api/lessons.js';
 import { authenticateTeacher, isRequestAuthorized, checkRateLimit } from './api/auth.js';
-import { generateFullLessonWithAI, transformBlockWithAI, fetchYouTubeTranscriptNative } from './api/ai.js';
+import { generateFullLessonWithAI, transformBlockWithAI, fetchYouTubeTranscriptNative, evaluateOpenInputWithAI } from './api/ai.js';
 import { submitHomework, getHomeworkSubmissions, getStudentsDirectory } from './api/homework.js';
 import { 
   createRoomSession, 
@@ -72,6 +72,13 @@ export default {
         }
       }
 
+      // AI OPEN INPUT ESSAY EVALUATION
+      if (path === '/api/homework/evaluate-open-input' && method === 'POST') {
+        const payload = await request.json();
+        const evaluation = await evaluateOpenInputWithAI(env, payload);
+        return jsonResponse(evaluation);
+      }
+
       if (path === '/api/youtube/transcript' && method === 'POST') {
         const { url: ytUrl } = await request.json();
         if (!ytUrl) return jsonResponse({ error: 'No URL provided' }, 400);
@@ -83,7 +90,7 @@ export default {
         return jsonResponse({ success: false, message: 'Subtitles not found.' });
       }
 
-      // LESSONS & FOLDERS (PUBLIC GET)
+      // FOLDERS
       if (path === '/api/folders' && method === 'GET') {
         const list = await getFolders(env);
         return jsonResponse(list);
@@ -147,7 +154,7 @@ export default {
         return jsonResponse(list);
       }
 
-      // PUBLIC HOMEWORK & ROOM STATE
+      // PUBLIC HOMEWORK & ROOMS
       if (path === '/api/homework/submit' && method === 'POST') {
         const payload = await request.json();
         const res = await submitHomework(env, payload);
