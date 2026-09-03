@@ -1,7 +1,7 @@
 import React from 'react';
 import { playCorrectSound, playWrongSound } from '../utils/sounds.js';
 
-export const BlockMultipleChoice = ({ block, value, onChange }) => {
+export const BlockMultipleChoice = ({ block = {}, value = {}, onChange }) => {
   const selected = value?.selected !== undefined && value?.selected !== null ? Number(value.selected) : null;
   const submitted = value?.submitted ?? false;
   const isCorrect = selected !== null && Number(selected) === Number(block.correct);
@@ -14,48 +14,43 @@ export const BlockMultipleChoice = ({ block, value, onChange }) => {
   const handleSubmit = () => {
     if (selected === null) return;
     const correct = Number(selected) === Number(block.correct);
-    if (correct) {
-      playCorrectSound();
-    } else {
-      playWrongSound();
-    }
+    if (correct) playCorrectSound();
+    else playWrongSound();
     onChange({ selected: Number(selected), submitted: true });
   };
 
   return (
-    <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm mb-6">
-      <h4 className="font-semibold text-base sm:text-lg text-slate-800 mb-4 leading-snug">{block.question}</h4>
+    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4">
+      {/* CATEGORY BADGE & QUESTION */}
+      <div>
+        <div className="mb-2.5">
+          <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] uppercase tracking-wider">
+            Multiple Choice
+          </span>
+        </div>
+        <h4 className="font-extrabold text-base sm:text-lg text-slate-900 border-l-4 border-indigo-600 pl-3 leading-snug">
+          {block.question}
+        </h4>
+      </div>
+
       <div className="space-y-2.5 mb-4">
         {block.options?.map((option, idx) => {
           const isSelected = selected !== null && Number(selected) === Number(idx);
           const isTargetCorrect = Number(idx) === Number(block.correct);
 
-          // Defensive string coercion for option text
-          let optionText = '';
-          if (typeof option === 'string') {
-            if (option.trim().startsWith('{')) {
-              try {
-                const parsed = JSON.parse(option);
-                optionText = parsed.statement || parsed.question || parsed.text || parsed.option || option;
-              } catch(e) {
-                optionText = option;
-              }
-            } else {
-              optionText = option;
-            }
-          } else if (typeof option === 'object' && option !== null) {
-            optionText = option.statement || option.question || option.text || option.option || option.value || JSON.stringify(option);
-          } else {
-            optionText = String(option);
-          }
+          let optionText = typeof option === 'object' && option !== null
+            ? (option.text || option.statement || option.option || JSON.stringify(option))
+            : String(option);
 
-          let btnStyle = "w-full text-left p-4 rounded-xl border font-medium transition text-sm flex items-center justify-between touch-manipulation ";
+          let btnStyle = "w-full text-left p-4 rounded-2xl border font-bold transition text-sm flex items-center justify-between cursor-pointer ";
           if (submitted) {
-            if (isTargetCorrect) btnStyle += "bg-green-50 border-green-500 text-green-900 font-bold";
-            else if (isSelected) btnStyle += "bg-red-50 border-red-500 text-red-900 font-bold";
-            else btnStyle += "border-slate-200 opacity-50";
+            if (isTargetCorrect) btnStyle += "bg-emerald-50 border-emerald-500 text-emerald-900 font-extrabold";
+            else if (isSelected) btnStyle += "bg-rose-50 border-rose-500 text-rose-900 font-extrabold";
+            else btnStyle += "border-slate-200 opacity-40";
           } else {
-            btnStyle += isSelected ? "border-indigo-600 bg-indigo-50/80 text-indigo-900 font-bold shadow-xs ring-2 ring-indigo-500/20" : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700";
+            btnStyle += isSelected 
+              ? "border-indigo-600 bg-indigo-50 text-indigo-900 shadow-2xs ring-2 ring-indigo-500/20" 
+              : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700";
           }
 
           return (
@@ -76,14 +71,14 @@ export const BlockMultipleChoice = ({ block, value, onChange }) => {
         <button
           disabled={selected === null}
           onClick={handleSubmit}
-          className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl disabled:opacity-40 hover:bg-indigo-700 transition active:scale-98"
+          className="px-6 py-2.5 bg-indigo-600 text-white font-extrabold rounded-2xl disabled:opacity-40 hover:bg-indigo-700 transition text-xs shadow-md cursor-pointer"
         >
-          Ответить
+          Check Answer
         </button>
       ) : (
-        <div className={isCorrect ? 'mt-4 p-4 rounded-xl text-sm bg-green-100 text-green-800 font-medium' : 'mt-4 p-4 rounded-xl text-sm bg-red-100 text-red-800'}>
-          <p className="font-bold mb-1">{isCorrect ? 'Правильно! 🎉' : 'Неверно ❌'}</p>
-          {block.explanation && <p className="text-xs mt-1 leading-relaxed">{block.explanation}</p>}
+        <div className={`p-4 rounded-2xl text-xs font-bold ${isCorrect ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'}`}>
+          <p className="font-extrabold mb-1">{isCorrect ? 'Correct! 🎉' : 'Incorrect ❌'}</p>
+          {block.explanation && <p className="text-xs font-normal leading-relaxed">{block.explanation}</p>}
         </div>
       )}
     </div>
