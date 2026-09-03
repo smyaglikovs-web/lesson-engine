@@ -1,68 +1,314 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { TeacherHeader } from './components/TeacherHeader.jsx';
+import { TeacherAuthModal } from './components/TeacherAuthModal.jsx';
+import { LibraryView } from './components/LibraryView.jsx';
+import { StudentsView } from './components/StudentsView.jsx';
+import { CreateLessonView } from './components/CreateLessonView.jsx';
+import { AIPromptsView } from './components/AIPromptsView.jsx';
+import { RoomView } from './components/RoomView.jsx';
+import { SubmissionsModal } from './components/SubmissionsModal.jsx';
+import { VocabTrainerView } from './components/VocabTrainerView.jsx';
 
-export const TeacherAuthModal = ({ onLogin, loginError }) => {
-  const [passwordInput, setPasswordInput] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+export default function App() {
+  const [view, setView] = useState('library');
+  const [lessons, setLessons] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeLesson, setActiveLesson] = useState(null);
+  const [editingLesson, setEditingLesson] = useState(null);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!passwordInput.trim()) return;
+  const [isTeacher, setIsTeacher] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginError, setLoginError] = useState(false);
+
+  const [roomId, setRoomId] = useState('');
+  const [viewSubmissionsLesson, setViewSubmissionsLesson] = useState(null);
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('teacher_jwt') || 'dev_token_123';
+    const pass = localStorage.getItem('teacher_pass') || 'teacher123';
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'x-teacher-password': pass
+    };
+  };
+
+  const fetchLessons = async () => {
     setLoading(true);
-    await onLogin(passwordInput);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/lessons');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setLessons(data);
+      }
+    } catch (e) {
+      console.error("Could not fetch lessons:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const isAuth = localStorage.getItem('teacher_auth') === 'true' || !!localStorage.getItem('teacher_jwt');
+    if (isAuth) {
+      setIsAuthenticated(true);
+      setIsTeacher(true);
+      fetchLessons();
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const sessionParam = params.get('session');
+    const roomParam = params.get('room');
+    const roleParam = params.get('role');
+    const hwParam = params.get('homework');
+    const trainerParam = params.get('trainer');
+
+    const activeRoomId = sessionParam || roomParam;
+
+    if (trainerParam) {
+      setIsTeacher(false);
+      openLesson(trainerParam, false, false);
+      return;
+    }
+
+    if (hwParam) {
+      setIsTeacher(false);
+      openLesson(hwParam, false, false);
+      return;
+    }
+
+    if (activeRoomId) {
+      const teacher = roleParam === 'teacher' && isAuth;
+      setIsTeacher(teacher);
+      openRoomSession(activeRoomId, teacher);
+      return;
+    }
+
+    setIsTeacher(true);
+  }, []);
+
+  // RESILIENT LOGIN (Instant local entry + background edge sync)
+  const handleTeacherLogin = async (passwordInput) => {
+    const clean = (passwordInput || '').trim();
+
+    // 1. Direct match for default credentials (works 100% offline & in local dev)
+    if (clean === 'teacher123') {
+      localStorage.setItem('teacher_auth', 'true');
+      localStorage.setItem('teacher_pass', clean);
+      localStorage.setItem('teacher_jwt', 'dev_teacher_token_123');
+      setIsAuthenticated(true);
+      setIsTeacher(true);
+      setLoginError(false);
+      fetchLessons();
+      return;
+    }
+
+    // 2. Network verification for custom credentials
+    try {
+      const res = await fetch('/api/teacher/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: clean })
+      });
+      const data = await res.json();
+
+      if (res.ok && (data.success || data.token)) {
+        localStorage.setItem('teacher_auth', 'true');
+        localStorage.setItem('teacher_pass', clean);
+        if (data.token) localStorage.setItem('teacher_jwt', data.token);
+        setIsAuthenticated(true);
+        setIsTeacher(true);
+        setLoginError(false);
+        fetchLessons();
+      } else {
+        setLoginError(true);
+      }
+    } catch (e) {
+      // Fallback if local dev proxy is offline
+      if (clean === 'teacher123') {
+        localStorage.setItem('teacher_auth', 'true');
+        setIsAuthenticated(true);
+        setIsTeacher(true);
+        setLoginError(false);
+        fetchLessons();
+      } else {
+        setLoginError(true);
+      }
+    }
+  };
+
+  const handleTeacherLogout = () => {
+    localStorage.removeItem('teacher_auth');
+    localStorage.removeItem('teacher_pass');
+    localStorage.removeItem('teacher_jwt');
+    setIsAuthenticated(false);
+  };
+
+  const handleLaunchClassroom = async (lessonId) => {
+    try {
+      const res = await fetch('/api/rooms/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId })
+      });
+      const data = await res.json();
+      if (data.sessionId) {
+        window.history.pushState({}, '', `/?room=${data.sessionId}&role=teacher`);
+        openRoomSession(data.sessionId, true);
+      }
+    } catch (e) {
+      // Fallback session ID if network fails
+      const fallbackId = 'ses_' + Date.now();
+      window.history.pushState({}, '', `/?room=${fallbackId}&role=teacher`);
+      openLesson(lessonId, false, true);
+    }
+  };
+
+  const openRoomSession = async (targetRoomId, teacherRole = true) => {
+    try {
+      const stateRes = await fetch(`/api/rooms/${targetRoomId}/state`);
+      const stateData = await stateRes.json();
+      const targetLessonId = stateData.lessonId || targetRoomId;
+
+      const lessonRes = await fetch(`/api/lessons/${targetLessonId}`);
+      const lessonData = await lessonRes.json();
+
+      setActiveLesson(lessonData);
+      setRoomId(targetRoomId);
+      setIsTeacher(teacherRole);
+      setView('room');
+    } catch (e) {
+      // Fallback
+      openLesson(targetRoomId, false, teacherRole);
+    }
+  };
+
+  const openLesson = async (lessonId, navigate = true, teacherRole = true) => {
+    try {
+      const res = await fetch(`/api/lessons/${lessonId}`);
+      const data = await res.json();
+      setActiveLesson(data);
+      setRoomId(lessonId);
+      setView('room');
+      setIsTeacher(teacherRole);
+    } catch (e) {
+      alert('Ошибка загрузки урока');
+    }
+  };
+
+  const handleEditLesson = async (lessonSummary) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/lessons/${lessonSummary.id}`);
+      const fullLessonData = await res.json();
+      setEditingLesson(fullLessonData);
+      setView('create');
+    } catch (e) {
+      alert('Ошибка загрузки содержимого урока');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateNew = () => {
+    setEditingLesson(null);
+    setView('create');
+  };
+
+  const handleSaveLesson = async (newLesson) => {
+    try {
+      const res = await fetch('/api/lessons', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(newLesson)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert('🎉 Урок успешно сохранен!');
+        setEditingLesson(null);
+        fetchLessons();
+        setView('library');
+      } else {
+        alert('Ошибка: ' + (data.error || 'Доступ запрещен'));
+      }
+    } catch (e) {
+      alert('Ошибка сохранения');
+    }
+  };
+
+  const handleDeleteLesson = async (id, e) => {
+    e.stopPropagation();
+    if (!confirm('Вы уверены, что хотите удалить этот урок из базы данных?')) return;
+    try {
+      const res = await fetch('/api/lessons/' + id, { 
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (res.ok && data.success) fetchLessons();
+      else alert('Ошибка: ' + (data.error || 'Доступ запрещен'));
+    } catch (err) {
+      alert('Ошибка удаления');
+    }
   };
 
   return (
-    <div className="max-w-md mx-auto my-16 bg-white p-8 sm:p-10 rounded-3xl border border-slate-200 shadow-xl space-y-6">
-      <div className="text-center space-y-2">
-        <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto text-2xl font-extrabold shadow-2xs">
-          🔑
-        </div>
-        <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Кабинет Преподавателя</h2>
-        <p className="text-slate-500 text-xs leading-relaxed">
-          Введите пароль для доступа к библиотеке, управлению учениками и AI конструктору уроков.
-        </p>
-      </div>
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+      {isTeacher && isAuthenticated && view !== 'room' && (
+        <TeacherHeader view={view} setView={setView} onLogout={handleTeacherLogout} />
+      )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-1.5">
-          <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-            Пароль доступа
-          </label>
-          <div className="relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={passwordInput}
-              onChange={e => setPasswordInput(e.target.value)}
-              placeholder="Введите пароль..."
-              className="w-full px-4 py-3.5 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-600 rounded-2xl text-sm font-medium text-slate-900 outline-none transition pr-12"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-1 cursor-pointer"
-            >
-              {showPassword ? '🙈' : '👁️'}
-            </button>
-          </div>
-          {loginError && (
-            <p className="text-xs text-rose-600 font-bold pt-1">⚠️ Неверный пароль. Попробуйте ещё раз.</p>
-          )}
-        </div>
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        {isTeacher && !isAuthenticated && view !== 'room' && (
+          <TeacherAuthModal onLogin={handleTeacherLogin} loginError={loginError} />
+        )}
 
-        <button
-          type="submit"
-          disabled={loading || !passwordInput.trim()}
-          className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-sm shadow-md transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"
-        >
-          {loading ? '⌛ Проверка...' : 'Войти в кабинет ➔'}
-        </button>
+        {view === 'library' && isTeacher && isAuthenticated && (
+          <LibraryView
+            lessons={lessons}
+            loading={loading}
+            onOpenLesson={handleLaunchClassroom}
+            onCreateNew={handleCreateNew}
+            onEditLesson={handleEditLesson}
+            onDeleteLesson={handleDeleteLesson}
+            onViewSubmissions={l => setViewSubmissionsLesson(l)}
+          />
+        )}
 
-        <p className="text-[11px] text-slate-400 text-center">
-          По умолчанию: <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-700">teacher123</code>
-        </p>
-      </form>
+        {view === 'students' && isTeacher && isAuthenticated && (
+          <StudentsView />
+        )}
+
+        {view === 'vocab' && isTeacher && isAuthenticated && (
+          <VocabTrainerView
+            onSaveLesson={handleSaveLesson}
+            onCancel={() => setView('library')}
+          />
+        )}
+
+        {view === 'create' && isTeacher && isAuthenticated && (
+          <CreateLessonView 
+            initialLesson={editingLesson} 
+            onSaveLesson={handleSaveLesson} 
+            onCancel={() => { setEditingLesson(null); setView('library'); }} 
+          />
+        )}
+
+        {view === 'prompts' && isTeacher && isAuthenticated && <AIPromptsView />}
+
+        {view === 'room' && activeLesson && (
+          <RoomView
+            activeLesson={activeLesson}
+            roomId={roomId}
+            isTeacher={isTeacher}
+            onExitRoom={() => { window.history.pushState({}, '', '/'); setView('library'); }}
+          />
+        )}
+
+        {viewSubmissionsLesson && isTeacher && isAuthenticated && (
+          <SubmissionsModal lesson={viewSubmissionsLesson} onClose={() => setViewSubmissionsLesson(null)} />
+        )}
+      </main>
     </div>
   );
-};
+}
