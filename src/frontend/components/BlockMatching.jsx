@@ -42,23 +42,31 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
       setWrongPair(true);
       const newMistakes = mistakes + 1;
       if (onChange) onChange({ matched, mistakes: newMistakes });
-      setTimeout(() => setWrongPair(false), 800);
+      setTimeout(() => setWrongPair(false), 700);
     }
   };
 
   const isCompleted = matched.length === pairs.length && pairs.length > 0;
 
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4">
-      <div className="flex justify-between items-center">
-        <h4 className="font-extrabold text-base sm:text-lg text-slate-800 leading-snug">
-          {block.instruction || '🔗 Соедините пары:'}
-        </h4>
-        {mistakes > 0 && (
-          <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-bold text-xs rounded-full border border-rose-200">
-            ⚠️ Ошибок: {mistakes}
+    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4">
+      {/* CATEGORY BADGE & INSTRUCTION */}
+      <div>
+        <div className="mb-2.5">
+          <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] uppercase tracking-wider">
+            Matching
           </span>
-        )}
+        </div>
+        <div className="flex justify-between items-center">
+          <h4 className="font-extrabold text-base sm:text-lg text-slate-900 border-l-4 border-indigo-600 pl-3 leading-snug">
+            {block.instruction || 'Match the pairs:'}
+          </h4>
+          {mistakes > 0 && (
+            <span className="px-2.5 py-0.5 bg-rose-50 text-rose-700 font-bold text-xs rounded-full border border-rose-200">
+              Mistakes: {mistakes}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -110,8 +118,8 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
 
       {isCompleted && (
         <div className="p-4 bg-emerald-100 text-emerald-900 rounded-2xl text-xs font-bold text-center flex justify-between items-center px-4">
-          <span>Все пары соединены верно! 🎉</span>
-          <span className="text-xs font-normal">Всего ошибок: {mistakes}</span>
+          <span>All pairs matched correctly! 🎉</span>
+          <span className="text-xs font-normal">Score: {pairs.length} / {pairs.length} points</span>
         </div>
       )}
     </div>
