@@ -127,15 +127,22 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     else if (type === 'image') { newBlock.caption = ''; newBlock.images = []; }
     else if (type === 'grammar_card') { newBlock.title = 'Правило грамматики'; newBlock.formula = 'Subject + Verb'; newBlock.explanation = 'Объяснение правила...'; newBlock.examples = ['Пример предложения']; }
     else if (type === 'teacher_notes') { newBlock.aim = 'To introduce target vocabulary...'; newBlock.speech = 'Look at these sentences and choose the best option.'; }
-    else if (type === 'inline_select') { newBlock.instruction = 'Выберите правильный вариант из выпадающего списка:'; newBlock.text = '1. By next year they [will have completed* | completed] their project.\n2. We should [focus on* | ignore] the core message.'; }
-    else if (type === 'spinning_wheel') { newBlock.title = '🎡 Speaking Warm-Up Wheel'; newBlock.instruction = 'Крутите колесо и ответьте на выпавший вопрос!'; newBlock.items = ['What is your favorite travel memory?', 'Have you ever been lost in a city?', 'What country would you visit tomorrow?', 'Do you prefer beach or mountains?']; newBlock.eliminateMode = false; }
-    else if (type === 'flashcards') { newBlock.title = 'Словарный запас'; newBlock.cards = [{ front: 'Word', back: 'Перевод', example: 'Пример предложения' }]; }
-    else if (type === 'multiple_choice') { newBlock.question = 'Вопрос по материалу?'; newBlock.options = ['Вариант A', 'Вариант B', 'Вариант C']; newBlock.correct = 0; }
+    else if (type === 'inline_select') { newBlock.instruction = 'Выберите правильный вариант:'; newBlock.text = '1. We should [focus on* | ignore] the main goal.\n2. By next year they [will have completed* | completed] the project.'; }
+    else if (type === 'spinning_wheel') { newBlock.title = '🎡 Speaking Warm-Up Wheel'; newBlock.instruction = 'Крутите колесо и ответьте на выпавший вопрос!'; newBlock.items = ['What is your favorite travel memory?', 'Have you ever been lost in a city?', 'What country would you visit tomorrow?']; newBlock.eliminateMode = true; }
+    else if (type === 'flashcards') { newBlock.title = 'Ключевые слова'; newBlock.cards = [{ front: 'Key Concept', back: 'Основная идея', example: 'Understanding this is crucial.' }, { front: 'To engage with', back: 'Взаимодействовать', example: 'Students engage with materials.' }]; }
+    else if (type === 'multiple_choice') { newBlock.question = 'Вопрос по материалу?'; newBlock.options = ['Правильный вариант', 'Дистрактор 1', 'Дистрактор 2']; newBlock.correct = 0; }
     else if (type === 'gap_fill') { newBlock.instruction = 'Вставьте пропущенное слово:'; newBlock.text = '1. Yesterday she [went] home.'; newBlock.answers = ['went']; }
-    else if (type === 'gap_fill_bank') { newBlock.instruction = '🧩 Заполните пропуски словами из банка:'; newBlock.text = 'Consistent [practice] is the foundation of mastering any foreign [language].'; newBlock.distractors = ['barrier', 'mistake']; }
-    else if (type === 'matching') { newBlock.instruction = 'Соедините пары:'; newBlock.pairs = [{ left: 'Word', right: 'Перевод' }]; }
-    else if (type === 'sentence_reorder') { newBlock.instruction = '🧩 Соберите предложение из слов:'; newBlock.sentence = 'She had never seen such a dress before.'; }
-    else if (type === 'categorization') { newBlock.instruction = '📦 Распределите слова по категориям:'; newBlock.categories = ['Формальный стиль', 'Разговорный стиль']; newBlock.items = [{ id: 'it-1', text: 'Furthermore', categoryIndex: 0 }, { id: 'it-2', text: 'Hey guys', categoryIndex: 1 }, { id: 'it-3', text: 'Consequently', categoryIndex: 0 }, { id: 'it-4', text: 'Catch you later', categoryIndex: 1 }]; }
+    else if (type === 'gap_fill_bank') { newBlock.instruction = 'Заполните пропуски словами из банка:'; newBlock.text = 'Consistent [practice] is the foundation of mastering any foreign [language].'; newBlock.distractors = ['barrier', 'hesitation']; }
+    else if (type === 'matching') { 
+      newBlock.instruction = 'Соедините пары:'; 
+      newBlock.pairs = [
+        { left: 'Key Concept', right: 'Основное понятие / Главная идея' },
+        { left: 'To cultivate', right: 'Развивать / Культивировать' },
+        { left: 'Perspective', right: 'Точка зрения / Взгляд' }
+      ]; 
+    }
+    else if (type === 'sentence_reorder') { newBlock.instruction = 'Соберите предложение из слов:'; newBlock.sentence = 'She had never seen such a dress before.'; }
+    else if (type === 'categorization') { newBlock.instruction = 'Распределите слова по категориям:'; newBlock.categories = ['Формальный стиль', 'Разговорный стиль']; newBlock.items = [{ id: 'it-1', text: 'Furthermore', categoryIndex: 0 }, { id: 'it-2', text: 'Catch you later', categoryIndex: 1 }]; }
     else if (type === 'open_input') { newBlock.prompt = '💬 Вопрос для обсуждения:\n1. Что вы думаете по этой теме?'; }
 
     const updatedPages = [...(lesson.pages || [])];
@@ -348,7 +355,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
                 key={block.id || idx}
                 draggable
                 onDragStart={() => handleDragStart(idx)}
-                onDragOver={(e) => e.preventDefault()}
+                onDragOver={e => e.preventDefault()}
                 onDrop={() => handleDropOnBlock(idx)}
                 className={`bg-white p-6 rounded-3xl border transition-all duration-200 shadow-xs hover:shadow-md relative group ${
                   draggedBlockIdx === idx ? 'opacity-40 border-dashed border-indigo-500 scale-98' : 'border-slate-200/90 hover:border-indigo-300'
@@ -374,7 +381,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
                   </div>
                 </div>
 
-                <EditableBlockCard block={block} onChange={(updated) => handleUpdateBlock(idx, updated)} />
+                <EditableBlockCard block={block} onChange={updated => handleUpdateBlock(idx, updated)} />
               </div>
             ))
           )}
