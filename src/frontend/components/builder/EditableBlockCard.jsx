@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BlockVideo } from '../BlockMedia.jsx';
 import { compressAndUploadImage } from '../../utils/youtube.js';
+import { normalizeBlockType } from '../BlockRenderer.jsx';
 
 function cleanVttToSentences(vttText = '') {
   if (!vttText) return '';
@@ -275,22 +276,72 @@ const InlineSelectEditor = ({ block, onChange }) => (
 
 // 5. SPINNING WHEEL EDITOR
 const SpinningWheelEditor = ({ block, onChange }) => {
+  const [wheelPrompt, setWheelPrompt] = useState('');
+  const [generatingWheel, setGeneratingWheel] = useState(false);
   const rawItems = Array.isArray(block.items) ? block.items.join('\n') : '';
 
+  const handleAiAutoBuildWheel = async () => {
+    if (!wheelPrompt.trim()) return alert('Type a speaking theme or topic first!');
+    setGeneratingWheel(true);
+    try {
+      const res = await fetch('/api/ai/transform-block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actions: ['spinning_wheel'],
+          sourceText: wheelPrompt.trim(),
+          level: 'B1'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.newBlocks?.[0]?.items) {
+        onChange({ ...block, items: data.newBlocks[0].items });
+      }
+    } catch (e) {
+      alert('Error generating questions');
+    } finally {
+      setGeneratingWheel(false);
+    }
+  };
+
   return (
-    <div className="space-y-3 bg-purple-50/60 p-4 rounded-2xl border border-purple-200">
+    <div className="space-y-4 bg-purple-50/60 p-5 rounded-3xl border border-purple-200">
       <div className="flex items-center gap-2">
         <span className="text-base">🎡</span>
         <h5 className="font-extrabold text-purple-950 text-xs uppercase tracking-wider">
           Колесо Вопросов и Слов
         </h5>
       </div>
+
+      <div className="bg-white p-3 rounded-2xl border border-purple-200 space-y-2">
+        <label className="block text-[10px] font-bold text-purple-900 uppercase">
+          🪄 AI Генератор Вопросов:
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={wheelPrompt}
+            onChange={e => setWheelPrompt(e.target.value)}
+            placeholder="например: Job Interview Questions или Travel Memories..."
+            className="flex-1 p-2 bg-slate-50 border rounded-xl text-xs outline-none"
+          />
+          <button
+            type="button"
+            disabled={generatingWheel || !wheelPrompt.trim()}
+            onClick={handleAiAutoBuildWheel}
+            className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs disabled:opacity-40 cursor-pointer"
+          >
+            {generatingWheel ? '⌛...' : '🪄 Создать'}
+          </button>
+        </div>
+      </div>
+
       <input
         type="text"
         value={block.title || ''}
         onChange={e => onChange({ ...block, title: e.target.value })}
-        placeholder="Заголовок колеса (e.g. Speaking Warm-Up)..."
-        className="w-full p-2 bg-white border rounded-xl text-xs font-bold"
+        placeholder="Заголовок колеса..."
+        className="w-full p-2.5 bg-white border rounded-xl text-xs font-bold"
       />
       <div>
         <label className="block text-[10px] font-bold text-purple-900 uppercase mb-1">
@@ -303,16 +354,14 @@ const SpinningWheelEditor = ({ block, onChange }) => {
             const list = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
             onChange({ ...block, items: list });
           }}
-          placeholder="What is your favorite travel memory?
-Have you ever been disappointed by a famous place?
-Where do you plan to go next?"
+          placeholder="Question 1...&#10;Question 2...&#10;Question 3..."
           className="w-full p-2.5 bg-white border border-purple-200 rounded-xl text-xs font-sans"
         ></textarea>
       </div>
       <label className="flex items-center gap-2 text-xs font-bold text-purple-950 cursor-pointer pt-1">
         <input
           type="checkbox"
-          checked={block.eliminateMode || false}
+          checked={block.eliminateMode !== false}
           onChange={e => onChange({ ...block, eliminateMode: e.target.checked })}
           className="w-4 h-4 accent-purple-600 rounded"
         />
@@ -338,7 +387,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
             onChange({ ...block, url: newUrl, title: data.title });
           }
         }
-      } catch(e) {}
+      } catch (e) {}
     }
   };
 
@@ -369,7 +418,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
           transcript = cleanVttToSentences(data.transcript);
         }
       }
-    } catch(e) {}
+    } catch (e) {}
 
     setFetchingSubtitles(false);
 
@@ -459,7 +508,7 @@ const ImageBlockEditor = ({ block, onChange }) => {
       const compressedBase64 = await compressAndUploadImage(file);
       const updated = [...images, { url: compressedBase64, caption: file.name }];
       onChange({ ...block, images: updated, url: updated[0]?.url || '' });
-    } catch(err) {
+    } catch (err) {
       alert('Image upload error: ' + err.message);
     } finally {
       setUploadingImage(false);
@@ -541,11 +590,31 @@ const AudioBlockEditor = ({ block, onChange }) => (
   </div>
 );
 
-// 9. SENTENCE REORDER EDITOR
+// 9. MULTI-SENTENCE REORDER EDITOR
 const SentenceReorderEditor = ({ block, onChange }) => {
-  const words = (block.sentence || '').trim().split(' ').filter(Boolean);
+  const sentences = Array.isArray(block.sentences) && block.sentences.length > 0 
+    ? block.sentences 
+    : (block.sentence ? [block.sentence] : ['Consistent practice builds conversational fluency.']);
+
+  const updateSentence = (idx, text) => {
+    const updated = [...sentences];
+    updated[idx] = text;
+    onChange({ ...block, sentences: updated, sentence: updated[0] || '' });
+  };
+
+  const addSentence = () => {
+    const updated = [...sentences, 'New target sentence to unscramble.'];
+    onChange({ ...block, sentences: updated, sentence: updated[0] || '' });
+  };
+
+  const removeSentence = (idx) => {
+    if (sentences.length <= 1) return;
+    const updated = sentences.filter((_, i) => i !== idx);
+    onChange({ ...block, sentences: updated, sentence: updated[0] || '' });
+  };
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <input
         type="text"
         value={block.instruction || ''}
@@ -553,30 +622,61 @@ const SentenceReorderEditor = ({ block, onChange }) => {
         placeholder="Instruction..."
         className="p-2 border rounded-xl text-xs w-full"
       />
-      <input
-        type="text"
-        value={block.sentence || ''}
-        onChange={e => onChange({ ...block, sentence: e.target.value })}
-        placeholder="Target sentence (e.g. She had never seen such a dress before.)..."
-        className="p-2.5 border rounded-xl text-sm font-bold w-full"
-      />
-      {words.length > 0 && (
-        <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
-          <label className="text-[10px] font-bold text-slate-400 uppercase">Слова для перемешивания:</label>
-          <div className="flex flex-wrap gap-1.5">
-            {words.map((w, i) => (
-              <span key={i} className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-indigo-700">
-                {w}
-              </span>
-            ))}
-          </div>
+
+      <div className="space-y-3">
+        <div className="flex justify-between items-center">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            Предложения для сборки ({sentences.length}):
+          </label>
+          <span className="text-[11px] text-slate-400 font-medium">Рекомендуется: 8–14 слов на предложение</span>
         </div>
-      )}
+
+        {sentences.map((sent, i) => {
+          const words = String(sent || '').trim().split(' ').filter(Boolean);
+          return (
+            <div key={i} className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <div className="flex gap-2 items-center">
+                <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center shrink-0">
+                  {i + 1}
+                </span>
+                <input
+                  type="text"
+                  value={sent}
+                  onChange={e => updateSentence(i, e.target.value)}
+                  placeholder="Target sentence..."
+                  className="p-2 border rounded-xl text-xs flex-1 bg-white font-bold text-slate-800"
+                />
+                {sentences.length > 1 && (
+                  <button onClick={() => removeSentence(i)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>
+                )}
+              </div>
+
+              {words.length > 0 && (
+                <div className="flex flex-wrap gap-1 pl-8">
+                  {words.map((w, wIdx) => (
+                    <span key={wIdx} className="px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-bold text-indigo-700 shadow-2xs">
+                      {w}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <button
+          type="button"
+          onClick={addSentence}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 cursor-pointer transition shadow-2xs"
+        >
+          + Добавить предложение
+        </button>
+      </div>
     </div>
   );
 };
 
-// 10. CATEGORIZATION / BUCKETS EDITOR
+// 10. CATEGORIZATION EDITOR
 const CategorizationEditor = ({ block, onChange }) => {
   const categories = block.categories || ['Категория 1', 'Категория 2'];
   const items = block.items || [];
@@ -667,13 +767,73 @@ const CategorizationEditor = ({ block, onChange }) => {
   );
 };
 
+// 11. LINK / EMBED BLOCK EDITOR
+const LinkBlockEditor = ({ block, onChange }) => (
+  <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+    <div className="flex items-center gap-2">
+      <span className="text-base">🔗</span>
+      <h5 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
+        Веб-ссылка и Окно Просмотра
+      </h5>
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <input
+        type="text"
+        value={block.title || ''}
+        onChange={e => onChange({ ...block, title: e.target.value })}
+        placeholder="Заголовок ресурса (напр. BBC Article)..."
+        className="p-2.5 bg-white border rounded-xl text-xs font-bold"
+      />
+      <input
+        type="text"
+        value={block.url || ''}
+        onChange={e => onChange({ ...block, url: e.target.value })}
+        placeholder="URL адрес (https://...)..."
+        className="p-2.5 bg-white border rounded-xl text-xs font-mono"
+      />
+    </div>
+    <input
+      type="text"
+      value={block.description || ''}
+      onChange={e => onChange({ ...block, description: e.target.value })}
+      placeholder="Описание или инструкция для ученика..."
+      className="w-full p-2 bg-white border rounded-xl text-xs font-medium"
+    />
+    <div className="flex gap-4 items-center text-xs font-bold text-slate-700 pt-1">
+      <span>Режим открытия:</span>
+      <label className="flex items-center gap-1.5 cursor-pointer">
+        <input
+          type="radio"
+          name={`link-mode-${block.id}`}
+          checked={block.displayMode !== 'new_tab'}
+          onChange={() => onChange({ ...block, displayMode: 'modal' })}
+          className="accent-indigo-600"
+        />
+        <span>Плавающее окно (Hover Modal)</span>
+      </label>
+      <label className="flex items-center gap-1.5 cursor-pointer">
+        <input
+          type="radio"
+          name={`link-mode-${block.id}`}
+          checked={block.displayMode === 'new_tab'}
+          onChange={() => onChange({ ...block, displayMode: 'new_tab' })}
+          className="accent-indigo-600"
+        />
+        <span>Новая вкладка (New Tab)</span>
+      </label>
+    </div>
+  </div>
+);
+
 // MAIN EDITABLE BLOCK CARD ROUTER
 export const EditableBlockCard = ({ block, onChange }) => {
   if (!block || typeof block !== 'object') {
     return <p className="text-xs text-slate-400 font-medium">Invalid block data.</p>;
   }
 
-  if (block.type === 'heading') {
+  const type = normalizeBlockType(block.type);
+
+  if (type === 'heading') {
     return (
       <div className="flex gap-2 items-center">
         <select
@@ -696,47 +856,19 @@ export const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  if (block.type === 'text') {
-    return <TextBlockEditor block={block} onChange={onChange} />;
-  }
+  if (type === 'text') return <TextBlockEditor block={block} onChange={onChange} />;
+  if (type === 'grammar_card') return <GrammarCardEditor block={block} onChange={onChange} />;
+  if (type === 'teacher_notes') return <TeacherNotesEditor block={block} onChange={onChange} />;
+  if (type === 'inline_select') return <InlineSelectEditor block={block} onChange={onChange} />;
+  if (type === 'spinning_wheel') return <SpinningWheelEditor block={block} onChange={onChange} />;
+  if (type === 'image') return <ImageBlockEditor block={block} onChange={onChange} />;
+  if (type === 'video') return <VideoBlockEditor block={block} onChange={onChange} />;
+  if (type === 'audio') return <AudioBlockEditor block={block} onChange={onChange} />;
+  if (type === 'link') return <LinkBlockEditor block={block} onChange={onChange} />;
+  if (type === 'sentence_reorder') return <SentenceReorderEditor block={block} onChange={onChange} />;
+  if (type === 'categorization') return <CategorizationEditor block={block} onChange={onChange} />;
 
-  if (block.type === 'grammar_card') {
-    return <GrammarCardEditor block={block} onChange={onChange} />;
-  }
-
-  if (block.type === 'teacher_notes') {
-    return <TeacherNotesEditor block={block} onChange={onChange} />;
-  }
-
-  if (block.type === 'inline_select') {
-    return <InlineSelectEditor block={block} onChange={onChange} />;
-  }
-
-  if (block.type === 'spinning_wheel') {
-    return <SpinningWheelEditor block={block} onChange={onChange} />;
-  }
-
-  if (block.type === 'image') {
-    return <ImageBlockEditor block={block} onChange={onChange} />;
-  }
-
-  if (block.type === 'video') {
-    return <VideoBlockEditor block={block} onChange={onChange} />;
-  }
-
-  if (block.type === 'audio') {
-    return <AudioBlockEditor block={block} onChange={onChange} />;
-  }
-
-  if (block.type === 'sentence_reorder') {
-    return <SentenceReorderEditor block={block} onChange={onChange} />;
-  }
-
-  if (block.type === 'categorization') {
-    return <CategorizationEditor block={block} onChange={onChange} />;
-  }
-
-  if (block.type === 'flashcards') {
+  if (type === 'flashcards') {
     const cards = Array.isArray(block.cards) ? block.cards : [];
     const updateCard = (idx, field, val) => {
       const updated = [...cards];
@@ -757,27 +889,27 @@ export const EditableBlockCard = ({ block, onChange }) => {
         />
         <div className="space-y-2">
           {cards.map((c, i) => (
-            <div key={i} className="flex gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            <div key={i} className="flex flex-col sm:flex-row gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
               <input
                 type="text"
                 value={c.front || ''}
                 onChange={e => updateCard(i, 'front', e.target.value)}
                 placeholder="Target Word..."
-                className="p-2 border rounded-lg text-xs w-1/3 font-bold bg-white"
+                className="p-2 border rounded-lg text-xs w-full sm:w-1/3 font-bold bg-white"
               />
               <input
                 type="text"
                 value={c.back || ''}
                 onChange={e => updateCard(i, 'back', e.target.value)}
-                placeholder="Translation / Definition..."
-                className="p-2 border rounded-lg text-xs w-1/3 bg-white"
+                placeholder="Translation..."
+                className="p-2 border rounded-lg text-xs w-full sm:w-1/3 bg-white text-indigo-700 font-semibold"
               />
               <input
                 type="text"
                 value={c.example || ''}
                 onChange={e => updateCard(i, 'example', e.target.value)}
                 placeholder="Context Example Sentence..."
-                className="p-2 border rounded-lg text-xs w-1/3 italic bg-white"
+                className="p-2 border rounded-lg text-xs w-full sm:w-1/3 italic bg-white"
               />
               <button onClick={() => removeCard(i)} className="text-red-500 font-bold px-2 cursor-pointer">✕</button>
             </div>
@@ -788,8 +920,10 @@ export const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  if (block.type === 'multiple_choice') {
-    const options = Array.isArray(block.options) ? block.options : ['Option A', 'Option B'];
+  if (type === 'multiple_choice') {
+    const rawOptions = Array.isArray(block.options) ? block.options : ['Option A', 'Option B'];
+    const options = rawOptions.map(opt => typeof opt === 'object' && opt !== null ? (opt.text || opt.option || JSON.stringify(opt)) : String(opt));
+
     const updateOpt = (idx, val) => {
       const updated = [...options];
       updated[idx] = val;
@@ -833,7 +967,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  if (block.type === 'gap_fill') {
+  if (type === 'gap_fill') {
     return (
       <div className="space-y-2">
         <input
@@ -848,12 +982,12 @@ export const EditableBlockCard = ({ block, onChange }) => {
           value={block.text || ''}
           onChange={e => {
             const textVal = e.target.value;
-            const matches = [...textVal.matchAll(/\[(.*?)\]/g)].map(m => m[1].trim());
+            const matches = [...textVal.matchAll(/\[(.*?)\]/g)]
+              .map(m => m[1].trim())
+              .filter(w => !/^[-_.\s]+$/.test(w));
             onChange({ ...block, text: textVal, answers: matches });
           }}
-          placeholder="Sentences with gaps in brackets:
-1. Yesterday she [went] to school.
-2. They [have seen] this movie before."
+          placeholder="Sentences with gaps in brackets:&#10;1. Yesterday she [went] to school.&#10;2. They [have seen] this movie before."
           className="p-2.5 border rounded-xl text-sm font-medium w-full font-mono leading-relaxed"
         ></textarea>
         <p className="text-[11px] text-slate-400">Распознанные ответы: <strong className="text-indigo-600 font-bold">{block.answers?.join(', ') || 'нет'}</strong></p>
@@ -861,7 +995,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  if (block.type === 'gap_fill_bank') {
+  if (type === 'gap_fill_bank') {
     const distractors = Array.isArray(block.distractors) ? block.distractors : [];
     return (
       <div className="space-y-3">
@@ -883,21 +1017,21 @@ export const EditableBlockCard = ({ block, onChange }) => {
           type="text"
           value={distractors.join(', ')}
           onChange={e => onChange({ ...block, distractors: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="Distractor words (comma separated): was, Paris, tomorrow..."
+          placeholder="Distractor words (comma separated): barrier, hesitation, distraction..."
           className="p-2 border rounded-xl text-xs w-full text-amber-800 bg-amber-50/50"
         />
       </div>
     );
   }
 
-  if (block.type === 'matching') {
+  if (type === 'matching') {
     const pairs = Array.isArray(block.pairs) ? block.pairs : [];
     const updatePair = (idx, field, val) => {
       const updated = [...pairs];
       updated[idx] = { ...updated[idx], [field]: val };
       onChange({ ...block, pairs: updated });
     };
-    const addPair = () => onChange({ ...block, pairs: [...pairs, { left: 'Word', right: 'Match' }] });
+    const addPair = () => onChange({ ...block, pairs: [...pairs, { left: 'Word', right: 'Definition' }] });
     const removePair = (idx) => onChange({ ...block, pairs: pairs.filter((_, i) => i !== idx) });
 
     return (
@@ -936,7 +1070,7 @@ export const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  if (block.type === 'open_input') {
+  if (type === 'open_input') {
     return (
       <div className="space-y-2">
         <input
@@ -950,5 +1084,15 @@ export const EditableBlockCard = ({ block, onChange }) => {
     );
   }
 
-  return <p className="text-xs text-slate-500">Configure block options as needed.</p>;
+  return (
+    <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1">
+      <span className="font-bold text-slate-600">Block Content:</span>
+      <textarea
+        rows="3"
+        value={block.text || block.content || JSON.stringify(block)}
+        onChange={e => onChange({ ...block, text: e.target.value })}
+        className="w-full p-2 bg-white border rounded-lg"
+      ></textarea>
+    </div>
+  );
 };
