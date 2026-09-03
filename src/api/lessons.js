@@ -42,35 +42,55 @@ export async function getLessons(env, filters = {}) {
   await ensureTables(env);
   const { level = '', folder = '', search = '' } = filters;
 
-  let query = "SELECT id, title, level, topic, description, folder_name, created_at FROM lessons WHERE 1=1";
-  const params = [];
+  try {
+    let query = "SELECT id, title, level, topic, description, folder_name, created_at FROM lessons WHERE 1=1";
+    const params = [];
 
-  if (level) {
-    query += " AND level = ?";
-    params.push(level);
+    if (level) {
+      query += " AND level = ?";
+      params.push(level);
+    }
+    if (folder) {
+      query += " AND folder_name = ?";
+      params.push(folder);
+    }
+    if (search) {
+      query += " AND (title LIKE ? OR topic LIKE ? OR description LIKE ?)";
+      const wildcard = `%${search}%`;
+      params.push(wildcard, wildcard, wildcard);
+    }
+
+    query += " ORDER BY created_at DESC";
+
+    const stmt = env.DB.prepare(query);
+    const { results } = params.length > 0 ? await stmt.bind(...params).all() : await stmt.all();
+
+    return (results || []).map(r => ({
+      ...r,
+      folder_name: r.folder_name || ''
+    }));
+  } catch (err) {
+    // Graceful fallback for legacy databases without folder_name column
+    try {
+      const { results } = await env.DB.prepare(
+        "SELECT id, title, level, topic, description, created_at FROM lessons ORDER BY created_at DESC"
+      ).all();
+      return (results || []).map(r => ({ ...r, folder_name: '' }));
+    } catch (e2) {
+      console.error("D1 getLessons fallback error:", e2);
+      return [];
+    }
   }
-  if (folder) {
-    query += " AND folder_name = ?";
-    params.push(folder);
-  }
-  if (search) {
-    query += " AND (title LIKE ? OR topic LIKE ? OR description LIKE ?)";
-    const wildcard = `%${search}%`;
-    params.push(wildcard, wildcard, wildcard);
-  }
-
-  query += " ORDER BY created_at DESC";
-
-  const stmt = env.DB.prepare(query);
-  const { results } = params.length > 0 ? await stmt.bind(...params).all() : await stmt.all();
-
-  return results || [];
 }
 
 export async function getFolders(env) {
   await ensureTables(env);
-  const { results } = await env.DB.prepare("SELECT id, name, created_at FROM folders ORDER BY name ASC").all();
-  return results || [];
+  try {
+    const { results } = await env.DB.prepare("SELECT id, name, created_at FROM folders ORDER BY name ASC").all();
+    return results || [];
+  } catch (e) {
+    return [];
+  }
 }
 
 export async function createFolder(env, name) {
@@ -89,8 +109,12 @@ export async function createFolder(env, name) {
 
 export async function deleteFolder(env, folderId) {
   await ensureTables(env);
-  await env.DB.prepare("DELETE FROM folders WHERE id = ?").bind(folderId).run();
-  return { success: true };
+  try {
+    await env.DB.prepare("DELETE FROM folders WHERE id = ?").bind(folderId).run();
+    return { success: true };
+  } catch (e) {
+    return { error: e.message };
+  }
 }
 
 export async function saveLesson(env, lesson, password) {
@@ -104,34 +128,62 @@ export async function saveLesson(env, lesson, password) {
   const id = lesson.id || 'lesson-' + Date.now();
   const jsonString = JSON.stringify(lesson);
 
-  await env.DB.prepare(`
-    INSERT INTO lessons (id, author_id, folder_name, title, level, topic, description, data) 
-    VALUES (?, 'teacher', ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET 
-      folder_name = excluded.folder_name,
-      title = excluded.title, 
-      level = excluded.level, 
-      topic = excluded.topic, 
-      description = excluded.description, 
-      data = excluded.data
-  `).bind(
-    id,
-    lesson.folder_name || '',
-    lesson.title || 'Untitled', 
-    lesson.level || 'B1', 
-    lesson.topic || 'General', 
-    lesson.description || '', 
-    jsonString
-  ).run();
+  try {
+    await env.DB.prepare(`
+      INSERT INTO lessons (id, author_id, folder_name, title, level, topic, description, data) 
+      VALUES (?, 'teacher', ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET 
+        folder_name = excluded.folder_name,
+        title = excluded.title, 
+        level = excluded.level, 
+        topic = excluded.topic, 
+        description = excluded.description, 
+        data = excluded.data
+    `).bind(
+      id,
+      lesson.folder_name || '',
+      lesson.title || 'Untitled', 
+      lesson.level || 'B1', 
+      lesson.topic || 'General', 
+      lesson.description || '', 
+      jsonString
+    ).run();
+  } catch (e) {
+    // Fallback if folder_name column isn't migrated yet
+    await env.DB.prepare(`
+      INSERT INTO lessons (id, title, level, topic, description, data) 
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET 
+        title = excluded.title, 
+        level = excluded.level, 
+        topic = excluded.topic, 
+        description = excluded.description, 
+        data = excluded.data
+    `).bind(
+      id,
+      lesson.title || 'Untitled', 
+      lesson.level || 'B1', 
+      lesson.topic || 'General', 
+      lesson.description || '', 
+      jsonString
+    ).run();
+  }
 
   return { success: true, id };
 }
 
 export async function getSingleLesson(env, lessonId) {
   await ensureTables(env);
-  const row = await env.DB.prepare(
-    "SELECT data, title, level, topic, description, folder_name FROM lessons WHERE id = ?"
-  ).bind(lessonId).first();
+  let row = null;
+  try {
+    row = await env.DB.prepare(
+      "SELECT data, title, level, topic, description, folder_name FROM lessons WHERE id = ?"
+    ).bind(lessonId).first();
+  } catch (e) {
+    row = await env.DB.prepare(
+      "SELECT data, title, level, topic, description FROM lessons WHERE id = ?"
+    ).bind(lessonId).first();
+  }
 
   if (!row) return null;
 
@@ -192,7 +244,6 @@ export async function deleteLesson(env, lessonId, password) {
     return { error: "Неверный пароль учителя!" };
   }
 
-  // Cascading cleanup
   await env.DB.batch([
     env.DB.prepare("DELETE FROM homework_submissions WHERE lesson_id = ?").bind(lessonId),
     env.DB.prepare("DELETE FROM room_states WHERE room_id = ? OR lesson_id = ?").bind(lessonId, lessonId),
