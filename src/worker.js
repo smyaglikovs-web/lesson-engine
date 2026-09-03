@@ -1,7 +1,16 @@
 import { ensureTables } from './db/schema.js';
-import { verifyTeacherLogin, getLessons, saveLesson, getSingleLesson, deleteLesson } from './api/lessons.js';
+import { 
+  verifyTeacherLogin, 
+  getLessons, 
+  saveLesson, 
+  getSingleLesson, 
+  deleteLesson,
+  getFolders,
+  createFolder,
+  deleteFolder 
+} from './api/lessons.js';
 import { generateFullLessonWithAI, transformBlockWithAI, fetchYouTubeTranscriptNative } from './api/ai.js';
-import { submitHomework, getHomeworkSubmissions } from './api/homework.js';
+import { submitHomework, getHomeworkSubmissions, getStudentsDirectory } from './api/homework.js';
 import { 
   createRoomSession, 
   getRoomState, 
@@ -66,9 +75,36 @@ export default {
         return jsonResponse({ success: false, message: 'Subtitles not found.' });
       }
 
-      // LESSONS
+      // FOLDERS
+      if (path === '/api/folders' && method === 'GET') {
+        const list = await getFolders(env);
+        return jsonResponse(list);
+      }
+
+      if (path === '/api/folders' && method === 'POST') {
+        const { name } = await request.json();
+        const res = await createFolder(env, name);
+        return res.error ? jsonResponse({ error: res.error }, 400) : jsonResponse(res);
+      }
+
+      if (path.startsWith('/api/folders/') && method === 'DELETE') {
+        const folderId = path.split('/')[3];
+        const res = await deleteFolder(env, folderId);
+        return jsonResponse(res);
+      }
+
+      // STUDENTS CRM DIRECTORY
+      if (path === '/api/students' && method === 'GET') {
+        const students = await getStudentsDirectory(env);
+        return jsonResponse(students);
+      }
+
+      // LESSONS (WITH LEVEL, FOLDER & SEARCH PARAMS)
       if (path === '/api/lessons' && method === 'GET') {
-        const list = await getLessons(env);
+        const level = url.searchParams.get('level') || '';
+        const folder = url.searchParams.get('folder') || '';
+        const search = url.searchParams.get('search') || '';
+        const list = await getLessons(env, { level, folder, search });
         return jsonResponse(list);
       }
 
@@ -106,7 +142,7 @@ export default {
         return jsonResponse(list);
       }
 
-      // ROOMS & REAL-TIME SESSIONS
+      // ROOMS
       if (path === '/api/rooms/create' && method === 'POST') {
         const { lessonId } = await request.json();
         if (!lessonId) return jsonResponse({ error: 'Lesson ID is required' }, 400);
