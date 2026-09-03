@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TeacherHeader } from './components/TeacherHeader.jsx';
 import { TeacherAuthModal } from './components/TeacherAuthModal.jsx';
 import { LibraryView } from './components/LibraryView.jsx';
+import { StudentsView } from './components/StudentsView.jsx';
 import { CreateLessonView } from './components/CreateLessonView.jsx';
 import { AIPromptsView } from './components/AIPromptsView.jsx';
 import { RoomView } from './components/RoomView.jsx';
@@ -120,7 +121,6 @@ export default function App() {
     setIsAuthenticated(false);
   };
 
-  // Launch a new Ephemeral Live Classroom Session
   const handleLaunchClassroom = async (lessonId) => {
     try {
       const res = await fetch('/api/rooms/create', {
@@ -249,6 +249,10 @@ export default function App() {
             onDeleteLesson={handleDeleteLesson}
             onViewSubmissions={l => setViewSubmissionsLesson(l)}
           />
+        )}
+
+        {view === 'students' && isTeacher && isAuthenticated && (
+          <StudentsView />
         )}
 
         {view === 'vocab' && isTeacher && isAuthenticated && (
