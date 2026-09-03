@@ -52,6 +52,9 @@ export default {
         return res.success ? jsonResponse(res) : jsonResponse({ error: 'Invalid password' }, 401);
       }
 
+      // EVALUATE TEACHER AUTHORIZATION FOR SECURED ENDPOINTS
+      const isTeacherAuthorized = await isRequestAuthorized(request, env);
+
       // AI ENDPOINTS (RATE LIMITED)
       if (path.startsWith('/api/ai/')) {
         const rateCheck = checkRateLimit(clientIp, 25, 60000);
@@ -72,8 +75,12 @@ export default {
         }
       }
 
-      // AI OPEN INPUT ESSAY EVALUATION
+      // AI OPEN INPUT ESSAY EVALUATION (RATE-LIMITED & TEACHER-GUARDED)
       if (path === '/api/homework/evaluate-open-input' && method === 'POST') {
+        const rateCheck = checkRateLimit(clientIp, 20, 60000);
+        if (!rateCheck.allowed) {
+          return jsonResponse({ error: `Лимит запросов исчерпан. Подождите ${rateCheck.resetInSeconds} сек.` }, 429);
+        }
         const payload = await request.json();
         const evaluation = await evaluateOpenInputWithAI(env, payload);
         return jsonResponse(evaluation);
@@ -111,8 +118,6 @@ export default {
       }
 
       // TEACHER-PROTECTED MUTATING ENDPOINTS (JWT SECURED)
-      const isTeacherAuthorized = await isRequestAuthorized(request, env);
-
       if (path === '/api/lessons' && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход' }, 403);
         const lesson = await request.json();
@@ -154,14 +159,16 @@ export default {
         return jsonResponse(list);
       }
 
-      // PUBLIC HOMEWORK & ROOMS
+      // PUBLIC HOMEWORK SUBMISSION
       if (path === '/api/homework/submit' && method === 'POST') {
         const payload = await request.json();
         const res = await submitHomework(env, payload);
         return jsonResponse(res);
       }
 
+      // CLASSROOM ROOM SESSION ENDPOINTS
       if (path === '/api/rooms/create' && method === 'POST') {
+        if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const { lessonId } = await request.json();
         if (!lessonId) return jsonResponse({ error: 'Lesson ID is required' }, 400);
         const res = await createRoomSession(env, lessonId);
@@ -174,13 +181,24 @@ export default {
         return jsonResponse(state);
       }
 
+      // BROADCAST (TEACHER-PROTECTED)
       if (path.match(/\/api\/rooms\/[^/]+\/broadcast$/) && method === 'POST') {
+        if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const roomId = path.split('/')[3];
         const payload = await request.json();
         const res = await updateTeacherBroadcast(env, roomId, payload);
         return jsonResponse(res);
       }
 
+      // RESET ROOM (TEACHER-PROTECTED)
+      if (path.match(/\/api\/rooms\/[^/]+\/reset$/) && method === 'POST') {
+        if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
+        const roomId = path.split('/')[3];
+        const res = await resetRoomState(env, roomId);
+        return jsonResponse(res);
+      }
+
+      // STUDENT PARTICIPATION (PUBLIC)
       if (path.match(/\/api\/rooms\/[^/]+\/heartbeat$/) && method === 'POST') {
         const roomId = path.split('/')[3];
         const { studentId, studentName } = await request.json();
@@ -192,12 +210,6 @@ export default {
         const roomId = path.split('/')[3];
         const { studentId, blockId, answer } = await request.json();
         const res = await saveStudentAnswer(env, roomId, studentId, blockId, answer);
-        return jsonResponse(res);
-      }
-
-      if (path.match(/\/api\/rooms\/[^/]+\/reset$/) && method === 'POST') {
-        const roomId = path.split('/')[3];
-        const res = await resetRoomState(env, roomId);
         return jsonResponse(res);
       }
 
