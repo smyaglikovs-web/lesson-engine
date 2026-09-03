@@ -23,8 +23,11 @@ export default function App() {
   const [roomId, setRoomId] = useState('');
   const [viewSubmissionsLesson, setViewSubmissionsLesson] = useState(null);
 
-  const getAuthPassword = () => {
-    return localStorage.getItem('teacher_pass') || 'teacher123';
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('teacher_jwt');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
   };
 
   const fetchLessons = async () => {
@@ -43,8 +46,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    const authSaved = localStorage.getItem('teacher_auth') === 'true';
-    if (authSaved) {
+    const token = localStorage.getItem('teacher_jwt');
+    if (token) {
       setIsAuthenticated(true);
       setIsTeacher(true);
       fetchLessons();
@@ -72,7 +75,7 @@ export default function App() {
     }
 
     if (activeRoomId) {
-      const teacher = roleParam === 'teacher' && authSaved;
+      const teacher = roleParam === 'teacher' && !!token;
       setIsTeacher(teacher);
       openRoomSession(activeRoomId, teacher);
       return;
@@ -84,25 +87,16 @@ export default function App() {
   const handleTeacherLogin = async (passwordInput) => {
     const clean = (passwordInput || '').trim();
 
-    if (clean === 'teacher123') {
-      localStorage.setItem('teacher_auth', 'true');
-      localStorage.setItem('teacher_pass', clean);
-      setIsAuthenticated(true);
-      setIsTeacher(true);
-      setLoginError(false);
-      fetchLessons();
-      return;
-    }
-
     try {
       const res = await fetch('/api/teacher/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: clean })
       });
-      if (res.ok) {
-        localStorage.setItem('teacher_auth', 'true');
-        localStorage.setItem('teacher_pass', clean);
+      const data = await res.json();
+
+      if (res.ok && data.token) {
+        localStorage.setItem('teacher_jwt', data.token);
         setIsAuthenticated(true);
         setIsTeacher(true);
         setLoginError(false);
@@ -116,8 +110,7 @@ export default function App() {
   };
 
   const handleTeacherLogout = () => {
-    localStorage.removeItem('teacher_auth');
-    localStorage.removeItem('teacher_pass');
+    localStorage.removeItem('teacher_jwt');
     setIsAuthenticated(false);
   };
 
@@ -192,10 +185,7 @@ export default function App() {
     try {
       const res = await fetch('/api/lessons', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-teacher-password': getAuthPassword()
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(newLesson)
       });
       const data = await res.json();
@@ -218,7 +208,7 @@ export default function App() {
     try {
       const res = await fetch('/api/lessons/' + id, { 
         method: 'DELETE',
-        headers: { 'x-teacher-password': getAuthPassword() }
+        headers: getAuthHeaders()
       });
       const data = await res.json();
       if (res.ok && data.success) fetchLessons();
