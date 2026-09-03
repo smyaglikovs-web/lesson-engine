@@ -28,6 +28,14 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   // Network Sync Debounce Ref
   const debounceTimersRef = useRef({});
 
+  // Helper to attach Teacher JWT for protected mutations
+  const getAuthHeaders = useCallback(() => {
+    const token = localStorage.getItem('teacher_jwt');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
+  }, []);
+
   // Determine Homework mode vs Live Room mode
   const isHomeworkMode = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -149,14 +157,14 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return () => clearInterval(interval);
   }, [roomId, isTeacher, isHomeworkMode]);
 
-  // Broadcast Slide Position to All Students
+  // Broadcast Slide Position to All Students (JWT Authorized)
   const handleBringEveryoneHere = async (targetIdx = safeSlideIdx) => {
     if (!isTeacher || !roomId) return;
     setBroadcastSlideIdx(targetIdx);
     try {
       await fetch(`/api/rooms/${roomId}/broadcast`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           broadcastPage: targetIdx,
           teacherPage: targetIdx,
@@ -218,7 +226,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     try {
       await fetch(`/api/rooms/${roomId}/broadcast`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ notepad: notepadText })
       });
     } catch (e) {}
@@ -232,7 +240,10 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     setIsCompleted(false);
     localStorage.removeItem(`ls_ans_${roomId}`);
     if (isTeacher) {
-      await fetch(`/api/rooms/${roomId}/reset`, { method: 'POST' }).catch(() => {});
+      await fetch(`/api/rooms/${roomId}/reset`, { 
+        method: 'POST',
+        headers: getAuthHeaders()
+      }).catch(() => {});
     }
   };
 
@@ -285,6 +296,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
               className="w-full px-4 py-3 border border-slate-300 rounded-2xl text-center font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <button
+              type="button"
               disabled={!studentName.trim()}
               onClick={handleStartSession}
               className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-sm transition shadow-md disabled:opacity-40 cursor-pointer"
@@ -302,6 +314,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           <h2 className="text-3xl font-extrabold text-slate-900">Урок завершён!</h2>
           <p className="text-slate-600 text-sm font-medium">Ваши ответы сохранены и отправлены преподавателю.</p>
           <button
+            type="button"
             onClick={() => { setIsCompleted(false); setCurrentSlideIdx(0); }}
             className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl text-xs hover:bg-indigo-700 transition cursor-pointer"
           >
@@ -317,6 +330,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
               <div className="space-y-5">
                 {/* BROADCAST CONTROL */}
                 <button
+                  type="button"
                   onClick={() => handleBringEveryoneHere(safeSlideIdx)}
                   className={`w-full py-3 px-4 rounded-2xl font-extrabold text-xs transition flex items-center justify-center gap-2 shadow-sm cursor-pointer ${
                     isSyncNeeded 
@@ -351,6 +365,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                       return (
                         <button
                           key={s.id || idx}
+                          type="button"
                           onClick={() => setCurrentSlideIdx(idx)}
                           className={btnStyle}
                         >
@@ -372,6 +387,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                   </div>
 
                   <button
+                    type="button"
                     onClick={handleCopyStudentLink}
                     className="w-full py-2 px-3 bg-slate-50 hover:bg-indigo-50 border border-slate-200 text-indigo-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
@@ -412,12 +428,14 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
               {/* ACTION FOOTER */}
               <div className="pt-4 border-t border-slate-100 flex gap-2">
                 <button
+                  type="button"
                   onClick={() => setShowNotepad(!showNotepad)}
                   className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
                 >
                   📝 Блокнот
                 </button>
                 <button
+                  type="button"
                   onClick={handleResetRoom}
                   className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold cursor-pointer"
                   title="Сбросить все ответы"
@@ -443,6 +461,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
 
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={onExitRoom}
                     className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
                   >
@@ -456,7 +475,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 <div className="bg-amber-50/90 border border-amber-200 p-4 rounded-2xl space-y-2 shadow-xs animate-fade-in">
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-extrabold text-amber-950 uppercase tracking-wider">📝 Доска заметок и разбора ошибок (Live Scratchpad)</span>
-                    <button onClick={handleSaveNotepad} className="px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-bold cursor-pointer">Сохранить</button>
+                    <button type="button" onClick={handleSaveNotepad} className="px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-bold cursor-pointer">Сохранить</button>
                   </div>
                   <textarea
                     rows="3"
@@ -499,9 +518,9 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                     <span className="text-xs font-bold text-indigo-950">Наградить баллами XP за ответ на этом слайде:</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setXpAward(Math.max(0, xpAward - 1))} className="w-8 h-8 bg-white border rounded-lg font-bold cursor-pointer">-</button>
+                    <button type="button" onClick={() => setXpAward(Math.max(0, xpAward - 1))} className="w-8 h-8 bg-white border rounded-lg font-bold cursor-pointer">-</button>
                     <span className="font-extrabold text-sm px-2 text-indigo-700">{xpAward} XP</span>
-                    <button onClick={() => setXpAward(xpAward + 1)} className="w-8 h-8 bg-white border rounded-lg font-bold cursor-pointer">+</button>
+                    <button type="button" onClick={() => setXpAward(xpAward + 1)} className="w-8 h-8 bg-white border rounded-lg font-bold cursor-pointer">+</button>
                   </div>
                 </div>
               )}
@@ -510,6 +529,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
             {/* BOTTOM SLIDE NAVIGATION CONTROLS */}
             <div className="flex justify-between items-center pt-6">
               <button
+                type="button"
                 disabled={safeSlideIdx === 0}
                 onClick={() => {
                   const prev = Math.max(0, safeSlideIdx - 1);
@@ -523,6 +543,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
 
               {safeSlideIdx < totalSlides - 1 ? (
                 <button
+                  type="button"
                   onClick={() => {
                     const next = Math.min(totalSlides - 1, safeSlideIdx + 1);
                     setCurrentSlideIdx(next);
@@ -534,6 +555,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={handleFinish}
                   className="px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl text-xs transition shadow-md cursor-pointer"
                 >
