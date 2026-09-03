@@ -46,7 +46,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
 }
 
 // --------------------------------------------------------------------------
-// OBJECT-SAFE JSON PARSER
+// OBJECT-SAFE & QUOTE-RESILIENT JSON PARSER
 // --------------------------------------------------------------------------
 export function cleanAndParseJson(rawText) {
   if (!rawText) return null;
@@ -88,6 +88,14 @@ export function cleanAndParseJson(rawText) {
       }
       return JSON.parse(fixed);
     } catch (e2) {
+      const titleMatch = rawText.match(/"title":\s*"([^"]+)"/i);
+      const storyMatch = rawText.match(/"(?:storyText|text|story|passage|content)":\s*"([\s\S]*?)"\s*\}/i);
+      if (storyMatch && storyMatch[1].length > 40) {
+        return {
+          title: titleMatch ? titleMatch[1] : 'Reading Story',
+          storyText: storyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim()
+        };
+      }
       return null;
     }
   }
@@ -306,9 +314,10 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// MULTI-PROVIDER AI INFERENCE PIPELINE
+// MULTI-PROVIDER AI INFERENCE PIPELINE (With Explicit JSON Keywords & Logging)
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
+  // 1. Groq (Fastest & 14,400 free daily requests)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
@@ -321,7 +330,10 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           },
           body: JSON.stringify({
             model: model,
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
+            messages: [
+              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
+              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
+            ],
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
@@ -331,11 +343,17 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           const data = await res.json();
           const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
           if (parsed) return { data: parsed, isFallback: false };
+        } else {
+          const errText = await res.text();
+          console.error(`Groq API Error (${model}) [${res.status}]:`, errText);
         }
-      } catch (e) {}
+      } catch (eGroq) {
+        console.error(`Groq Exception (${model}):`, eGroq?.message || eGroq);
+      }
     }
   }
 
+  // 2. Gemini (Secondary Fallback)
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -345,8 +363,8 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: userContent }] }],
+            systemInstruction: { parts: [{ text: `${systemPrompt}\nOutput valid JSON only.` }] },
+            contents: [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }],
             generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
           })
         }, 12000);
@@ -355,11 +373,17 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           const gData = await gRes.json();
           const parsed = cleanAndParseJson(gData?.candidates?.[0]?.content?.parts?.[0]?.text);
           if (parsed) return { data: parsed, isFallback: false };
+        } else {
+          const gErrText = await gRes.text();
+          console.error(`Gemini API Error (${gModel}) [${gRes.status}]:`, gErrText);
         }
-      } catch (eG) {}
+      } catch (eG) {
+        console.error(`Gemini Exception (${gModel}):`, eG?.message || eG);
+      }
     }
   }
 
+  // 3. Cloudflare Workers AI Native Binding
   if (env.AI) {
     const cfModels = [
       '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
@@ -369,8 +393,8 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
       try {
         const resCf = await env.AI.run(cfModel, {
           messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userContent }
+            { role: 'system', content: `${systemPrompt}\nReturn a valid JSON object.` },
+            { role: 'user', content: `${userContent}\nReturn valid JSON.` }
           ],
           temperature: 0.2,
           max_tokens: Math.min(maxTokens, 2048)
@@ -386,7 +410,9 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             if (parsedCf) return { data: parsedCf, isFallback: false };
           }
         }
-      } catch (eCf) {}
+      } catch (eCf) {
+        console.error(`Workers AI Exception (${cfModel}):`, eCf?.message || eCf);
+      }
     }
   }
 
@@ -564,18 +590,37 @@ Every vocabulary item MUST have a UNIQUE, natural example sentence (10-14 words 
 You are an award-winning ELT graded reader writer.
 Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
-Target vocabulary: ${wordsToWeave}
+Target vocabulary to weave in naturally: ${wordsToWeave}
 
-Write a rich 240-300 word educational story/passage for this lesson strictly adapted to CEFR ${level}.
+Write an engaging, rich 250-320 word educational story/reading passage for this lesson strictly adapted to CEFR ${level}.
+CRITICAL JSON FORMAT RULE: Inside the "storyText" string, NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy', 'Blurryface') for titles, albums, character names, or dialogue.
 
 [OUTPUT FORMAT]
 {
   "title": "${resolvedTopic}",
-  "storyText": "Complete 240-300 word reading passage here..."
+  "storyText": "Complete 250-320 word reading passage here..."
 }`;
 
-  const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${resolvedTopic}\nContext: ${audienceContext}\nNotes: ${text.substring(0, 400)}`, 1400);
-  const storyText = stage2Result.data?.storyText || `${resolvedTopic} is an essential part of modern communication. By exploring key vocabulary and structures, learners develop natural conversational fluency.`;
+  const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${resolvedTopic}\nContext: ${audienceContext}\nNotes: ${text.substring(0, 400)}`, 1600);
+
+  let storyText = stage2Result.data?.storyText 
+    || stage2Result.data?.text 
+    || stage2Result.data?.story 
+    || stage2Result.data?.passage 
+    || stage2Result.data?.content;
+
+  if (!storyText || storyText.length < 60) {
+    if (typeof stage2Result.data === 'string' && stage2Result.data.length > 60) {
+      storyText = stage2Result.data;
+    } else {
+      const w1 = profile.targetWords[0]?.front || 'concept';
+      const w2 = profile.targetWords[1]?.front || 'perspective';
+      const w3 = profile.targetWords[2]?.front || 'significance';
+      const w4 = profile.targetWords[3]?.front || 'outcome';
+
+      storyText = `${resolvedTopic} represents a compelling narrative that continues to resonate with audiences around the world. At its heart, the story explores deep emotional landscapes, encouraging individuals to confront their vulnerabilities and find strength through creative expression. By examining the overarching themes, listeners and readers uncover symbolic layers that mirror real-world personal struggles.\n\nThroughout the journey of ${resolvedTopic}, pivotal ideas such as ${w1} and ${w2} play an essential role in guiding the characters forward. Rather than providing easy solutions, the narrative challenges conventional wisdom, emphasizing that true growth requires patience, reflection, and dedication. The cultural ${w3} of this narrative extends far beyond entertainment, inspiring a dedicated community to discuss and analyze its intricate details.\n\nUltimately, immersing oneself in ${resolvedTopic} offers valuable lessons about resilience, identity, and shared purpose. By exploring these themes through rich metaphors and dynamic storytelling, learners can expand their vocabulary while engaging with meaningful philosophical concepts. The positive ${w4} of this journey demonstrates the enduring power of art to unite people and inspire transformative change.`;
+    }
+  }
 
   // STAGE 3: Parallel Task Synthesis
   const tasksToGenerate = Array.isArray(selectedTasks) && selectedTasks.length > 0 
@@ -701,7 +746,6 @@ CRITICAL TASK SCHEMAS:
     });
   }
 
-  // ACCURATE WRAP-UP TASK SELECTION
   if (finalTask === 'writing') {
     assembledLesson.pages.push({
       id: 'p_production',
@@ -744,7 +788,7 @@ CRITICAL TASK SCHEMAS:
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Context-Dense Chunking & Video Intelligence)
+// 1-CLICK BLOCK AI ASSISTANT
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -770,14 +814,11 @@ export async function transformBlockWithAI(env, payload) {
 
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   
-  // Clean raw context
   let rawContext = sourceText || sourceBlock.text || sourceBlock.transcript || sourceBlock.title || sourceBlock.explanation || JSON.stringify(sourceBlock);
   let safeContext = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  // SMART CHUNKING: Condense large transcripts (>2800 chars) to preserve the most concept-dense theological/philosophical arguments
   if (safeContext.length > 2800) {
     const titleHeader = sourceBlock.title ? `Video Title: ${sourceBlock.title}. ` : '';
-    // Select the key conceptual core of the talk (Noetic faculty, theoria, hesychasm, ascetic practice)
     const startPortion = safeContext.slice(0, 1400);
     const middlePortion = safeContext.slice(2000, 3500);
     safeContext = `${titleHeader}${startPortion} [...] ${middlePortion}`;
@@ -785,18 +826,17 @@ export async function transformBlockWithAI(env, payload) {
 
   let tasksInstructions = '';
 
-  // 1. VIDEO & LECTURE COMPREHENSION MULTIPLE CHOICE
+  // 1. COMPREHENSION MULTIPLE CHOICE
   if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
     tasksInstructions += `
-- GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key theological, psychological, or conceptual arguments in the material (e.g. Christian psychotherapy, noetic faculty/nous, asceticism, hesychasm, theology as therapy).
-  Each question MUST test an idea actually explained in the talk.
+- GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key arguments and concepts in the material.
   Schema: { "type": "multiple_choice", "question": "Question testing a specific teaching from the context?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
   }
 
-  // 2. VIDEO TRUE / FALSE QUESTIONS
+  // 2. TRUE / FALSE QUESTIONS
   if (actions.includes('true_false')) {
     tasksInstructions += `
-- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the speaker's specific claims (e.g. Nous restoration, baptism as illumination, role of asceticism, theology vs philosophy).
+- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the content claims.
   Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the lecture." }`;
   }
 
@@ -807,7 +847,7 @@ export async function transformBlockWithAI(env, payload) {
       : 'The "back" key MUST be a clear, concise English definition.';
 
     tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 high-yield theological, psychological, or academic terms found in the material (e.g., Noetic, Asceticism, Hesychasm, Epistemology, Therapy, Illumination).
+- GENERATE 1 "flashcards" block with 6 high-yield terms found in the material.
   CRITICAL: ${backLang}
   CRITICAL: Each card MUST have an authentic 10-14 word example sentence illustrating its meaning in context.
   Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "term", "back": "translation or definition", "example": "Context sentence." } ] }`;
@@ -975,7 +1015,7 @@ ${tasksInstructions}
     });
 
     // ----------------------------------------------------------------------
-    // ZERO-FAILURE CONTEXTUAL GENERATOR (Grounded in Specific Theological Ideas)
+    // ZERO-FAILURE CONTEXTUAL GENERATOR
     // ----------------------------------------------------------------------
     if (cleanBlocks.length === 0) {
       if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
@@ -1043,37 +1083,22 @@ ${tasksInstructions}
         cleanBlocks = [
           {
             type: 'flashcards',
-            title: 'Key Theological & Psychological Vocabulary',
+            title: 'Key Vocabulary',
             cards: [
               {
                 front: 'Noetic faculty (Nous)',
-                back: isRussian ? 'Ум / Ноэтическая способность (высшая способность души познавать Бога)' : 'The intuitive spiritual eye of the soul capable of experiencing God.',
+                back: isRussian ? 'Ум / Ноэтическая способность' : 'The intuitive spiritual eye of the soul capable of experiencing God.',
                 example: 'Spiritual therapy aims to purify and restore the damaged noetic faculty of man.'
               },
               {
                 front: 'Hesychasm',
-                back: isRussian ? 'Исихазм (священное безмолвие и умная молитва)' : 'A tradition of inner stillness and contemplative prayer in Christian mysticism.',
+                back: isRussian ? 'Исихазм' : 'A tradition of inner stillness and contemplative prayer.',
                 example: 'Through hesychasm, the heart becomes receptive to the uncreated light of God.'
               },
               {
                 front: 'Asceticism',
-                back: isRussian ? 'Аскетизм / Аскеза (духовное упражнение и воздержание)' : 'Rigorous self-discipline and abstinence used to overcome destructive passions.',
+                back: isRussian ? 'Аскеза' : 'Rigorous self-discipline used to overcome destructive passions.',
                 example: 'Asceticism helps subjugate impulses so the powers of the soul may increase.'
-              },
-              {
-                front: 'Theoria',
-                back: isRussian ? 'Созерцание / Феория (непосредственное видение и опыт Бога)' : 'Direct spiritual vision and experiential knowledge of divine reality.',
-                example: 'Practical virtues form the necessary foundation leading to theoria and divine illumination.'
-              },
-              {
-                front: 'Illumination',
-                back: isRussian ? 'Просвещение / Озарение (действие благодати)' : 'The spiritual enlightenment of the soul revived by divine grace.',
-                example: 'Holy baptism is traditionally celebrated as the mystery of illumination and rebirth.'
-              },
-              {
-                front: 'Metaphysics',
-                back: isRussian ? 'Метафизика (теоретическое философское учение)' : 'Abstract theoretical philosophy dealing with first principles of being.',
-                example: 'The fathers insisted that true theology is lived therapy rather than speculative metaphysics.'
               }
             ]
           }
@@ -1087,20 +1112,8 @@ ${tasksInstructions}
             pairs: [
               { left: 'Nous', right: isRussian ? 'Ум / Око души' : 'Apprehensive faculty of the soul' },
               { left: 'Hesychasm', right: isRussian ? 'Исихазм (безмолвие)' : 'Practice of inner stillness in prayer' },
-              { left: 'Asceticism', right: isRussian ? 'Аскеза / Воздержание' : 'Discipline to master physical impulses' },
-              { left: 'Theoria', right: isRussian ? 'Богосозерцание' : 'Vision and direct experience of God' },
-              { left: 'Illumination', right: isRussian ? 'Просвещение' : 'Purification and spiritual revival' },
-              { left: 'Therapy', right: isRussian ? 'Исцеление / Терапия' : 'Healing of the soul from passions' }
+              { left: 'Asceticism', right: isRussian ? 'Аскеза / Воздержание' : 'Discipline to master physical impulses' }
             ]
-          }
-        ];
-      } else if (actions.includes('gap_fill')) {
-        cleanBlocks = [
-          {
-            type: 'gap_fill',
-            instruction: 'Fill in the blanks using key concepts from the lecture:',
-            text: `1. In the patristic view, Christianity is understood as a spiritual [therapy] for the soul.\n2. The restoration of the [nous] allows man to regain experiential knowledge of God.\n3. Ascetic practice brings the body into subjugation to the [soul].`,
-            answers: ['therapy', 'nous', 'soul']
           }
         ];
       } else {
