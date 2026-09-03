@@ -104,6 +104,13 @@ export const BuilderPalette = ({ onAddBlock }) => (
       </button>
       <button 
         type="button"
+        onClick={() => onAddBlock('true_false')} 
+        className="w-full text-left p-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 rounded-xl transition flex items-center gap-2 cursor-pointer font-bold shadow-2xs"
+      >
+        ⚖️ Правда / Ложь (True / False)
+      </button>
+      <button 
+        type="button"
         onClick={() => onAddBlock('gap_fill')} 
         className="w-full text-left p-2.5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-xl transition flex items-center gap-2 cursor-pointer font-bold text-slate-700"
       >
