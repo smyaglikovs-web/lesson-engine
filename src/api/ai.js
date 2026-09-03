@@ -313,28 +313,30 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
+// --------------------------------------------------------------------------
 // 3-STAGE CHAINED AI LESSON GENERATION PIPELINE
-// ════════════════════════════════════════════════════════════════════════════
+// (Supports both simple TOPIC-ONLY requests and rich MULTI-INPUT text)
+// --------------------------------------------------------------------------
 
 export async function generateFullLessonWithAI(env, payload) {
   const { 
     text = '', 
     level = 'B1', 
-    topic = 'General English',
+    topic = 'General English Practice',
     context = '',
     format = 'live',
     targetKeywords = [],
-    selectedTasks = ['multiple_choice', 'gap_fill_bank', 'matching', 'speaking'],
+    selectedTasks = ['multiple_choice', 'gap_fill_bank', 'matching', 'sentence_reorder'],
     includeGrammar = false,
     finalTask = 'speaking'
   } = payload;
 
+  const resolvedTopic = topic.trim() || 'General English Lesson';
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   const audienceContext = context ? `Target Student Context/Persona: "${context}"` : 'General Adult ESL Learners';
   const keywordConstraints = targetKeywords.length > 0 
     ? `MANDATORY KEYWORDS TO TEST: ${JSON.stringify(targetKeywords)}`
-    : 'Extract 6-8 high-yield collocations/vocabulary from the context.';
+    : `Extract 6-8 high-yield collocations/vocabulary items for topic "${resolvedTopic}".`;
 
   // --------------------------------------------------------------------------
   // STAGE 1: LEXICAL & STRUCTURAL PROFILER (Micro-Prompt)
@@ -344,16 +346,17 @@ You are a CELTA/DELTA Master Methodologist.
 
 [CONTEXT]
 Target CEFR Level: ${level} (${cefrRules})
+Topic: "${resolvedTopic}"
 ${audienceContext}
 ${keywordConstraints}
 
 [TASK]
-Extract/profile the target vocabulary, lead-in questions, and grammar focus for a lesson on "${topic}".
+Extract/profile 6-8 target vocabulary items, 3 lead-in discussion questions, and the target grammar rule for this topic.
 
 [CONSTRAINTS]
 - Output MUST be valid JSON only.
-- 6 to 8 vocabulary items with front, back, and context example.
-- 3 warm-up discussion questions numbered 1, 2, 3.
+- 6 to 8 vocabulary items with front (English word/phrase), back (Russian translation or definition), and example sentence.
+- 3 warm-up discussion questions.
 
 [OUTPUT FORMAT]
 {
@@ -366,39 +369,46 @@ Extract/profile the target vocabulary, lead-in questions, and grammar focus for 
   "grammarExplanation": "Short clear rule explanation"
 }`;
 
-  const stage1Result = await runAiPipeline(env, stage1SystemPrompt, `Source Material:\n${text || topic}`, 1200);
+  const userContextPrompt = text.trim()
+    ? `Source Material / Transcript:\n${text}`
+    : `Generate high-yield materials for Topic: "${resolvedTopic}". Context: ${audienceContext}`;
+
+  const stage1Result = await runAiPipeline(env, stage1SystemPrompt, userContextPrompt, 1200);
   const profile = stage1Result.data || {
     warmupQuestions: [
-      `What comes to your mind first when you think about ${topic}?`,
+      `What comes to your mind first when you think about ${resolvedTopic}?`,
       "Have you ever experienced this in real life?",
       "Why is this topic relevant today?"
     ],
     targetWords: targetKeywords.length > 0 
-      ? targetKeywords.map(k => ({ front: k, back: 'Key concept', example: `Understanding ${k} is crucial.` }))
+      ? targetKeywords.map(k => ({ front: k, back: 'Ключевое понятие', example: `Understanding ${k} is crucial.` }))
       : [
-          { front: 'Key Concept', back: 'Основное понятие', example: 'This is crucial.' },
-          { front: 'To engage with', back: 'Взаимодействовать', example: 'Students engage actively.' },
-          { front: 'Perspective', back: 'Точка зрения', example: 'A fresh perspective helps.' }
+          { front: 'Key Concept', back: 'Основное понятие', example: `Understanding this is crucial for ${resolvedTopic}.` },
+          { front: 'To engage with', back: 'Взаимодействовать', example: 'Students engage actively with materials.' },
+          { front: 'Perspective', back: 'Точка зрения', example: 'A fresh perspective changes everything.' },
+          { front: 'Significance', back: 'Значимость', example: 'The cultural significance is undeniable.' },
+          { front: 'To cultivate', back: 'Развивать', example: 'Practice helps cultivate fluency.' },
+          { front: 'Outcome', back: 'Результат', example: 'The outcome exceeded our expectations.' }
         ],
-    grammarTitle: 'Present Perfect & Contextual Stems',
+    grammarTitle: 'Present Perfect & Key Stems',
     grammarFormula: 'Subject + have/has + V3',
-    grammarExplanation: 'Used for past actions with current relevance.'
+    grammarExplanation: 'Used for actions with current conversational relevance.'
   };
 
   // --------------------------------------------------------------------------
-  // STAGE 2: EDUCATIONAL STORY SYNTHESIZER (Micro-Prompt)
+  // STAGE 2: STORY / PASSAGE SYNTHESIZER (Micro-Prompt)
   // --------------------------------------------------------------------------
-  const wordsToWeave = profile.targetWords.map(w => w.front).join(', ');
+  const wordsToWeave = (profile.targetWords || []).map(w => w.front).join(', ');
   const stage2SystemPrompt = `[ROLE]
 You are an award-winning ELT graded reader writer.
 
 [CONTEXT]
 Target CEFR Level: ${level} (${cefrRules})
-Topic: "${topic}"
+Topic: "${resolvedTopic}"
 Target vocabulary to naturally weave into the story: ${wordsToWeave}
 
 [TASK]
-Write a 250-320 word educational story/passage for this lesson.
+Write a rich 250-320 word educational story/passage for this lesson.
 
 [CONSTRAINTS]
 - Text MUST be 100% natural English adapted strictly to CEFR ${level}.
@@ -406,16 +416,20 @@ Write a 250-320 word educational story/passage for this lesson.
 
 [OUTPUT FORMAT]
 {
-  "title": "${topic}",
+  "title": "${resolvedTopic}",
   "storyText": "Complete 250-320 word reading passage here..."
 }`;
 
-  const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${topic}\nContext: ${audienceContext}`, 1400);
-  const storyText = stage2Result.data?.storyText || `${topic} is an essential part of modern communication. By exploring key vocabulary and structures, learners develop natural conversational fluency.`;
+  const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${resolvedTopic}\nContext: ${audienceContext}\nProvided notes: ${text.substring(0, 400)}`, 1400);
+  const storyText = stage2Result.data?.storyText || `${resolvedTopic} is an essential part of modern communication. By exploring key vocabulary and structures, learners develop natural conversational fluency. Understanding these concepts allows students to express nuanced thoughts with confidence.`;
 
   // --------------------------------------------------------------------------
   // STAGE 3: PARALLEL EXERCISE SYNTHESIS (Micro-Prompt)
   // --------------------------------------------------------------------------
+  const tasksToGenerate = Array.isArray(selectedTasks) && selectedTasks.length > 0 
+    ? selectedTasks 
+    : ['multiple_choice', 'gap_fill_bank', 'matching', 'sentence_reorder'];
+
   const stage3SystemPrompt = `[ROLE]
 You are an ELT Materials Task Creator.
 
@@ -426,7 +440,7 @@ Target vocabulary: ${JSON.stringify(profile.targetWords)}
 Format: ${format === 'live' ? 'Live teacher-led lesson with oral discussion' : 'Self-paced auto-graded homework'}
 
 [TASK]
-Generate exercise blocks matching the requested tasks: ${JSON.stringify(selectedTasks)}.
+Generate exercise blocks matching the requested tasks: ${JSON.stringify(tasksToGenerate)}.
 
 [CONSTRAINTS]
 - Return a JSON object with a "blocks" array.
@@ -445,10 +459,9 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(selected
   ]
 }`;
 
-  const stage3Result = await runAiPipeline(env, stage3SystemPrompt, `Generate exercises for: ${JSON.stringify(selectedTasks)}`, 2000);
+  const stage3Result = await runAiPipeline(env, stage3SystemPrompt, `Generate exercises for: ${JSON.stringify(tasksToGenerate)}`, 2000);
   let synthesizedBlocks = stage3Result.data?.blocks || [];
 
-  // Sanitize blocks
   let cleanTaskBlocks = [];
   synthesizedBlocks.forEach(b => {
     const res = sanitizeBlockStructure(b);
@@ -456,21 +469,38 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(selected
     else cleanTaskBlocks.push(res);
   });
 
+  // Fallback blocks if AI missed any
+  if (cleanTaskBlocks.length === 0) {
+    cleanTaskBlocks = [
+      {
+        type: 'gap_fill_bank',
+        instruction: 'Fill in the blanks using words from the bank:',
+        text: `Consistent [practice] is the foundation of mastering [communication] in any language.`,
+        distractors: ['barrier', 'hesitation']
+      },
+      {
+        type: 'matching',
+        instruction: 'Match the target words with their meanings:',
+        pairs: profile.targetWords.slice(0, 6).map(w => ({ left: w.front, right: w.back }))
+      }
+    ];
+  }
+
   // --------------------------------------------------------------------------
-  // STAGE 4: CANONICAL MULTI-PAGE LESSON ASSEMBLY
+  // STAGE 4: ASSEMBLE COMPLETE LESSON OBJECT
   // --------------------------------------------------------------------------
   const assembledLesson = {
     id: 'lesson_' + Date.now(),
-    title: topic,
+    title: resolvedTopic,
     level: level,
-    topic: topic,
-    description: `Interactive ${level} lesson on ${topic}. ${audienceContext}`,
+    topic: resolvedTopic,
+    description: `Interactive ${level} lesson on ${resolvedTopic}. ${audienceContext}`,
     pages: [
       {
         id: 'p1',
         title: 'Part 1: Warm-up, Vocab & Story',
         blocks: [
-          { id: `b_h1_${Date.now()}`, type: 'heading', level: 1, text: topic },
+          { id: `b_h1_${Date.now()}`, type: 'heading', level: 1, text: resolvedTopic },
           { 
             id: `b_warm_${Date.now()}`, 
             type: 'open_input', 
@@ -479,7 +509,7 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(selected
           { 
             id: `b_fc_${Date.now()}`, 
             type: 'flashcards', 
-            title: 'Target Vocabulary', 
+            title: 'Key Target Vocabulary', 
             cards: profile.targetWords 
           },
           { 
@@ -492,13 +522,12 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(selected
     ]
   };
 
-  // Optional Grammar Page
   if (includeGrammar) {
     assembledLesson.pages.push({
       id: 'p_grammar',
       title: 'Part 2: Grammar Focus',
       blocks: [
-        { id: `b_gh_${Date.now()}`, type: 'heading', level: 2, text: 'Grammar Focus' },
+        { id: `b_gh_${Date.now()}`, type: 'heading', level: 2, text: 'Grammar Presentation' },
         { 
           id: `b_gcard_${Date.now()}`, 
           type: 'grammar_card', 
@@ -511,33 +540,31 @@ Generate exercise blocks matching the requested tasks: ${JSON.stringify(selected
     });
   }
 
-  // Interactive Practice Page
   if (cleanTaskBlocks.length > 0) {
     assembledLesson.pages.push({
       id: 'p_practice',
-      title: `Part ${assembledLesson.pages.length + 1}: Practice Tasks`,
+      title: `Part ${assembledLesson.pages.length + 1}: Practice & Application`,
       blocks: [
-        { id: `b_ph_${Date.now()}`, type: 'heading', level: 2, text: 'Practice & Application' },
+        { id: `b_ph_${Date.now()}`, type: 'heading', level: 2, text: 'Interactive Practice' },
         ...cleanTaskBlocks
       ]
     });
   }
 
-  // Final Production / Speaking Page
   if (finalTask !== 'none') {
     assembledLesson.pages.push({
       id: 'p_production',
-      title: `Part ${assembledLesson.pages.length + 1}: Production & Cool-down`,
+      title: `Part ${assembledLesson.pages.length + 1}: Production & Wrap-up`,
       blocks: [
-        { id: `b_prodh_${Date.now()}`, type: 'heading', level: 2, text: 'Speaking & Cool-down' },
+        { id: `b_prodh_${Date.now()}`, type: 'heading', level: 2, text: 'Speaking & Wrap-up' },
         {
           id: `b_wheel_${Date.now()}`,
           type: 'spinning_wheel',
           title: '🎡 Speaking Discussion Roulette',
-          instruction: 'Spin the wheel and answer the prompt using target vocabulary!',
+          instruction: 'Spin the wheel and answer the question!',
           items: profile.warmupQuestions.concat([
-            `How will you apply ${profile.targetWords[0]?.front || 'these concepts'} this week?`,
-            "Summarize the main idea in your own words."
+            `How will you use this vocabulary in your own life?`,
+            "Summarize the main idea in 3 sentences."
           ]),
           eliminateMode: true
         }
