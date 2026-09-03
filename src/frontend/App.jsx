@@ -50,10 +50,13 @@ export default function App() {
     }
 
     const params = new URLSearchParams(window.location.search);
+    const sessionParam = params.get('session');
     const roomParam = params.get('room');
     const roleParam = params.get('role');
     const hwParam = params.get('homework');
     const trainerParam = params.get('trainer');
+
+    const activeRoomId = sessionParam || roomParam;
 
     if (trainerParam) {
       setIsTeacher(false);
@@ -67,21 +70,19 @@ export default function App() {
       return;
     }
 
-    if (roomParam) {
+    if (activeRoomId) {
       const teacher = roleParam === 'teacher' && authSaved;
       setIsTeacher(teacher);
-      openLesson(roomParam, false, teacher);
+      openRoomSession(activeRoomId, teacher);
       return;
     }
 
     setIsTeacher(true);
   }, []);
 
-  // DIRECT RESILIENT LOGIN (IMMUNE TO DOMAIN / ROUTING GLITCHES)
   const handleTeacherLogin = async (passwordInput) => {
     const clean = (passwordInput || '').trim();
 
-    // 1. Direct match for default password (instant entry, zero network delay)
     if (clean === 'teacher123') {
       localStorage.setItem('teacher_auth', 'true');
       localStorage.setItem('teacher_pass', clean);
@@ -92,7 +93,6 @@ export default function App() {
       return;
     }
 
-    // 2. Network verification for custom passwords
     try {
       const res = await fetch('/api/teacher/login', {
         method: 'POST',
@@ -110,17 +110,7 @@ export default function App() {
         setLoginError(true);
       }
     } catch (e) {
-      // Fallback if backend API is unreachable
-      if (clean === 'teacher123') {
-        localStorage.setItem('teacher_auth', 'true');
-        localStorage.setItem('teacher_pass', clean);
-        setIsAuthenticated(true);
-        setIsTeacher(true);
-        setLoginError(false);
-        fetchLessons();
-      } else {
-        setLoginError(true);
-      }
+      setLoginError(true);
     }
   };
 
@@ -130,6 +120,42 @@ export default function App() {
     setIsAuthenticated(false);
   };
 
+  // Launch a new Ephemeral Live Classroom Session
+  const handleLaunchClassroom = async (lessonId) => {
+    try {
+      const res = await fetch('/api/rooms/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId })
+      });
+      const data = await res.json();
+      if (data.sessionId) {
+        window.history.pushState({}, '', `/?room=${data.sessionId}&role=teacher`);
+        openRoomSession(data.sessionId, true);
+      }
+    } catch (e) {
+      alert('Ошибка запуска сессии');
+    }
+  };
+
+  const openRoomSession = async (targetRoomId, teacherRole = true) => {
+    try {
+      const stateRes = await fetch(`/api/rooms/${targetRoomId}/state`);
+      const stateData = await stateRes.json();
+      const targetLessonId = stateData.lessonId || targetRoomId;
+
+      const lessonRes = await fetch(`/api/lessons/${targetLessonId}`);
+      const lessonData = await lessonRes.json();
+
+      setActiveLesson(lessonData);
+      setRoomId(targetRoomId);
+      setIsTeacher(teacherRole);
+      setView('room');
+    } catch (e) {
+      alert('Ошибка подключения к уроку');
+    }
+  };
+
   const openLesson = async (lessonId, navigate = true, teacherRole = true) => {
     try {
       const res = await fetch(`/api/lessons/${lessonId}`);
@@ -137,12 +163,7 @@ export default function App() {
       setActiveLesson(data);
       setRoomId(lessonId);
       setView('room');
-      if (navigate) {
-        window.history.pushState({}, '', `/?room=${lessonId}&role=teacher`);
-        setIsTeacher(true);
-      } else {
-        setIsTeacher(teacherRole);
-      }
+      setIsTeacher(teacherRole);
     } catch (e) {
       alert('Ошибка загрузки урока');
     }
@@ -179,7 +200,7 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        alert('🎉 Урок успешно сохранен в D1!');
+        alert('🎉 Урок успешно сохранен!');
         setEditingLesson(null);
         fetchLessons();
         setView('library');
@@ -209,20 +230,24 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {isTeacher && isAuthenticated && <TeacherHeader view={view} setView={setView} onLogout={handleTeacherLogout} />}
+      {isTeacher && isAuthenticated && view !== 'room' && (
+        <TeacherHeader view={view} setView={setView} onLogout={handleTeacherLogout} />
+      )}
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        {isTeacher && !isAuthenticated && view !== 'room' && <TeacherAuthModal onLogin={handleTeacherLogin} loginError={loginError} />}
+        {isTeacher && !isAuthenticated && view !== 'room' && (
+          <TeacherAuthModal onLogin={handleTeacherLogin} loginError={loginError} />
+        )}
 
         {view === 'library' && isTeacher && isAuthenticated && (
           <LibraryView
             lessons={lessons}
             loading={loading}
-            onOpenLesson={openLesson}
+            onOpenLesson={handleLaunchClassroom}
             onCreateNew={handleCreateNew}
             onEditLesson={handleEditLesson}
             onDeleteLesson={handleDeleteLesson}
-            onViewSubmissions={(l) => setViewSubmissionsLesson(l)}
+            onViewSubmissions={l => setViewSubmissionsLesson(l)}
           />
         )}
 
@@ -234,7 +259,11 @@ export default function App() {
         )}
 
         {view === 'create' && isTeacher && isAuthenticated && (
-          <CreateLessonView initialLesson={editingLesson} onSaveLesson={handleSaveLesson} onCancel={() => { setEditingLesson(null); setView('library'); }} />
+          <CreateLessonView 
+            initialLesson={editingLesson} 
+            onSaveLesson={handleSaveLesson} 
+            onCancel={() => { setEditingLesson(null); setView('library'); }} 
+          />
         )}
 
         {view === 'prompts' && isTeacher && isAuthenticated && <AIPromptsView />}
