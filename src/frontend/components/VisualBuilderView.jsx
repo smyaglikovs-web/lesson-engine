@@ -82,6 +82,12 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         if (found.type === 'grammar_card') {
           return `Grammar Rule: ${found.title || ''}\nFormula: ${found.formula || ''}\nExplanation: ${found.explanation || ''}\nExamples: ${(found.examples || []).join('; ')}`;
         }
+        if (found.type === 'video' || found.type === 'audio') {
+          return `Title: ${found.title || 'Media Presentation'}\nTranscript / Content:\n${found.transcript || found.text || ''}`;
+        }
+        if (found.type === 'link') {
+          return `Resource Title: ${found.title || 'Web Link'}\nURL: ${found.url || ''}\nDescription: ${found.description || ''}`;
+        }
         return found.text || found.transcript || found.explanation || found.description || JSON.stringify(found);
       }
     }
@@ -90,7 +96,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
       if (page && Array.isArray(page.blocks)) {
         page.blocks.forEach(b => {
           if (b && b.type === 'text' && b.text) contextText += b.text + '\n';
-          if (b && b.type === 'video' && b.transcript) contextText += b.transcript + '\n';
+          if (b && (b.type === 'video' || b.type === 'audio')) {
+            contextText += `Media (${b.title || 'Presentation'}):\n${b.transcript || ''}\n`;
+          }
           if (b && b.type === 'link' && b.description) contextText += `${b.title}: ${b.description}\n`;
           if (b && b.type === 'grammar_card') {
             contextText += `Grammar Rule (${b.title}): Formula: ${b.formula || ''} - Explanation: ${b.explanation || ''}\n`;
@@ -146,6 +154,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     else if (type === 'video') { 
       newBlock.title = 'Посмотрите видео:'; 
       newBlock.url = ''; 
+      newBlock.transcript = '';
     }
     else if (type === 'audio') { 
       newBlock.title = 'Прослушайте аудиозапись:'; 
@@ -380,12 +389,14 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
           </div>
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
+              type="button"
               onClick={onCancel}
               className="flex-1 sm:flex-initial px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-sm transition cursor-pointer"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => onSaveLesson({ ...lesson, id: lesson.id || 'lesson-' + Date.now() })}
               className="flex-1 sm:flex-initial px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl text-sm shadow-md transition cursor-pointer"
             >
@@ -473,14 +484,15 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
 
                   <div className="flex items-center gap-1.5">
                     <button
+                      type="button"
                       onClick={() => handleOpenAiModal(block, idx)}
                       className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl shadow-xs transition text-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <span>✨ Generate / Fill with AI</span>
                     </button>
-                    <button onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▲</button>
-                    <button onClick={() => handleMoveBlock(idx, 1)} disabled={idx === (activePage.blocks?.length || 1) - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
-                    <button onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Delete block">🗑️</button>
+                    <button type="button" onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▲</button>
+                    <button type="button" onClick={() => handleMoveBlock(idx, 1)} disabled={idx === (activePage.blocks?.length || 1) - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
+                    <button type="button" onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Delete block">🗑️</button>
                   </div>
                 </div>
 
