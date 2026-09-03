@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VisualBuilderView } from './VisualBuilderView.jsx';
-import { BlockRenderer } from './BlockRenderer.jsx';
 
 const DEFAULT_LESSON = {
   title: "New Interactive Lesson",
   level: "B1",
   topic: "General English",
-  description: "Interactive lesson with video, audio, and automated tasks.",
+  description: "Interactive lesson created with Lesson Engine.",
   pages: [
     {
       id: "p1",
@@ -33,11 +32,18 @@ const EXERCISE_CHIPS = [
 ];
 
 export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
-  const [mode, setMode] = useState('wizard'); // 'wizard' | 'visual' | 'json'
+  // Mode selection: 'topic_ai' (Fast 1-click) | 'wizard' (Advanced 4-step) | 'visual' (Lego) | 'json' (Code)
+  const [mode, setMode] = useState('topic_ai');
   const [currentLesson, setCurrentLesson] = useState(initialLesson || DEFAULT_LESSON);
   const [jsonText, setJsonText] = useState(JSON.stringify(initialLesson || DEFAULT_LESSON, null, 2));
 
-  // STEP 1: Inputs & Content
+  // 1-CLICK TOPIC GENERATOR STATE
+  const [topicInput, setTopicInput] = useState('');
+  const [topicLevel, setTopicLevel] = useState('B1');
+  const [optionalSourceText, setOptionalSourceText] = useState('');
+  const [topicFormat, setTopicFormat] = useState('live');
+
+  // ADVANCED WIZARD STATE
   const [inputs, setInputs] = useState([
     { id: 'in_1', title: 'Input 1', type: 'text', content: '', keywords: [] }
   ]);
@@ -46,17 +52,13 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
   const [draggedChipIdx, setDraggedChipIdx] = useState(null);
   const textEditorRef = useRef(null);
 
-  // STEP 2: Settings
   const [lessonTitle, setLessonTitle] = useState('');
-  const [lessonFormat, setLessonFormat] = useState('live'); // 'live' | 'homework'
-  const [finalTask, setFinalTask] = useState('speaking'); // 'speaking' | 'writing' | 'none'
+  const [lessonFormat, setLessonFormat] = useState('live');
+  const [finalTask, setFinalTask] = useState('speaking');
   const [cefrLevel, setCefrLevel] = useState('B1');
   const [contextPrompt, setContextPrompt] = useState('');
-
-  // STEP 3: Grammar
   const [addGrammar, setAddGrammar] = useState(false);
 
-  // STEP 4: Structure Stack
   const [structureStack, setStructureStack] = useState([
     { id: 'warmup', label: 'Warm-up', isCore: false },
     { id: 'in_1', label: 'Input 1', isCore: true },
@@ -68,9 +70,56 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
   const [banner, setBanner] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // --------------------------------------------------------------------------
+  // 1. FAST 1-CLICK TOPIC GENERATION HANDLER
+  // --------------------------------------------------------------------------
+  const handleGenerateFromTopic = async () => {
+    if (!topicInput.trim()) {
+      setErrorMsg('Пожалуйста, введите тему урока (например: Job Interview или Ordering Food).');
+      return;
+    }
+
+    setGenerating(true);
+    setBanner('');
+    setErrorMsg('');
+
+    try {
+      const res = await fetch('/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: topicInput.trim(),
+          level: topicLevel,
+          text: optionalSourceText.trim(),
+          format: topicFormat,
+          selectedTasks: ['multiple_choice', 'gap_fill_bank', 'matching', 'sentence_reorder'],
+          includeGrammar: true,
+          finalTask: 'speaking'
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.jsonText) {
+        const parsed = JSON.parse(data.jsonText);
+        setCurrentLesson(parsed);
+        setJsonText(data.jsonText);
+        setMode('visual');
+        setBanner(`🎉 Урок на тему "${topicInput.trim()}" успешно сгенерирован AI!`);
+      } else {
+        setErrorMsg(data.error || 'Ошибка генерации. Попробуйте ещё раз.');
+      }
+    } catch (e) {
+      setErrorMsg('Ошибка соединения с AI сервисом.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 2. ADVANCED WIZARD HELPERS
+  // --------------------------------------------------------------------------
   const activeInput = inputs[activeInputIdx] || inputs[0];
 
-  // Live Bold Keyword Counter
   const countBoldKeywords = (html) => {
     if (!html) return [];
     const div = document.createElement('div');
@@ -93,13 +142,11 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
     setInputs(updated);
   };
 
-  // Bold Selection Trigger (Touch & Keyboard)
   const handleToggleBold = () => {
     document.execCommand('bold', false, null);
     handleTextContentChange();
   };
 
-  // Add & Manage Inputs (Max 3)
   const handleAddInput = () => {
     if (inputs.length >= 3) return;
     const newId = `in_${inputs.length + 1}`;
@@ -110,14 +157,9 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
   };
 
   const handleChipToggle = (chipId) => {
-    if (selectedChips.includes(chipId)) {
-      setSelectedChips(selectedChips.filter(c => c !== chipId));
-    } else {
-      setSelectedChips([...selectedChips, chipId]);
-    }
+    setSelectedChips(prev => prev.includes(chipId) ? prev.filter(c => c !== chipId) : [...prev, chipId]);
   };
 
-  // Drag & Reorder Chips
   const handleChipDragStart = (idx) => setDraggedChipIdx(idx);
   const handleChipDrop = (targetIdx) => {
     if (draggedChipIdx === null || draggedChipIdx === targetIdx) return;
@@ -128,7 +170,6 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
     setDraggedChipIdx(null);
   };
 
-  // Structure Stack Reorder
   const handleMoveStack = (idx, dir) => {
     const target = idx + dir;
     if (target < 0 || target >= structureStack.length) return;
@@ -139,15 +180,10 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
     setStructureStack(updated);
   };
 
-  const handleRemoveStackItem = (id) => {
-    setStructureStack(structureStack.filter(s => s.id !== id));
-  };
-
-  // Trigger Chained AI Generation
-  const handleGenerateLesson = async () => {
+  const handleGenerateFromWizard = async () => {
     const rawText = inputs.map(inObj => inObj.content).filter(Boolean).join('\n\n');
     const allKeywords = inputs.flatMap(inObj => inObj.keywords || []);
-    const titleToUse = lessonTitle.trim() || `Lesson on ${cefrLevel}`;
+    const titleToUse = lessonTitle.trim() || `Lesson (${cefrLevel})`;
 
     setGenerating(true);
     setBanner('');
@@ -176,12 +212,12 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
         setCurrentLesson(parsed);
         setJsonText(data.jsonText);
         setMode('visual');
-        setBanner('🎉 Multi-stage lesson generated! You can now refine blocks in the visual builder.');
+        setBanner('🎉 Урок успешно сгенерирован по структуре визарда!');
       } else {
-        setErrorMsg(data.error || 'Generation failed. Please try again.');
+        setErrorMsg(data.error || 'Ошибка генерации.');
       }
     } catch (e) {
-      setErrorMsg('Error calling AI pipeline.');
+      setErrorMsg('Ошибка соединения с AI.');
     } finally {
       setGenerating(false);
     }
@@ -190,30 +226,38 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* MODE TABS */}
-      <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs flex gap-2 max-w-xl mx-auto">
+      <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap gap-2 max-w-2xl mx-auto">
+        <button
+          onClick={() => setMode('topic_ai')}
+          className={`flex-1 min-w-32 py-2.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
+            mode === 'topic_ai' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          ⚡ Быстрая AI тема
+        </button>
         <button
           onClick={() => setMode('wizard')}
-          className={`flex-1 py-2 rounded-xl font-bold text-xs transition cursor-pointer ${
+          className={`flex-1 min-w-32 py-2.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
             mode === 'wizard' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
-          ✨ AI Builder Wizard
+          🪄 4-Шаговый Визард
         </button>
         <button
           onClick={() => setMode('visual')}
-          className={`flex-1 py-2 rounded-xl font-bold text-xs transition cursor-pointer ${
+          className={`flex-1 min-w-32 py-2.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
             mode === 'visual' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
-          🧩 Lego Visual Editor
+          🧩 Lego Конструктор
         </button>
         <button
           onClick={() => setMode('json')}
-          className={`flex-1 py-2 rounded-xl font-bold text-xs transition cursor-pointer ${
+          className={`flex-1 min-w-32 py-2.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
             mode === 'json' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
-          📋 Raw JSON
+          📋 JSON
         </button>
       </div>
 
@@ -231,23 +275,110 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
         </div>
       )}
 
-      {/* MODE 1: 2-COLUMN AI BUILDER WIZARD */}
+      {/* -------------------------------------------------------------------- */}
+      {/* 1. FAST 1-CLICK AI GENERATOR BY TOPIC                                */}
+      {/* -------------------------------------------------------------------- */}
+      {mode === 'topic_ai' && (
+        <div className="bg-white p-6 sm:p-10 rounded-3xl border border-slate-200 shadow-sm max-w-2xl mx-auto space-y-6">
+          <div className="border-b pb-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-2xl">⚡</span>
+              <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Генерация урока по теме за 20 секунд</h2>
+            </div>
+            <p className="text-slate-500 text-xs">
+              Просто введите тему — AI создаст историю, словарный запас, вопросы для обсуждения и 4 интерактивных задания.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
+                Тема урока (Topic) *
+              </label>
+              <input
+                type="text"
+                value={topicInput}
+                onChange={e => setTopicInput(e.target.value)}
+                placeholder="например: Job Interview Preparation или Traveling in Italy"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-600 rounded-2xl text-sm font-bold text-slate-900 outline-none transition"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Уровень CEFR
+                </label>
+                <select
+                  value={topicLevel}
+                  onChange={e => setTopicLevel(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-600 rounded-2xl text-xs font-bold text-slate-900 outline-none cursor-pointer"
+                >
+                  <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Формат
+                </label>
+                <select
+                  value={topicFormat}
+                  onChange={e => setTopicFormat(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-600 rounded-2xl text-xs font-bold text-slate-900 outline-none cursor-pointer"
+                >
+                  <option value="live">🟢 Урок с учителем (Live)</option>
+                  <option value="homework">📚 Домашнее задание (ДЗ)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
+                Дополнительный текст или заметки (Необязательно)
+              </label>
+              <textarea
+                rows="4"
+                value={optionalSourceText}
+                onChange={e => setOptionalSourceText(e.target.value)}
+                placeholder="Если есть конкретный текст, скопируйте его сюда. Если поля пустое, AI напишет свою историю..."
+                className="w-full p-4 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-600 rounded-2xl text-xs font-sans text-slate-800 outline-none leading-relaxed"
+              ></textarea>
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-end gap-3">
+            <button onClick={onCancel} className="px-5 py-3 border rounded-2xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">
+              Отмена
+            </button>
+            <button
+              disabled={generating || !topicInput.trim()}
+              onClick={handleGenerateFromTopic}
+              className="px-8 py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-2xl text-xs shadow-md transition disabled:opacity-40 cursor-pointer flex items-center gap-2"
+            >
+              <span>{generating ? '⌛ AI создаёт полный урок...' : '🚀 Сгенерировать урок'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------------- */}
+      {/* 2. ADVANCED 4-STEP WIZARD (MULTI-INPUT & DRAGGABLE CHIPS)            */}
+      {/* -------------------------------------------------------------------- */}
       {mode === 'wizard' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          
-          {/* LEFT COLUMN: STEP 1 (INPUTS & EXERCISES) */}
+          {/* LEFT COLUMN: STEP 1 */}
           <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
             <div className="border-b pb-4">
               <div className="flex items-center gap-2.5 mb-1">
                 <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-extrabold flex items-center justify-center">1</span>
-                <h3 className="text-lg font-extrabold text-slate-900">Lesson Material & Inputs</h3>
+                <h3 className="text-lg font-extrabold text-slate-900">Материалы урока (Inputs)</h3>
               </div>
               <p className="text-xs text-slate-500 pl-8 leading-relaxed">
-                Add text, audio, or video inputs (up to 3). Highlight target vocabulary in bold.
+                Добавьте инпуты и выделите ключевые слова жирным (<kbd className="bg-slate-100 px-1 rounded text-indigo-600 font-mono">Cmd+B</kbd>).
               </p>
             </div>
 
-            {/* INPUT TABS */}
             <div className="flex gap-2 border-b border-slate-100 pb-3">
               {inputs.map((inObj, idx) => (
                 <button
@@ -270,7 +401,6 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
               )}
             </div>
 
-            {/* INPUT TYPE SELECTOR */}
             <div className="flex gap-2">
               {['text', 'audio', 'video'].map(t => (
                 <button
@@ -289,17 +419,15 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
               ))}
             </div>
 
-            {/* RICH TEXT INPUT WITH BOLD HIGHLIGHTER */}
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-500 font-medium">Highlight target collocations using <kbd className="bg-slate-100 px-1 py-0.5 rounded text-indigo-600 font-mono">Cmd+B</kbd> or tap:</span>
+                <span className="text-xs text-slate-500">Выделите слова в тексте:</span>
                 <button
                   type="button"
                   onClick={handleToggleBold}
                   className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold rounded-lg text-xs transition cursor-pointer"
-                  title="Make selected text bold"
                 >
-                  👆 B (Bold)
+                  👆 B (Жирный)
                 </button>
               </div>
 
@@ -307,24 +435,19 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
                 ref={textEditorRef}
                 contentEditable
                 onInput={handleTextContentChange}
-                className="w-full min-h-[160px] p-4 bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-600 rounded-2xl outline-none text-xs sm:text-sm font-sans leading-relaxed text-slate-900 shadow-inner"
-                placeholder="Paste story text here. Bold key phrases you want to drill in exercises..."
+                className="w-full min-h-[160px] p-4 bg-slate-50 focus:bg-white border border-slate-300 focus:border-indigo-600 rounded-2xl outline-none text-xs sm:text-sm font-sans leading-relaxed text-slate-900"
+                placeholder="Вставьте текст и выделите ключевые слова жирным..."
               ></div>
 
-              <div className="flex justify-between items-center text-xs text-slate-500 pt-1">
-                <span>Keywords tagged: <strong className="text-indigo-600">{activeInput.keywords?.length || 0}</strong></span>
-                {activeInput.keywords?.length > 0 && (
-                  <span className="text-[11px] text-slate-400 truncate max-w-xs">{activeInput.keywords.join(', ')}</span>
-                )}
+              <div className="text-xs text-slate-500 pt-1">
+                Распознано слов: <strong className="text-indigo-600">{activeInput.keywords?.length || 0}</strong>
               </div>
             </div>
 
-            {/* DRAGGABLE EXERCISE SEQUENCE CHIPS */}
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
-                Exercise Sequence (Drag to reorder sequence):
+                Типы упражнений:
               </span>
-              
               <div className="flex flex-wrap gap-2">
                 {selectedChips.map((chipId, idx) => {
                   const chipMeta = EXERCISE_CHIPS.find(c => c.id === chipId) || { label: chipId };
@@ -345,111 +468,71 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
                 })}
               </div>
 
-              <div className="pt-2 border-t border-slate-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">+ Add more exercises:</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {EXERCISE_CHIPS.filter(c => !selectedChips.includes(c.id)).map(c => (
-                    <button
-                      key={c.id}
-                      onClick={() => handleChipToggle(c.id)}
-                      className="px-3 py-1 rounded-full bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:border-indigo-500 cursor-pointer transition"
-                    >
-                      + {c.label}
-                    </button>
-                  ))}
-                </div>
+              <div className="pt-2 border-t border-slate-200 flex flex-wrap gap-1.5">
+                {EXERCISE_CHIPS.filter(c => !selectedChips.includes(c.id)).map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => handleChipToggle(c.id)}
+                    className="px-3 py-1 rounded-full bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:border-indigo-500 cursor-pointer"
+                  >
+                    + {c.label}
+                  </button>
+                ))}
               </div>
             </div>
           </section>
 
-          {/* RIGHT COLUMN: STEPS 2, 3, 4 & GENERATE CTA */}
+          {/* RIGHT COLUMN: STEPS 2, 3, 4 */}
           <div className="space-y-6">
-            
-            {/* STEP 2: SETTINGS */}
             <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-4">
               <div className="border-b pb-3 flex items-center gap-2.5">
                 <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-extrabold flex items-center justify-center">2</span>
-                <h3 className="text-lg font-extrabold text-slate-900">Lesson Settings</h3>
+                <h3 className="text-lg font-extrabold text-slate-900">Настройки урока</h3>
               </div>
 
               <div className="space-y-3">
-                <div>
-                  <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Lesson Title</label>
-                  <input
-                    type="text"
-                    value={lessonTitle}
-                    onChange={e => setLessonTitle(e.target.value)}
-                    placeholder="e.g. Present Perfect in Professional Communication"
-                    className="w-full p-3 bg-slate-50 border border-slate-300 focus:bg-white rounded-2xl text-xs font-bold text-slate-900 outline-none"
-                  />
-                </div>
-
-                {/* FORMAT TOGGLE */}
-                <div>
-                  <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Lesson Format</label>
-                  <div className="flex bg-slate-100 p-1 rounded-2xl gap-1">
-                    <button
-                      onClick={() => setLessonFormat('live')}
-                      className={`flex-1 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-                        lessonFormat === 'live' ? 'bg-white text-indigo-900 shadow-xs' : 'text-slate-500'
-                      }`}
-                    >
-                      🟢 Live Lesson
-                    </button>
-                    <button
-                      onClick={() => setLessonFormat('homework')}
-                      className={`flex-1 py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-                        lessonFormat === 'homework' ? 'bg-white text-indigo-900 shadow-xs' : 'text-slate-500'
-                      }`}
-                    >
-                      📚 Homework
-                    </button>
-                  </div>
-                </div>
+                <input
+                  type="text"
+                  value={lessonTitle}
+                  onChange={e => setLessonTitle(e.target.value)}
+                  placeholder="Название урока..."
+                  className="w-full p-3 bg-slate-50 border border-slate-300 focus:bg-white rounded-2xl text-xs font-bold text-slate-900 outline-none"
+                />
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">CEFR Level</label>
-                    <select
-                      value={cefrLevel}
-                      onChange={e => setCefrLevel(e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-300 focus:bg-white rounded-2xl text-xs font-bold text-slate-900 outline-none cursor-pointer"
-                    >
-                      <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Final Task</label>
-                    <select
-                      value={finalTask}
-                      onChange={e => setFinalTask(e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-300 focus:bg-white rounded-2xl text-xs font-bold text-slate-900 outline-none cursor-pointer"
-                    >
-                      <option value="speaking">Speaking Roulette</option>
-                      <option value="writing">Writing Submission</option>
-                      <option value="none">No Final Task</option>
-                    </select>
-                  </div>
+                  <select
+                    value={cefrLevel}
+                    onChange={e => setCefrLevel(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-300 rounded-2xl text-xs font-bold text-slate-900 outline-none"
+                  >
+                    <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
+                  </select>
+
+                  <select
+                    value={finalTask}
+                    onChange={e => setFinalTask(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-300 rounded-2xl text-xs font-bold text-slate-900 outline-none"
+                  >
+                    <option value="speaking">Speaking Roulette</option>
+                    <option value="writing">Writing Submission</option>
+                    <option value="none">Без финального задания</option>
+                  </select>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Audience Persona / Context</label>
-                  <input
-                    type="text"
-                    value={contextPrompt}
-                    onChange={e => setContextPrompt(e.target.value)}
-                    placeholder="e.g. Product Managers at work | ESL"
-                    className="w-full p-3 bg-slate-50 border border-slate-300 focus:bg-white rounded-2xl text-xs font-medium text-slate-900 outline-none"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={contextPrompt}
+                  onChange={e => setContextPrompt(e.target.value)}
+                  placeholder="Контекст/аудитория (напр. Product Managers at work)"
+                  className="w-full p-3 bg-slate-50 border border-slate-300 rounded-2xl text-xs font-medium text-slate-900 outline-none"
+                />
               </div>
             </section>
 
-            {/* STEP 3: OPTIONAL GRAMMAR BLOCK */}
             <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-3">
               <div className="border-b pb-3 flex items-center gap-2.5">
                 <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-extrabold flex items-center justify-center">3</span>
-                <h3 className="text-lg font-extrabold text-slate-900">Grammar Focus</h3>
+                <h3 className="text-lg font-extrabold text-slate-900">Грамматика</h3>
               </div>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
@@ -458,47 +541,43 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
                   onChange={e => setAddGrammar(e.target.checked)}
                   className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
                 />
-                <span className="text-xs font-bold text-slate-800">Inject a dedicated Grammar Rule Presentation block</span>
+                <span className="text-xs font-bold text-slate-800">Добавить блок правила грамматики</span>
               </label>
             </section>
 
-            {/* STEP 4: STRUCTURE STACK & GENERATE CTA */}
             <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-4">
               <div className="border-b pb-3 flex items-center gap-2.5">
                 <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-extrabold flex items-center justify-center">4</span>
-                <h3 className="text-lg font-extrabold text-slate-900">Lesson Structure Stack</h3>
+                <h3 className="text-lg font-extrabold text-slate-900">Структура</h3>
               </div>
 
               <div className="space-y-2">
                 {structureStack.map((item, idx) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-bold">
                     <div className="flex items-center gap-2">
-                      <div className="flex flex-col">
-                        <button onClick={() => handleMoveStack(idx, -1)} disabled={idx === 0} className="text-[10px] text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer">▲</button>
-                        <button onClick={() => handleMoveStack(idx, 1)} disabled={idx === structureStack.length - 1} className="text-[10px] text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer">▼</button>
-                      </div>
-                      <span className="font-extrabold text-xs text-slate-800">{item.label}</span>
+                      <button onClick={() => handleMoveStack(idx, -1)} disabled={idx === 0} className="text-slate-400 disabled:opacity-20 cursor-pointer">▲</button>
+                      <button onClick={() => handleMoveStack(idx, 1)} disabled={idx === structureStack.length - 1} className="text-slate-400 disabled:opacity-20 cursor-pointer">▼</button>
+                      <span>{item.label}</span>
                     </div>
-                    {!item.isCore && (
-                      <button onClick={() => handleRemoveStackItem(item.id)} className="text-xs text-rose-500 hover:text-rose-700 cursor-pointer font-bold">Remove</button>
-                    )}
                   </div>
                 ))}
               </div>
 
               <button
                 disabled={generating}
-                onClick={handleGenerateLesson}
-                className="w-full py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-2xl text-sm transition shadow-lg disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"
+                onClick={handleGenerateFromWizard}
+                className="w-full py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-2xl text-sm shadow-lg disabled:opacity-40 cursor-pointer"
               >
-                <span>{generating ? '⌛ Synthesizing 3-Stage Pipeline...' : '✨ Generate Full Lesson (20–30s)'}</span>
+                {generating ? '⌛ Генерация по шагам...' : '✨ Сгенерировать урок'}
               </button>
             </section>
           </div>
         </div>
       )}
 
-      {/* MODE 2: LEGO VISUAL EDITOR */}
+      {/* -------------------------------------------------------------------- */}
+      {/* 3. LEGO VISUAL BUILDER CANVAS                                        */}
+      {/* -------------------------------------------------------------------- */}
       {mode === 'visual' && (
         <VisualBuilderView
           initialLesson={currentLesson}
@@ -508,16 +587,18 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
         />
       )}
 
-      {/* MODE 3: RAW JSON EDITOR */}
+      {/* -------------------------------------------------------------------- */}
+      {/* 4. DIRECT RAW JSON EDITOR                                            */}
+      {/* -------------------------------------------------------------------- */}
       {mode === 'json' && (
         <div className="space-y-4">
           <div className="flex justify-between items-center bg-white p-4 rounded-2xl border">
-            <h2 className="text-xl font-bold text-slate-900">Direct JSON Editor</h2>
+            <h2 className="text-xl font-bold text-slate-900">Прямое редактирование JSON</h2>
             <button
               onClick={() => onSaveLesson(JSON.parse(jsonText))}
               className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl text-xs cursor-pointer"
             >
-              Save to Database
+              Сохранить в D1
             </button>
           </div>
           <textarea
