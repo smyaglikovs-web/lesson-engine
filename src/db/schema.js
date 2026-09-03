@@ -19,9 +19,9 @@ export async function ensureTables(env) {
       env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS room_states (
           room_id TEXT PRIMARY KEY, 
+          lesson_id TEXT,
           page_idx INTEGER DEFAULT 0, 
-          student_answers TEXT, 
-          last_student_seen INTEGER DEFAULT 0,
+          state_data TEXT,
           updated_at INTEGER DEFAULT (unixepoch())
         );
       `),
@@ -38,8 +38,12 @@ export async function ensureTables(env) {
       `)
     ]);
 
+    // Non-destructive migrations for legacy databases
     try {
-      await env.DB.prepare(`ALTER TABLE room_states ADD COLUMN last_student_seen INTEGER DEFAULT 0`).run();
+      await env.DB.prepare(`ALTER TABLE room_states ADD COLUMN lesson_id TEXT`).run();
+    } catch (e) {}
+    try {
+      await env.DB.prepare(`ALTER TABLE room_states ADD COLUMN state_data TEXT`).run();
     } catch (e) {}
 
     tablesInitialized = true;
