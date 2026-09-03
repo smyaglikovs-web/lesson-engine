@@ -101,6 +101,7 @@ export function sanitizeBlockStructure(b) {
 
   let type = String(b.type || '').toLowerCase().trim();
 
+  // Smart property-based type inference
   if (!type) {
     if (b.options || b.choices || b.questions || b.statement || b.question) type = 'multiple_choice';
     else if (b.cards || b.flashcards) type = 'flashcards';
@@ -117,6 +118,7 @@ export function sanitizeBlockStructure(b) {
     else return [];
   }
 
+  // Type normalization
   if (type === 'header' || type === 'title' || type === 'h1' || type === 'h2' || type === 'h3') type = 'heading';
   if (type === 'paragraph' || type === 'reading' || type === 'article' || type === 'story' || type === 'reading_comprehension') type = 'text';
   if (type === 'quiz' || type === 'question' || type === 'true_false' || type === 'true-false' || type === 'true/false' || type === 'mc' || type === 'multiple-choice') type = 'multiple_choice';
@@ -138,13 +140,13 @@ export function sanitizeBlockStructure(b) {
   if (b.type === 'multiple_choice') {
     if (Array.isArray(b.questions) && b.questions.length > 0) {
       return b.questions.map((q, qIdx) => {
-        const rawOpts = q.options || q.choices || ['True', 'False'];
-        const cleanOpts = Array.isArray(rawOpts) ? rawOpts.map(o => String(o?.text || o).trim()) : ['True', 'False'];
+        const rawOpts = q.options || q.choices || ['Option A', 'Option B'];
+        const cleanOpts = Array.isArray(rawOpts) ? rawOpts.map(o => String(o?.text || o).trim()) : ['Option A', 'Option B'];
         return {
           id: `b-mc-${Date.now()}-${qIdx}`,
           type: 'multiple_choice',
-          question: q.question || q.statement || q.prompt || 'Statement / Question:',
-          options: cleanOpts.length > 0 ? cleanOpts : ['True', 'False'],
+          question: q.question || q.statement || q.prompt || 'Choose the correct answer:',
+          options: cleanOpts.length > 0 ? cleanOpts : ['Option A', 'Option B'],
           correct: typeof q.correct === 'number' ? q.correct : 0,
           explanation: q.explanation || ''
         };
@@ -153,7 +155,7 @@ export function sanitizeBlockStructure(b) {
 
     let cleanOptions = [];
     let detectedCorrect = typeof b.correct === 'number' ? b.correct : 0;
-    const rawOpts = b.options || b.choices || ['True', 'False'];
+    const rawOpts = b.options || b.choices || ['Option A', 'Option B'];
 
     if (Array.isArray(rawOpts)) {
       rawOpts.forEach((opt, idx) => {
@@ -165,7 +167,7 @@ export function sanitizeBlockStructure(b) {
       });
     }
 
-    b.options = cleanOptions.length > 0 ? cleanOptions : ['True', 'False'];
+    b.options = cleanOptions.length > 0 ? cleanOptions : ['Option A', 'Option B'];
     b.correct = (detectedCorrect >= 0 && detectedCorrect < b.options.length) ? detectedCorrect : 0;
     b.question = b.question || b.statement || b.prompt || 'Choose the correct answer:';
   }
@@ -309,7 +311,6 @@ export function sanitizeBlockStructure(b) {
 // MULTI-PROVIDER AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
-  // 1. Groq (if configured)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
@@ -337,7 +338,6 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. Gemini (if configured)
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -362,7 +362,6 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 3. Cloudflare Workers AI Native Binding
   if (env.AI) {
     const cfModels = [
       '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
@@ -741,7 +740,7 @@ CRITICAL TASK SCHEMAS:
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Explicit Language & Style Enforcement)
+// 1-CLICK BLOCK AI ASSISTANT (Universal Extractor & Self-Healing Fallback)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -771,7 +770,37 @@ export async function transformBlockWithAI(env, payload) {
 
   let tasksInstructions = '';
 
-  // PAIR MATCHING WITH EXPLICIT STYLE RULES
+  // 1. GRAMMAR MULTIPLE CHOICE DRILL
+  if (actions.includes('grammar_quiz')) {
+    tasksInstructions += `
+- GENERATE 3 to 4 distinct "multiple_choice" blocks testing the grammar rule and formula from context.
+  Each block MUST test one sentence gap or choice (e.g., choosing correct tense/conditional form).
+  Schema: { "type": "multiple_choice", "question": "Complete the sentence with the correct conditional structure:\\n'If it rains tomorrow, we _____ at home.'", "options": ["will stay", "would stay", "stayed"], "correct": 0, "explanation": "In First Conditional, the main clause uses 'will + base form'." }`;
+  }
+
+  // 2. COMPREHENSION / MULTIPLE CHOICE QUESTIONS
+  if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
+    tasksInstructions += `
+- GENERATE 3 distinct "multiple_choice" blocks testing comprehension of the context.
+  Schema: { "type": "multiple_choice", "question": "Question text?", "options": ["Correct answer", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Why this is correct based on context." }`;
+  }
+
+  // 3. TRUE / FALSE STATEMENTS
+  if (actions.includes('true_false')) {
+    tasksInstructions += `
+- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the source text.
+  Schema: { "type": "multiple_choice", "question": "Statement from the passage...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the passage." }`;
+  }
+
+  // 4. SENTENCE TRANSFORMATIONS / GAP FILL
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
+    tasksInstructions += `
+- GENERATE 1 "gap_fill" block with 4 sentences drilling the grammar structure.
+  Put target words inside brackets like [word]. Never use [---].
+  Schema: { "type": "gap_fill", "instruction": "Complete the sentences with the correct form of the verb in brackets:", "text": "1. If I won the lottery, I [would buy] a house.\\n2. If it rains, we [will cancel] the trip.", "answers": ["would buy", "will cancel"] }`;
+  }
+
+  // 5. PAIR MATCHING WITH EXPLICIT STYLE RULES
   if (actions.includes('matching')) {
     let styleRules = '';
     let exampleRight = 'Russian translation';
@@ -800,7 +829,7 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "matching", "instruction": "Match the words with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
   }
 
-  // FLASHCARDS WITH EXPLICIT BACK STYLE
+  // 6. FLASHCARDS
   if (actions.includes('flashcards')) {
     const backInstruction = flashcardType === 'russian' 
       ? 'The "back" key MUST be the natural Russian translation of the word.' 
@@ -813,68 +842,57 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "Natural 10-14 word context sentence." } ] }`;
   }
 
+  // 7. INLINE SELECT
   if (actions.includes('inline_select')) {
     tasksInstructions += `
 - GENERATE 1 "inline_select" block with 4 sentences based on the context.
   Inside each sentence, put dropdown choices in brackets separated by | with asterisk (*) on the correct option.
-  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. Dr. Thompson [believed* | doubted] in empirical therapy.\\n2. The symptoms were [treated* | ignored] quickly." }`;
+  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. If she [studies* | studied] hard, she will pass the exam.\\n2. If I were you, I [would accept* | will accept] the offer." }`;
   }
 
-  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
-    tasksInstructions += `
-- GENERATE 1 "gap_fill" block with 4 sentences based on the context.
-  Put target words inside brackets like [word]. Never use [---].
-  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. He practiced [psychotherapy] for years.\\n2. They [supported] the new approach.", "answers": ["psychotherapy", "supported"] }`;
-  }
-
+  // 8. GAP FILL BANK
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 distractors.
-  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "Dr. Thompson used [cognitive] methods to treat [neurosis] in his patients.", "distractors": ["barrier", "hesitation", "distraction"] }`;
+  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "If you [practice] consistently, you [will achieve] your goals without [hesitation].", "distractors": ["barrier", "distraction", "doubt"] }`;
   }
 
+  // 9. SENTENCE REORDER
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
 - GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences based on context (each 8 to 14 words).
-  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Dr. Thompson practiced cognitive behavioral therapy for many years.", "Empirical research supported the effectiveness of this new treatment."] }`;
+  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["If you practice every day your English will improve rapidly.", "She would have traveled abroad if she had saved enough money."] }`;
   }
 
+  // 10. DISCUSSION / OPEN INPUT
   if (actions.includes('discussion')) {
     tasksInstructions += `
-- GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts based on the context.
-  Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. How would you evaluate this approach?\\n2. Have you experienced similar situations?" }`;
+- GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts based on the context or grammar rule.
+  Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. What would you do if you won a million dollars?\\n2. If you could travel anywhere tomorrow, where would you go?" }`;
   }
 
-  if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
-    tasksInstructions += `
-- GENERATE 3 "multiple_choice" blocks testing comprehension.
-  Schema: { "type": "multiple_choice", "question": "Question text?", "options": ["Correct answer", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Why this is correct based on context." }`;
-  }
-
-  if (actions.includes('true_false')) {
-    tasksInstructions += `
-- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the source text.
-  Schema: { "type": "multiple_choice", "question": "Statement from the passage...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the passage." }`;
-  }
-
+  // 11. SPEAKING WHEEL
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
 - GENERATE 1 "spinning_wheel" block with 6 to 8 communicative discussion questions based on context.
   Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Discussion Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"], "eliminateMode": true }`;
   }
 
+  // 12. CATEGORIZATION
   if (actions.includes('categorization')) {
     tasksInstructions += `
 - GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 to 8 items to sort based on context.
   Schema: { "type": "categorization", "instruction": "Sort the words into the correct boxes:", "categories": ["Category 1", "Category 2"], "items": [ { "id": "it-1", "text": "Word 1", "categoryIndex": 0 }, { "id": "it-2", "text": "Word 2", "categoryIndex": 1 } ] }`;
   }
 
+  // 13. GRAMMAR RULE CARD
   if (actions.includes('generate_grammar_card')) {
     tasksInstructions += `
 - GENERATE 1 "grammar_card" block detailing the target grammar rule.
   Schema: { "type": "grammar_card", "title": "Grammar Rule Name", "formula": "Subject + Formula", "explanation": "Clear explanation of usage.", "examples": ["Example 1", "Example 2"] }`;
   }
 
+  // 14. TEXT PASSAGE TOOLS
   if (actions.includes('generate_text_passage') || actions.includes('expand_text')) {
     tasksInstructions += `
 - GENERATE 1 "text" block with an expanded reading passage (approximately 380-450 words) based on the context, adapted to CEFR ${level}.
@@ -893,10 +911,11 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "text", "text": "Level-adapted passage here..." }`;
   }
 
+  // NEVER default to text if an exercise task was intended
   if (!tasksInstructions.trim()) {
     tasksInstructions = `
-- GENERATE 1 "text" block based on context.
-  Schema: { "type": "text", "text": "Content based on context..." }`;
+- GENERATE 3 "multiple_choice" blocks testing the grammar or context.
+  Schema: { "type": "multiple_choice", "question": "Question text?", "options": ["Correct option", "Distractor 1", "Distractor 2"], "correct": 0, "explanation": "Rule explanation." }`;
   }
 
   const prompt = `[ROLE]
@@ -904,7 +923,7 @@ You are a CELTA ELT Materials Designer.
 Target CEFR Level: ${level} (${cefrRules})
 Source Context: "${safeContextData}"
 
-Generate ONLY the exercise blocks requested below:
+Generate ONLY the exercise blocks requested below. Do NOT generate unrequested text passages:
 ${tasksInstructions}
 
 [OUTPUT FORMAT]
@@ -945,16 +964,39 @@ ${tasksInstructions}
     // ZERO-FAILURE CONTEXTUAL GENERATOR (Guaranteed Fallback)
     // ----------------------------------------------------------------------
     if (cleanBlocks.length === 0) {
-      const sentencesFromText = (safeContextData || '')
-        .split(/[.!?]/)
-        .map(s => s.trim())
-        .filter(s => s.length > 25);
-
-      const s1 = sentencesFromText[0] || 'Dr. Thompson practiced cognitive behavioral therapy to address patient neurosis.';
-      const s2 = sentencesFromText[1] || 'Empirical evidence-based practice formed the cornerstone of his methodology.';
-      const s3 = sentencesFromText[2] || 'Unconscious thoughts and transference played a significant role in long-term treatment.';
-
-      if (actions.includes('matching')) {
+      if (actions.includes('grammar_quiz')) {
+        cleanBlocks = [
+          {
+            type: 'multiple_choice',
+            question: "Choose the grammatically correct sentence using the First Conditional:",
+            options: [
+              "If it rains tomorrow, we will cancel the outdoor session.",
+              "If it will rain tomorrow, we cancel the outdoor session.",
+              "If it rained tomorrow, we will cancel the outdoor session."
+            ],
+            correct: 0,
+            explanation: "The First Conditional uses 'if + present simple' followed by 'will + bare infinitive' in the main clause."
+          },
+          {
+            type: 'multiple_choice',
+            question: "Complete the Second Conditional sentence:\\n'If I _____ more free time, I would learn another language.'",
+            options: ["had", "have", "will have"],
+            correct: 0,
+            explanation: "The Second Conditional uses 'if + past simple' to express hypothetical or unreal present/future conditions."
+          },
+          {
+            type: 'multiple_choice',
+            question: "Which option correctly expresses an unlikely or hypothetical situation?",
+            options: [
+              "If they offered me the job, I would accept it immediately.",
+              "If they offer me the job, I would accept it immediately.",
+              "If they will offer me the job, I would accept it immediately."
+            ],
+            correct: 0,
+            explanation: "Hypothetical situations require past simple in the if-clause and 'would + verb' in the main clause."
+          }
+        ];
+      } else if (actions.includes('matching')) {
         const isRussian = matchingType === 'russian';
         cleanBlocks = [
           {
@@ -974,110 +1016,36 @@ ${tasksInstructions}
         cleanBlocks = [
           {
             type: 'multiple_choice',
-            question: `${s1}`,
-            options: ['True', 'False'],
-            correct: 0,
-            explanation: 'Directly supported by the source material.'
-          },
-          {
-            type: 'multiple_choice',
-            question: `The passage suggests that empirical research had no place in treating these conditions.`,
+            question: 'First conditional sentences are used for hypothetical or impossible situations.',
             options: ['True', 'False'],
             correct: 1,
-            explanation: 'Contradicted by the text, which emphasizes evidence-based practice.'
+            explanation: 'False. First conditional is used for real and possible future situations.'
           },
           {
             type: 'multiple_choice',
-            question: `${s2}`,
+            question: 'The if-clause in a second conditional sentence takes the past simple tense.',
             options: ['True', 'False'],
             correct: 0,
-            explanation: 'Affirmed in the reading context.'
+            explanation: 'True. Second conditional requires the past simple in the condition clause.'
           }
         ];
-      } else if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
-        cleanBlocks = [
-          {
-            type: 'multiple_choice',
-            question: 'What is the primary methodology highlighted in the passage?',
-            options: ['Evidence-based cognitive behavioral practice', 'Completely untested intuitive theories', 'Purely pharmacological interventions without therapy'],
-            correct: 0,
-            explanation: 'The context emphasizes evidence-based approaches.'
-          },
-          {
-            type: 'multiple_choice',
-            question: 'How were patient conditions and transference analyzed?',
-            options: ['Through careful examination of unconscious patterns and empirical evidence', 'By ignoring underlying psychological factors', 'By relying strictly on subjective assumptions'],
-            correct: 0,
-            explanation: 'Supported directly by the passage details.'
-          }
-        ];
-      } else if (actions.includes('gap_fill')) {
+      } else if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
         cleanBlocks = [
           {
             type: 'gap_fill',
-            instruction: 'Fill the missing words in the blanks:',
-            text: `1. The psychologist relied on [empirical] evidence in clinical practice.\n2. In therapy, [transference] often reveals subconscious patterns.\n3. The team evaluated the long-term [outcome] of the study.`,
-            answers: ['empirical', 'transference', 'outcome']
-          }
-        ];
-      } else if (actions.includes('gap_fill_bank')) {
-        cleanBlocks = [
-          {
-            type: 'gap_fill_bank',
-            instruction: 'Fill the gaps using words from the bank:',
-            text: `Dr. Thompson adopted [cognitive] methods to evaluate [neurosis] and used [empirical] research to guide treatment.`,
-            distractors: ['hesitation', 'barrier', 'distraction']
-          }
-        ];
-      } else if (actions.includes('expand_text')) {
-        cleanBlocks = [
-          {
-            type: 'text',
-            text: `${safeContextData}\n\nFurthermore, recent longitudinal research has deepened our understanding of these therapeutic interactions. Practitioners now recognize that integrating empirical data with nuanced interpersonal empathy leads to significantly more sustainable outcomes for patients facing complex psychological hurdles.`
-          }
-        ];
-      } else if (actions.includes('shorten_text')) {
-        cleanBlocks = [
-          {
-            type: 'text',
-            text: `${s1} ${s2} Ultimately, balancing evidence-based practices with patient-centered care proved to be the most effective therapeutic path.`
-          }
-        ];
-      } else if (actions.includes('refine_level')) {
-        cleanBlocks = [
-          {
-            type: 'text',
-            text: `In examining orthodox psychotherapeutic paradigms, clinicians increasingly scrutinize the juxtaposition between cognitive behavioral interventions and psychoanalytic constructs such as transference. Empirical validation remains paramount in establishing rigorous clinical efficacy.`
-          }
-        ];
-      } else if (actions.includes('sentence_reorder')) {
-        cleanBlocks = [
-          {
-            type: 'sentence_reorder',
-            instruction: 'Put the words in order to form correct sentences:',
-            sentences: [
-              'Dr Thompson practiced cognitive behavioral therapy for many years.',
-              'Empirical research supported the effectiveness of this treatment.',
-              'Understanding unconscious thoughts is crucial for lasting recovery.'
-            ]
-          }
-        ];
-      } else if (actions.includes('inline_select')) {
-        cleanBlocks = [
-          {
-            type: 'inline_select',
-            instruction: 'Choose the correct word in context:',
-            text: `1. The clinician [advocated* | opposed] evidence-based interventions.\n2. The findings were [substantiated* | refuted] by clinical trials.`
+            instruction: 'Complete the sentences using the correct conditional form:',
+            text: `1. If they [arrive] early, we will start the meeting.\n2. If I had known the answer, I [would have told] you.\n3. She [will pass] the exam if she studies consistently.`,
+            answers: ['arrive', 'would have told', 'will pass']
           }
         ];
       } else {
         cleanBlocks = [
           {
             type: 'multiple_choice',
-            question: 'What is the main concept explored in the text?',
-            options: ['Evidence-based therapeutic methodology', 'Unverified historical assumptions', 'Purely administrative guidelines'],
+            question: 'Which option correctly completes the sentence?',
+            options: ['Correct grammatical structure', 'Common structural mistake 1', 'Common structural mistake 2'],
             correct: 0,
-            explanation: 'The passage explores evidence-based therapeutic methodology.'
+            explanation: 'Demonstrates correct application of the target structure.'
           }
         ];
       }
