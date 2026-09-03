@@ -7,7 +7,7 @@ export function normalizeAnswer(str = '') {
     .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
     .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036«»]/g, '"')
     .replace(/\s+/g, ' ')
-    .replace(/^[.,/#!$%^&*;:{}=\-_`~()]+|[.,/#!$%^&*;:{}=\-_`~()]+$/g, '')
+    .replace(/^[.,/#!$%^&*;:{}=\-_`~()?"']+|[.,/#!$%^&*;:{}=\-_`~()?"']+$/g, '')
     .trim();
 }
 
@@ -89,25 +89,37 @@ export async function submitHomework(env, payload) {
           let blockEarned = 0;
           let blockMax = 0;
 
+          // 1. MULTIPLE CHOICE
           if (b.type === 'multiple_choice') {
             blockMax = 1;
             if (studentAns && studentAns.selected !== undefined && Number(studentAns.selected) === Number(b.correct)) {
               blockEarned = 1;
             }
-          } else if (b.type === 'gap_fill') {
+          } 
+          // 2. GAP FILL
+          else if (b.type === 'gap_fill') {
             const lines = (b.text || '').split('\n').filter(line => line.trim().length > 0);
             lines.forEach((line, lineIdx) => {
               const parts = line.split(/\[(.*?)\]/);
               for (let i = 1; i < parts.length; i += 2) {
-                blockMax++;
-                const key = `${lineIdx}_${i}`;
-                const studentVal = studentAns?.userAnswers?.[key] || '';
-                if (areAnswersEquivalent(studentVal, parts[i])) blockEarned++;
+                const targetWord = parts[i].trim();
+                if (!/^[-_.\s]+$/.test(targetWord)) {
+                  blockMax++;
+                  const key = `${lineIdx}_${i}`;
+                  const studentVal = studentAns?.userAnswers?.[key] || '';
+                  if (areAnswersEquivalent(studentVal, targetWord)) blockEarned++;
+                }
               }
             });
-          } else if (b.type === 'gap_fill_bank') {
+          } 
+          // 3. GAP FILL BANK (DRAG & DROP)
+          else if (b.type === 'gap_fill_bank') {
             const rawParts = (b.text || '').split(/\[(.*?)\]/);
-            const correctAns = rawParts.filter((_, idx) => idx % 2 === 1);
+            const correctAns = rawParts
+              .filter((_, idx) => idx % 2 === 1)
+              .map(w => w.trim())
+              .filter(w => !/^[-_.\s]+$/.test(w));
+
             blockMax = correctAns.length;
             if (studentAns && studentAns.placedSlots) {
               correctAns.forEach((ans, idx) => {
@@ -115,7 +127,9 @@ export async function submitHomework(env, payload) {
                 if (areAnswersEquivalent(userPlaced, ans)) blockEarned++;
               });
             }
-          } else if (b.type === 'inline_select') {
+          } 
+          // 4. INLINE SELECT
+          else if (b.type === 'inline_select') {
             const selections = studentAns?.selections || {};
             const lines = (b.text || '').split('\n').filter(l => l.trim().length > 0);
             lines.forEach((line, lineIdx) => {
@@ -128,12 +142,14 @@ export async function submitHomework(env, payload) {
                 rawOptions.forEach(opt => {
                   if (opt.endsWith('*')) expected = opt.slice(0, -1).trim();
                 });
-                if (!expected && rawOptions.length > 0) expected = rawOptions[0];
+                if (!expected && rawOptions.length > 0) expected = rawOptions[0].replace(/\*$/, '').trim();
                 if (areAnswersEquivalent(selections[key] || '', expected)) blockEarned++;
               }
             });
-          } else if (b.type === 'matching') {
-            const expectedPairs = b.pairs || [];
+          } 
+          // 5. MATCHING
+          else if (b.type === 'matching') {
+            const expectedPairs = Array.isArray(b.pairs) ? b.pairs : [];
             blockMax = expectedPairs.length;
             const submittedPairs = studentAns?.matched || [];
             expectedPairs.forEach(exp => {
@@ -141,18 +157,43 @@ export async function submitHomework(env, payload) {
                 blockEarned++;
               }
             });
-          } else if (b.type === 'sentence_reorder') {
-            blockMax = 1;
-            if (studentAns && studentAns.selectedWordObjects) {
-              const userSentence = studentAns.selectedWordObjects.map(w => w.text).join(' ');
-              if (areAnswersEquivalent(userSentence, b.sentence || '')) blockEarned = 1;
+          } 
+          // 6. MULTI-SENTENCE REORDER
+          else if (b.type === 'sentence_reorder') {
+            const sentencesList = Array.isArray(b.sentences) && b.sentences.length > 0
+              ? b.sentences
+              : (b.sentence ? [b.sentence] : []);
+
+            blockMax = sentencesList.length > 0 ? sentencesList.length : 1;
+
+            if (studentAns) {
+              if (studentAns.sentenceAnswers && typeof studentAns.sentenceAnswers === 'object') {
+                sentencesList.forEach((targetSent, sIdx) => {
+                  const sState = studentAns.sentenceAnswers[sIdx];
+                  if (sState?.isCorrect) {
+                    blockEarned++;
+                  } else if (sState?.selectedWordObjects) {
+                    const userText = sState.selectedWordObjects.map(w => w.text).join(' ');
+                    if (areAnswersEquivalent(userText, targetSent)) blockEarned++;
+                  }
+                });
+              } else if (studentAns.selectedWordObjects) {
+                const userText = studentAns.selectedWordObjects.map(w => w.text).join(' ');
+                if (areAnswersEquivalent(userText, sentencesList[0] || b.sentence || '')) {
+                  blockEarned = 1;
+                }
+              }
             }
-          } else if (b.type === 'categorization') {
-            const items = b.items || [];
+          } 
+          // 7. CATEGORIZATION
+          else if (b.type === 'categorization') {
+            const items = Array.isArray(b.items) ? b.items : [];
             blockMax = items.length;
             const placements = studentAns?.placements || {};
             items.forEach(it => {
-              if (placements[it.id] === it.categoryIndex) blockEarned++;
+              if (placements[it.id] !== undefined && Number(placements[it.id]) === Number(it.categoryIndex)) {
+                blockEarned++;
+              }
             });
           }
 
@@ -199,9 +240,6 @@ export async function getHomeworkSubmissions(env, lessonId, password) {
   return results || [];
 }
 
-// --------------------------------------------------------------------------
-// STUDENT CRM DIRECTORY AGGREGATION
-// --------------------------------------------------------------------------
 export async function getStudentsDirectory(env) {
   await ensureTables(env);
   const { results } = await env.DB.prepare(`
