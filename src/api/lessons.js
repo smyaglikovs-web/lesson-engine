@@ -1,20 +1,23 @@
 import { ensureTables } from '../db/schema.js';
 
-export function normalizeBlockType(rawType) {
+export function normalizeBlockType(rawType = '') {
   let t = String(rawType || 'text').toLowerCase().trim();
+  
   if (t === 'header' || t === 'title' || t === 'h1' || t === 'h2' || t === 'h3') return 'heading';
-  if (t === 'paragraph' || t === 'reading' || t === 'article' || t === 'content' || t === 'story') return 'text';
-  if (t === 'quiz' || t === 'question' || t === 'true_false' || t === 'mc' || t === 'multiple-choice') return 'multiple_choice';
-  if (t === 'vocab' || t === 'words' || t === 'flashcard' || t === 'cards') return 'flashcards';
-  if (t === 'prompt' || t === 'speaking' || t === 'discussion' || t === 'question_input') return 'open_input';
-  if (t === 'rule' || t === 'grammar' || t === 'grammar-card' || t === 'grammarcard') return 'grammar_card';
-  if (t === 'gapfill' || t === 'gap-fill' || t === 'fill_gap') return 'gap_fill';
-  if (t === 'gapfill_bank' || t === 'gap-fill-bank' || t === 'word_bank' || t === 'wordbank' || t === 'drag-and-drop') return 'gap_fill_bank';
-  if (t === 'reorder' || t === 'reorder_sentence' || t === 'sentence-reorder' || t === 'unscramble') return 'sentence_reorder';
-  if (t === 'categories' || t === 'bucket') return 'categorization';
-  if (t === 'inline' || t === 'inline_select' || t === 'dropdown_select' || t === 'select_gap' || t === 'drop_down') return 'inline_select';
-  if (t === 'wheel' || t === 'roulette' || t === 'spinning_wheel') return 'spinning_wheel';
+  if (t === 'paragraph' || t === 'reading' || t === 'article' || t === 'content' || t === 'story' || t === 'reading_comprehension' || t === 'reading comprehension') return 'text';
+  if (t === 'quiz' || t === 'question' || t === 'true_false' || t === 'mc' || t === 'multiple-choice' || t === 'error-analysis' || t === 'error_analysis') return 'multiple_choice';
+  if (t === 'vocab' || t === 'words' || t === 'flashcard' || t === 'cards' || t === 'vocabulary_building' || t === 'vocabulary building') return 'flashcards';
+  if (t === 'prompt' || t === 'speaking' || t === 'discussion' || t === 'question_input' || t === 'writing') return 'open_input';
+  if (t === 'rule' || t === 'grammar' || t === 'grammar-card' || t === 'grammarcard' || t === 'grammar_focus' || t === 'grammar focus') return 'grammar_card';
+  if (t === 'gapfill' || t === 'gap-fill' || t === 'fill_gap' || t === 'fill-in-the-blank' || t === 'fill_in_the_blank') return 'gap_fill';
+  if (t === 'gapfill_bank' || t === 'gap-fill-bank' || t === 'word_bank' || t === 'wordbank' || t === 'drag-and-drop' || t === 'drag_and_drop') return 'gap_fill_bank';
+  if (t === 'reorder' || t === 'reorder_sentence' || t === 'sentence-reorder' || t === 'unscramble' || t === 'sentence-construction' || t === 'sentence_construction') return 'sentence_reorder';
+  if (t === 'categories' || t === 'bucket' || t === 'sorting' || t === 'category') return 'categorization';
+  if (t === 'inline' || t === 'inline_select' || t === 'dropdown_select' || t === 'select_gap' || t === 'drop_down' || t === 'inline-select') return 'inline_select';
+  if (t === 'wheel' || t === 'roulette' || t === 'spinning_wheel' || t === 'speaking_wheel' || t === 'spinning-wheel') return 'spinning_wheel';
   if (t === 'notes' || t === 'teacher_notes' || t === 'teacher-notes') return 'teacher_notes';
+  if (t === 'url' || t === 'link' || t === 'website' || t === 'web_link' || t === 'embed') return 'link';
+
   return t;
 }
 
@@ -22,7 +25,7 @@ export function sanitizeBlocks(blocksArray) {
   if (!Array.isArray(blocksArray)) return [];
   return blocksArray.map((b, idx) => {
     if (!b || typeof b !== 'object') {
-      return { id: `b-${idx}`, type: 'text', text: '' };
+      return { id: `b-${idx}-${Date.now()}`, type: 'text', text: '' };
     }
     return {
       ...b,
@@ -128,7 +131,7 @@ export async function saveLesson(env, lesson) {
     `).bind(
       id,
       lesson.folder_name || '',
-      lesson.title || 'Untitled', 
+      lesson.title || 'Untitled Lesson', 
       lesson.level || 'B1', 
       lesson.topic || 'General', 
       lesson.description || '', 
@@ -146,7 +149,7 @@ export async function saveLesson(env, lesson) {
         data = excluded.data
     `).bind(
       id,
-      lesson.title || 'Untitled', 
+      lesson.title || 'Untitled Lesson', 
       lesson.level || 'B1', 
       lesson.topic || 'General', 
       lesson.description || '', 
