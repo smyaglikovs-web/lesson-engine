@@ -32,12 +32,6 @@ export function sanitizeBlocks(blocksArray) {
   });
 }
 
-export async function verifyTeacherLogin(env, password) {
-  const clean = (password || '').trim();
-  const expectedPass = env.TEACHER_PASSWORD || 'teacher123';
-  return { success: clean === expectedPass };
-}
-
 export async function getLessons(env, filters = {}) {
   await ensureTables(env);
   const { level = '', folder = '', search = '' } = filters;
@@ -70,14 +64,12 @@ export async function getLessons(env, filters = {}) {
       folder_name: r.folder_name || ''
     }));
   } catch (err) {
-    // Graceful fallback for legacy databases without folder_name column
     try {
       const { results } = await env.DB.prepare(
         "SELECT id, title, level, topic, description, created_at FROM lessons ORDER BY created_at DESC"
       ).all();
       return (results || []).map(r => ({ ...r, folder_name: '' }));
     } catch (e2) {
-      console.error("D1 getLessons fallback error:", e2);
       return [];
     }
   }
@@ -117,14 +109,8 @@ export async function deleteFolder(env, folderId) {
   }
 }
 
-export async function saveLesson(env, lesson, password) {
+export async function saveLesson(env, lesson) {
   await ensureTables(env);
-  const cleanPass = (password || '').trim();
-  const expectedPass = env.TEACHER_PASSWORD || 'teacher123';
-  if (cleanPass !== expectedPass) {
-    return { error: "Неверный пароль учителя!" };
-  }
-
   const id = lesson.id || 'lesson-' + Date.now();
   const jsonString = JSON.stringify(lesson);
 
@@ -149,7 +135,6 @@ export async function saveLesson(env, lesson, password) {
       jsonString
     ).run();
   } catch (e) {
-    // Fallback if folder_name column isn't migrated yet
     await env.DB.prepare(`
       INSERT INTO lessons (id, title, level, topic, description, data) 
       VALUES (?, ?, ?, ?, ?, ?)
@@ -236,14 +221,8 @@ export async function getSingleLesson(env, lessonId) {
   };
 }
 
-export async function deleteLesson(env, lessonId, password) {
+export async function deleteLesson(env, lessonId) {
   await ensureTables(env);
-  const clean = (password || '').trim();
-  const expectedPass = env.TEACHER_PASSWORD || 'teacher123';
-  if (clean !== expectedPass) {
-    return { error: "Неверный пароль учителя!" };
-  }
-
   await env.DB.batch([
     env.DB.prepare("DELETE FROM homework_submissions WHERE lesson_id = ?").bind(lessonId),
     env.DB.prepare("DELETE FROM room_states WHERE room_id = ? OR lesson_id = ?").bind(lessonId, lessonId),
