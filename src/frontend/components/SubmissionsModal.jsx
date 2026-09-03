@@ -34,7 +34,7 @@ export const SubmissionsModal = ({ lesson, onClose }) => {
     try {
       const res = await fetch('/api/homework/evaluate-open-input', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           prompt: prompt || 'Answer the open question:',
           studentText: studentText || '',
@@ -42,9 +42,13 @@ export const SubmissionsModal = ({ lesson, onClose }) => {
         })
       });
       const data = await res.json();
+      if (!res.ok || data.error) {
+        alert('Ошибка AI оценки: ' + (data.error || 'Попробуйте позже'));
+        return;
+      }
       setAiEvaluations(prev => ({ ...prev, [blockId]: data }));
     } catch (e) {
-      alert('Ошибка AI оценки');
+      alert('Ошибка соединения при оценке ответа');
     } finally {
       setEvaluatingBlockId(null);
     }
@@ -58,7 +62,13 @@ export const SubmissionsModal = ({ lesson, onClose }) => {
             <h3 className="text-xl font-extrabold text-slate-900">Результаты ДЗ: {lesson.title}</h3>
             <p className="text-xs text-slate-500 mt-0.5">Автоматическая оценка и AI-разбор открытых ответов</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer">✕</button>
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
 
         {loading ? (
@@ -70,7 +80,11 @@ export const SubmissionsModal = ({ lesson, onClose }) => {
           </div>
         ) : selectedSub ? (
           <div className="space-y-4">
-            <button onClick={() => setSelectedSub(null)} className="text-xs text-indigo-600 font-extrabold hover:underline cursor-pointer flex items-center gap-1">
+            <button 
+              type="button"
+              onClick={() => setSelectedSub(null)} 
+              className="text-xs text-indigo-600 font-extrabold hover:underline cursor-pointer flex items-center gap-1"
+            >
               ← Назад к списку учеников
             </button>
 
@@ -98,6 +112,7 @@ export const SubmissionsModal = ({ lesson, onClose }) => {
                           📝 Письменный / Устный ответ
                         </span>
                         <button
+                          type="button"
                           disabled={evaluatingBlockId === blockId}
                           onClick={() => handleEvaluateOpenInput(blockId, 'Personal reflection', val.text)}
                           className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-extrabold rounded-xl text-xs shadow-xs hover:opacity-95 transition cursor-pointer disabled:opacity-40"
@@ -158,7 +173,11 @@ export const SubmissionsModal = ({ lesson, onClose }) => {
                     }`}>
                       {sub.score} / {sub.total_questions} pts ({pct}%)
                     </span>
-                    <button onClick={() => setSelectedSub(sub)} className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs rounded-xl transition cursor-pointer">
+                    <button 
+                      type="button"
+                      onClick={() => setSelectedSub(sub)} 
+                      className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs rounded-xl transition cursor-pointer"
+                    >
                       Просмотр ➔
                     </button>
                   </div>
