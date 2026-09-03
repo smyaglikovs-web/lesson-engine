@@ -46,17 +46,34 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 5500) {
 }
 
 // --------------------------------------------------------------------------
-// BULLETPROOF BLOCK STRUCTURE SANITIZER & TYPE NORMALIZER
+// BULLETPROOF BLOCK SANITIZER WITH FULL FIELD-NAME ALIASING
 // --------------------------------------------------------------------------
 export function sanitizeBlockStructure(b) {
-  if (!b || typeof b !== 'object') return [b];
+  if (!b || typeof b !== 'object') return [];
 
-  let type = String(b.type || 'text').toLowerCase().trim();
-  
-  // Normalization mapping for all creative LLM naming variations
+  let type = String(b.type || '').toLowerCase().trim();
+
+  // Smart type inference from properties
+  if (!type) {
+    if (b.options || b.choices || b.questions || b.statement) type = 'multiple_choice';
+    else if (b.cards || b.flashcards) type = 'flashcards';
+    else if (b.pairs || b.matches) type = 'matching';
+    else if (b.formula || (b.explanation && b.examples)) type = 'grammar_card';
+    else if (b.sentences || (b.sentence && !b.options)) type = 'sentence_reorder';
+    else if (b.categories || (b.items && b.items[0]?.categoryIndex !== undefined)) type = 'categorization';
+    else if (b.items && (b.eliminateMode !== undefined || b.title?.includes('🎡') || b.title?.includes('wheel'))) type = 'spinning_wheel';
+    else if (b.distractors) type = 'gap_fill_bank';
+    else if (b.answers) type = 'gap_fill';
+    else if (b.url) type = 'link';
+    else if (b.prompt || b.speech || b.aim) type = b.speech ? 'teacher_notes' : 'open_input';
+    else if (b.text || b.paragraph || b.content || b.passage || b.story) type = 'text';
+    else return [];
+  }
+
+  // Type normalization mapping
   if (type === 'header' || type === 'title' || type === 'h1' || type === 'h2' || type === 'h3') type = 'heading';
   if (type === 'paragraph' || type === 'reading' || type === 'article' || type === 'story' || type === 'reading_comprehension' || type === 'reading comprehension') type = 'text';
-  if (type === 'quiz' || type === 'question' || type === 'true_false' || type === 'mc' || type === 'multiple-choice' || type === 'error-analysis' || type === 'error_analysis') type = 'multiple_choice';
+  if (type === 'quiz' || type === 'question' || type === 'true_false' || type === 'true-false' || type === 'true/false' || type === 'mc' || type === 'multiple-choice' || type === 'error-analysis' || type === 'error_analysis') type = 'multiple_choice';
   if (type === 'vocab' || type === 'words' || type === 'flashcard' || type === 'cards' || type === 'vocabulary_building' || type === 'vocabulary building') type = 'flashcards';
   if (type === 'rule' || type === 'grammar' || type === 'grammar-card' || type === 'grammarcard' || type === 'grammar_focus' || type === 'grammar focus') type = 'grammar_card';
   if (type === 'reorder' || type === 'sentence_order' || type === 'unscramble' || type === 'sentence-reorder' || type === 'sentence-construction' || type === 'sentence_construction') type = 'sentence_reorder';
@@ -71,62 +88,26 @@ export function sanitizeBlockStructure(b) {
 
   b.type = type;
 
-  // 1. MATCHING NORMALIZATION
-  if (b.type === 'matching') {
-    let rawPairs = b.pairs || b.items || b.matches || b.data || b.questions || [];
-    let normalizedPairs = [];
-    const usedRightVals = new Set();
-
-    if (Array.isArray(rawPairs)) {
-      rawPairs.forEach((p, idx) => {
-        let leftVal = '';
-        let rightVal = '';
-
-        if (Array.isArray(p) && p.length >= 2) {
-          leftVal = String(p[0]).trim();
-          rightVal = String(p[1]).trim();
-        } else if (p && typeof p === 'object') {
-          leftVal = p.left || p.term || p.word || p.item || p.front || p.key || p.question || Object.keys(p)[0] || `Word ${idx + 1}`;
-          rightVal = p.right || p.definition || p.match || p.answer || p.back || p.value || p.translation || p.meaning || (Object.keys(p).length > 1 ? p[Object.keys(p)[1]] : Object.values(p)[0]) || `Match ${idx + 1}`;
-        } else if (typeof p === 'string') {
-          const splitParts = p.split(/[:\-\—\➔\=]/);
-          if (splitParts.length >= 2) {
-            leftVal = splitParts[0].trim();
-            rightVal = splitParts.slice(1).join(' ').trim();
-          }
-        }
-
-        leftVal = String(leftVal).trim();
-        rightVal = String(rightVal).trim();
-
-        if (leftVal && rightVal) {
-          if (usedRightVals.has(rightVal.toLowerCase())) {
-            rightVal = `${rightVal} (${leftVal.slice(0, 12)}...)`;
-          }
-          usedRightVals.add(rightVal.toLowerCase());
-          normalizedPairs.push({ left: leftVal, right: rightVal });
-        }
+  // 1. MULTIPLE CHOICE / TRUE-FALSE NORMALIZATION
+  if (b.type === 'multiple_choice') {
+    if (Array.isArray(b.questions) && b.questions.length > 0) {
+      return b.questions.map((q, qIdx) => {
+        const rawOpts = q.options || q.choices || ['True', 'False'];
+        const cleanOpts = Array.isArray(rawOpts) ? rawOpts.map(o => String(o?.text || o).trim()) : ['True', 'False'];
+        return {
+          id: `b-mc-${Date.now()}-${qIdx}`,
+          type: 'multiple_choice',
+          question: q.question || q.statement || q.prompt || 'Statement / Question:',
+          options: cleanOpts.length > 0 ? cleanOpts : ['True', 'False'],
+          correct: typeof q.correct === 'number' ? q.correct : 0,
+          explanation: q.explanation || ''
+        };
       });
     }
 
-    if (normalizedPairs.length === 0) {
-      normalizedPairs = [
-        { left: 'Key Concept', right: 'Основное понятие (main idea)' },
-        { left: 'To engage with', right: 'Взаимодействовать (participate actively)' },
-        { left: 'Perspective', right: 'Точка зрения (viewpoint)' },
-        { left: 'Significance', right: 'Значимость (importance)' }
-      ];
-    }
-
-    b.instruction = b.instruction || 'Match the words with their definitions / translations:';
-    b.pairs = normalizedPairs;
-  }
-
-  // 2. MULTIPLE CHOICE NORMALIZATION
-  if (b.type === 'multiple_choice') {
     let cleanOptions = [];
     let detectedCorrect = typeof b.correct === 'number' ? b.correct : 0;
-    const rawOpts = b.options || b.choices || ['Option A', 'Option B'];
+    const rawOpts = b.options || b.choices || ['True', 'False'];
 
     if (Array.isArray(rawOpts)) {
       rawOpts.forEach((opt, idx) => {
@@ -142,15 +123,130 @@ export function sanitizeBlockStructure(b) {
       });
     }
 
-    b.options = cleanOptions.length > 0 ? cleanOptions : ['Option A', 'Option B'];
+    b.options = cleanOptions.length > 0 ? cleanOptions : ['True', 'False'];
     b.correct = (detectedCorrect >= 0 && detectedCorrect < b.options.length) ? detectedCorrect : 0;
-    b.question = b.question || b.prompt || 'Choose the correct answer:';
+    b.question = b.question || b.statement || b.prompt || 'Choose the correct answer:';
   }
 
-  // 3. CATEGORIZATION NORMALIZATION
+  // 2. TEXT NORMALIZATION
+  if (b.type === 'text') {
+    b.text = String(b.text || b.paragraph || b.content || b.story || b.passage || '').trim();
+    if (!b.text) return [];
+  }
+
+  // 3. GAP FILL NORMALIZATION
+  if (b.type === 'gap_fill') {
+    let rawText = String(b.text || b.paragraph || b.content || b.sentences || '').trim();
+    if (Array.isArray(b.sentences)) rawText = b.sentences.join('\n');
+    b.text = rawText.replace(/\[[-_.\s]{2,}\]/g, '[answer]');
+    const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)]
+      .map(m => m[1].trim())
+      .filter(w => !/^[-_.\s]+$/.test(w));
+    b.answers = matches.length > 0 ? matches : (Array.isArray(b.answers) ? b.answers : ['answer']);
+    b.instruction = b.instruction || 'Fill the missing words in the blanks:';
+  }
+
+  // 4. GAP FILL BANK (DRAG & DROP) NORMALIZATION
+  if (b.type === 'gap_fill_bank') {
+    let rawText = String(b.text || b.paragraph || b.content || b.passage || '').trim();
+    b.text = rawText.replace(/\[[-_.\s]{2,}\]/g, '[practice]');
+    let distractors = Array.isArray(b.distractors) ? b.distractors : [];
+    distractors = distractors
+      .map(d => String(d).trim())
+      .filter(d => Boolean(d) && !/^[-_.\s]+$/.test(d));
+    b.distractors = distractors.length > 0 ? distractors : ['barrier', 'hesitation', 'distraction'];
+    b.instruction = b.instruction || 'Fill the gaps using the correct words from the bank:';
+  }
+
+  // 5. INLINE SELECT NORMALIZATION
+  if (b.type === 'inline_select') {
+    let rawText = String(b.text || b.paragraph || b.content || '').trim();
+    if (Array.isArray(b.sentences)) rawText = b.sentences.join('\n');
+    b.text = rawText;
+    b.instruction = b.instruction || 'Choose the correct word in context:';
+  }
+
+  // 6. MULTI-SENTENCE REORDER NORMALIZATION
+  if (b.type === 'sentence_reorder') {
+    let sentencesList = [];
+    if (Array.isArray(b.sentences) && b.sentences.length > 0) {
+      sentencesList = b.sentences.map(s => String(s).trim()).filter(Boolean);
+    } else if (b.sentence && typeof b.sentence === 'string') {
+      sentencesList = [b.sentence.trim()];
+    } else if (b.text && typeof b.text === 'string') {
+      sentencesList = b.text.split('\n').map(s => s.trim()).filter(Boolean);
+    }
+
+    if (sentencesList.length === 0) {
+      sentencesList = ['Consistent daily practice builds conversational fluency.'];
+    }
+
+    b.sentences = sentencesList;
+    b.sentence = sentencesList[0];
+    b.instruction = b.instruction || 'Put the words in order to form correct sentences:';
+  }
+
+  // 7. OPEN INPUT / DISCUSSION NORMALIZATION
+  if (b.type === 'open_input') {
+    b.prompt = String(b.prompt || b.question || b.discussion || b.text || 'Discussion question / prompt...').trim();
+  }
+
+  // 8. FLASHCARDS NORMALIZATION
+  if (b.type === 'flashcards') {
+    let rawCards = Array.isArray(b.cards) ? b.cards : (Array.isArray(b.targetWords) ? b.targetWords : []);
+    b.cards = rawCards.map(c => {
+      if (typeof c === 'object' && c !== null) {
+        return {
+          front: String(c.front || c.word || c.term || 'Target Word').trim(),
+          back: String(c.back || c.translation || c.definition || 'Meaning').trim(),
+          example: String(c.example || c.sentence || '').trim()
+        };
+      }
+      return { front: 'Target Word', back: 'Meaning', example: '' };
+    });
+    b.title = b.title || 'Key Target Vocabulary';
+  }
+
+  // 9. MATCHING NORMALIZATION
+  if (b.type === 'matching') {
+    let rawPairs = b.pairs || b.items || b.matches || b.data || [];
+    let normalizedPairs = [];
+    const usedRightVals = new Set();
+
+    if (Array.isArray(rawPairs)) {
+      rawPairs.forEach((p, idx) => {
+        let leftVal = '';
+        let rightVal = '';
+
+        if (Array.isArray(p) && p.length >= 2) {
+          leftVal = String(p[0]).trim();
+          rightVal = String(p[1]).trim();
+        } else if (p && typeof p === 'object') {
+          leftVal = p.left || p.term || p.word || p.item || p.front || p.key || Object.keys(p)[0] || `Word ${idx + 1}`;
+          rightVal = p.right || p.definition || p.match || p.answer || p.back || p.value || p.translation || (Object.keys(p).length > 1 ? p[Object.keys(p)[1]] : Object.values(p)[0]) || `Match ${idx + 1}`;
+        }
+
+        leftVal = String(leftVal).trim();
+        rightVal = String(rightVal).trim();
+
+        if (leftVal && rightVal) {
+          if (usedRightVals.has(rightVal.toLowerCase())) {
+            rightVal = `${rightVal} (${leftVal.slice(0, 10)}...)`;
+          }
+          usedRightVals.add(rightVal.toLowerCase());
+          normalizedPairs.push({ left: leftVal, right: rightVal });
+        }
+      });
+    }
+
+    b.instruction = b.instruction || 'Match the words with their definitions / translations:';
+    b.pairs = normalizedPairs.length > 0 ? normalizedPairs : [{ left: 'Concept', right: 'Definition' }];
+  }
+
+  // 10. CATEGORIZATION NORMALIZATION
   if (b.type === 'categorization') {
     if (!Array.isArray(b.categories) || b.categories.length === 0) {
-      b.categories = ['Category A', 'Category B'];
+      b.categories = ['Category 1', 'Category 2'];
     }
     const rawItems = Array.isArray(b.items) ? b.items : [];
     b.items = rawItems.map((it, idx) => {
@@ -166,88 +262,25 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Sort the items into the correct categories:';
   }
 
-  // 4. FLASHCARDS NORMALIZATION
-  if (b.type === 'flashcards') {
-    let rawCards = Array.isArray(b.cards) ? b.cards : [];
-    b.cards = rawCards.map(c => {
-      if (typeof c === 'object' && c !== null) {
-        return {
-          front: String(c.front || c.word || c.term || 'Target Word').trim(),
-          back: String(c.back || c.translation || c.definition || 'Meaning').trim(),
-          example: String(c.example || c.sentence || '').trim()
-        };
-      }
-      return { front: 'Target Word', back: 'Meaning', example: '' };
-    });
-    b.title = b.title || 'Key Target Vocabulary';
-  }
-
-  // 5. GAP FILL NORMALIZATION
-  if (b.type === 'gap_fill') {
-    b.text = (b.text || '').replace(/\[[-_.\s]{2,}\]/g, '[answer]');
-    const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)]
-      .map(m => m[1].trim())
-      .filter(w => !/^[-_.\s]+$/.test(w));
-    b.answers = matches.length > 0 ? matches : ['answer'];
-    b.instruction = b.instruction || 'Type the missing words in the blanks:';
-  }
-
-  // 6. GAP FILL BANK NORMALIZATION
-  if (b.type === 'gap_fill_bank') {
-    b.text = (b.text || '').replace(/\[[-_.\s]{2,}\]/g, '[practice]');
-    let distractors = Array.isArray(b.distractors) ? b.distractors : [];
-    distractors = distractors
-      .map(d => String(d).trim())
-      .filter(d => Boolean(d) && !/^[-_.\s]+$/.test(d));
-    b.distractors = distractors.length > 0 ? distractors : ['barrier', 'hesitation'];
-    b.instruction = b.instruction || 'Fill the gaps using the correct words from the bank:';
-  }
-
-  // 7. MULTI-SENTENCE REORDER NORMALIZATION
-  if (b.type === 'sentence_reorder') {
-    let sentencesList = [];
-    if (Array.isArray(b.sentences) && b.sentences.length > 0) {
-      sentencesList = b.sentences.map(s => String(s).trim()).filter(Boolean);
-    } else if (b.sentence && typeof b.sentence === 'string') {
-      sentencesList = [b.sentence.trim()];
-    }
-
-    if (sentencesList.length === 0) {
-      sentencesList = ['Consistent daily practice is the key to fluency.'];
-    }
-
-    b.sentences = sentencesList;
-    b.sentence = sentencesList[0];
-    b.instruction = b.instruction || 'Put the words in order to form correct sentences:';
-  }
-
-  // 8. SPINNING WHEEL NORMALIZATION
+  // 11. SPINNING WHEEL NORMALIZATION
   if (b.type === 'spinning_wheel') {
-    let items = Array.isArray(b.items) ? b.items : [];
+    let items = Array.isArray(b.items) ? b.items : (Array.isArray(b.questions) ? b.questions : []);
     items = items.map(it => String(it).trim()).filter(Boolean);
-    if (items.length === 0) {
-      items = [
-        'How would you apply this concept in real life?',
-        'Describe an experience connected to this topic.',
-        'What was the most interesting part of this lesson?',
-        'Summarize the core message in 2 sentences.'
-      ];
-    }
-    b.items = items;
+    b.items = items.length > 0 ? items : ['What was the key insight today?', 'How will you apply this in real life?'];
     b.title = b.title || '🎡 Speaking & Discussion Roulette';
     b.instruction = b.instruction || 'Spin the wheel and answer the selected question!';
     b.eliminateMode = b.eliminateMode !== undefined ? b.eliminateMode : true;
   }
 
-  // 9. INLINE SELECT NORMALIZATION
-  if (b.type === 'inline_select') {
-    b.instruction = b.instruction || 'Choose the correct word in context:';
-    if (!b.text || !b.text.includes('[')) {
-      b.text = '1. We must [focus on* | ignore] our primary objective.\n2. She [succeeded* | failed] in completing the project on time.';
-    }
+  // 12. GRAMMAR CARD NORMALIZATION
+  if (b.type === 'grammar_card') {
+    b.title = b.title || 'Target Grammar Rule';
+    b.formula = b.formula || 'Subject + Verb';
+    b.explanation = b.explanation || 'Rule explanation.';
+    b.examples = Array.isArray(b.examples) && b.examples.length > 0 ? b.examples : ['Example sentence.'];
   }
 
-  // 10. LINK BLOCK NORMALIZATION
+  // 13. LINK BLOCK NORMALIZATION
   if (b.type === 'link') {
     b.url = b.url || 'https://en.wikipedia.org';
     b.title = b.title || 'Resource Link';
@@ -591,16 +624,10 @@ Target vocabulary: ${JSON.stringify(profile.targetWords)}
 Format: ${format === 'live' ? 'Live teacher-led lesson' : 'Self-paced auto-graded homework'}
 
 [CRITICAL TASK CONSTRAINTS]
-1. For "matching": Generate 6 pairs where EVERY right-side definition is 100% UNIQUE. Never repeat the same category or right-side text.
-2. For "gap_fill_bank": 
-   - CRITICAL: Put the ACTUAL vocabulary word inside brackets, like [${profile.targetWords[0]?.front || 'concept'}]. 
-   - NEVER use dashes, underscores, or dots inside brackets (NO [---], NO [___]).
-   - Provide 2-3 distractor words in "distractors".
-3. For "sentence_reorder": 
-   - Generate an array of 4 to 5 distinct sentences in "sentences".
-   - Each sentence MUST be strictly 8 to 14 words long.
-4. For "inline_select":
-   - Put options in brackets separated by | and mark the correct option with an asterisk (*), e.g. [correct* | wrong].
+1. For "matching": Generate 6 pairs where EVERY right-side definition is 100% UNIQUE.
+2. For "gap_fill_bank": Put ACTUAL vocabulary words inside brackets like [${profile.targetWords[0]?.front || 'concept'}]. NEVER use [---] or [___].
+3. For "sentence_reorder": Generate an array of 4 to 5 distinct sentences in "sentences" (strictly 8 to 14 words each).
+4. For "inline_select": Put options in brackets separated by | and mark the correct option with asterisk (*), e.g. [correct* | wrong].
 
 [OUTPUT FORMAT]
 {
@@ -648,7 +675,7 @@ Format: ${format === 'live' ? 'Live teacher-led lesson' : 'Self-paced auto-grade
   synthesizedBlocks.forEach(b => {
     const res = sanitizeBlockStructure(b);
     if (Array.isArray(res)) cleanTaskBlocks.push(...res);
-    else cleanTaskBlocks.push(res);
+    else if (res) cleanTaskBlocks.push(res);
   });
 
   if (cleanTaskBlocks.length === 0) {
@@ -769,7 +796,7 @@ Format: ${format === 'live' ? 'Live teacher-led lesson' : 'Self-paced auto-grade
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (All Modal Tasks Handled Without Hallucination)
+// 1-CLICK BLOCK AI ASSISTANT (Guaranteed 1-Click Auto-Fill for Every Type)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -799,114 +826,107 @@ export async function transformBlockWithAI(env, payload) {
 
   let tasksInstructions = '';
 
-  // 1. TRUE / FALSE STATEMENTS
+  // 1. INLINE SELECT AUTO-FILL
+  if (actions.includes('inline_select')) {
+    tasksInstructions += `
+- GENERATE 1 "inline_select" block with 4 sentences based on the context.
+  CRITICAL: Inside each sentence, put dropdown choices in brackets separated by | with asterisk (*) on the correct option.
+  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. Dr. Thompson [believed* | doubted] in empirical therapy.\\n2. The symptoms were [treated* | ignored] quickly." }`;
+  }
+
+  // 2. GAP FILL AUTO-FILL
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
+    tasksInstructions += `
+- GENERATE 1 "gap_fill" block with 4 sentences based on the context.
+  CRITICAL: Put target words inside brackets like [word]. Never use [---].
+  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. He practiced [psychotherapy] for years.\\n2. They [supported] the new approach.", "answers": ["psychotherapy", "supported"] }`;
+  }
+
+  // 3. GAP FILL BANK AUTO-FILL
+  if (actions.includes('gap_fill_bank')) {
+    tasksInstructions += `
+- GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 distractors.
+  CRITICAL: Put actual words inside brackets. NO [---].
+  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "Dr. Thompson used [cognitive] methods to treat [neurosis] in his patients.", "distractors": ["barrier", "hesitation", "distraction"] }`;
+  }
+
+  // 4. SENTENCE REORDER AUTO-FILL
+  if (actions.includes('sentence_reorder')) {
+    tasksInstructions += `
+- GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences based on context (each 8 to 14 words).
+  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Dr. Thompson practiced cognitive behavioral therapy for many years.", "Empirical research supported the effectiveness of this new treatment."] }`;
+  }
+
+  // 5. OPEN INPUT / DISCUSSION AUTO-FILL
+  if (actions.includes('discussion')) {
+    tasksInstructions += `
+- GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts based on the context.
+  Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. How would you evaluate this approach?\\n2. Have you experienced similar situations?" }`;
+  }
+
+  // 6. MULTIPLE CHOICE / COMPREHENSION AUTO-FILL
+  if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
+    tasksInstructions += `
+- GENERATE 3 "multiple_choice" blocks testing comprehension.
+  Schema: { "type": "multiple_choice", "question": "Question text?", "options": ["Correct answer", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Why this is correct based on context." }`;
+  }
+
+  // 7. TRUE / FALSE STATEMENTS AUTO-FILL
   if (actions.includes('true_false')) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the source text.
-  Schema: { "type": "multiple_choice", "question": "Statement from the context...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the passage." }`;
+  Schema: { "type": "multiple_choice", "question": "Statement from the passage...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the passage." }`;
   }
 
-  // 2. COMPREHENSION / MULTIPLE CHOICE QUESTIONS
-  if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
-    tasksInstructions += `
-- GENERATE 3 "multiple_choice" blocks testing comprehension of the material.
-  Schema: { "type": "multiple_choice", "question": "Clear question text?", "options": ["Correct answer", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Why this is correct based on the context." }`;
-  }
-
-  // 3. GRAMMAR DRILL QUESTIONS
-  if (actions.includes('grammar_quiz')) {
-    tasksInstructions += `
-- GENERATE 3 "multiple_choice" blocks specifically testing the target grammar structure.
-  Schema: { "type": "multiple_choice", "question": "Choose the grammatically correct sentence:", "options": ["Correct sentence", "Grammatical error 1", "Grammatical error 2"], "correct": 0, "explanation": "Grammar rule breakdown." }`;
-  }
-
-  // 4. PAIR MATCHING
+  // 8. PAIR MATCHING AUTO-FILL
   if (actions.includes('matching')) {
     tasksInstructions += `
-- GENERATE 1 "matching" block with 6 distinct pairs (${matchingType} style).
+- GENERATE 1 "matching" block with 6 distinct pairs (${matchingType} style) based on context words.
   CRITICAL: Every right-side value MUST be 100% unique.
   Schema: { "type": "matching", "instruction": "Match the words with their definitions / translations:", "pairs": [ { "left": "term", "right": "unique definition or translation" } ] }`;
   }
 
-  // 5. VOCABULARY FLASHCARDS
+  // 9. FLASHCARDS AUTO-FILL
   if (actions.includes('flashcards')) {
     const backStyle = flashcardType === 'russian' ? 'Russian translation' : 'English definition';
     tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 target vocabulary words.
+- GENERATE 1 "flashcards" block with 6 target vocabulary words from the context.
   CRITICAL: Each card must have a distinct, natural 10-14 word context sentence.
   Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "word", "back": "${backStyle}", "example": "Natural 10-14 word context sentence." } ] }`;
   }
 
-  // 6. GAP FILL & GRAMMAR TRANSFORMATIONS
-  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
-    tasksInstructions += `
-- GENERATE 1 "gap_fill" block with 4 sentences containing [target words] in brackets.
-  CRITICAL: Never put dashes [---] inside brackets.
-  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. Yesterday she [went] home.\\n2. They [have seen] it before.", "answers": ["went", "have seen"] }`;
-  }
-
-  // 7. GAP FILL BANK (DRAG & DROP)
-  if (actions.includes('gap_fill_bank')) {
-    tasksInstructions += `
-- GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets and 3 distractors.
-  CRITICAL: Put the actual word inside brackets. NO [---].
-  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "A cohesive paragraph containing [word1] and [word2] in brackets...", "distractors": ["wrong1", "wrong2", "wrong3"] }`;
-  }
-
-  // 8. SENTENCE REORDER
-  if (actions.includes('sentence_reorder')) {
-    tasksInstructions += `
-- GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences (each strictly 8 to 14 words).
-  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Sentence one is eight to twelve words.", "Sentence two drills target grammar."] }`;
-  }
-
-  // 9. SPEAKING WHEEL
+  // 10. SPEAKING WHEEL AUTO-FILL
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
-- GENERATE 1 "spinning_wheel" block with 6 to 8 communicative discussion questions.
+- GENERATE 1 "spinning_wheel" block with 6 to 8 communicative discussion questions based on context.
   Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Discussion Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"], "eliminateMode": true }`;
   }
 
-  // 10. CATEGORIZATION
+  // 11. CATEGORIZATION AUTO-FILL
   if (actions.includes('categorization')) {
     tasksInstructions += `
-- GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 to 8 items to sort.
+- GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 to 8 items to sort based on context.
   Schema: { "type": "categorization", "instruction": "Sort the words into the correct boxes:", "categories": ["Category 1", "Category 2"], "items": [ { "id": "it-1", "text": "Word 1", "categoryIndex": 0 }, { "id": "it-2", "text": "Word 2", "categoryIndex": 1 } ] }`;
   }
 
-  // 11. INLINE SELECT
-  if (actions.includes('inline_select')) {
-    tasksInstructions += `
-- GENERATE 1 "inline_select" block with 4 sentences containing [option1* | option2] dropdowns where the asterisk (*) marks the correct answer.
-  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. We should [focus on* | ignore] the main goal.\\n2. She [completed* | missed] the assignment." }`;
-  }
-
-  // 12. GRAMMAR RULE CARD
+  // 12. GRAMMAR CARD AUTO-FILL
   if (actions.includes('generate_grammar_card')) {
     tasksInstructions += `
 - GENERATE 1 "grammar_card" block detailing the target grammar rule.
   Schema: { "type": "grammar_card", "title": "Grammar Rule Name", "formula": "Subject + Formula", "explanation": "Clear explanation of usage.", "examples": ["Example 1", "Example 2"] }`;
   }
 
-  // 13. TEXT PASSAGE REFINEMENT
+  // 13. TEXT PASSAGE AUTO-FILL
   if (actions.includes('generate_text_passage') || actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
     tasksInstructions += `
 - GENERATE 1 "text" block with an engaging reading passage (${targetLength} words) adapted to level ${level}.
   Schema: { "type": "text", "text": "Full reading passage here..." }`;
   }
 
-  // 14. COMMUNICATIVE DISCUSSION
-  if (actions.includes('discussion')) {
-    tasksInstructions += `
-- GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts.
-  Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. Question 1?\\n2. Question 2?" }`;
-  }
-
-  // Fallback safe instruction if no match
   if (!tasksInstructions.trim()) {
     tasksInstructions = `
-- GENERATE 3 "multiple_choice" blocks based on the context.
-  Schema: { "type": "multiple_choice", "question": "Question text?", "options": ["Correct", "Wrong 1", "Wrong 2"], "correct": 0, "explanation": "Explanation." }`;
+- GENERATE 1 "text" block based on context.
+  Schema: { "type": "text", "text": "Content based on context..." }`;
   }
 
   const prompt = `[ROLE]
@@ -923,7 +943,7 @@ ${tasksInstructions}
 [STRICT CONSTRAINTS]
 - Return a JSON object with a "blocks" array.
 - ONLY output the block types explicitly requested in the task list above.
-- Never output full lessons or random flashcards/grammar cards unless requested.
+- Ensure all text, questions, and sentences are populated from the source context.
 
 [OUTPUT FORMAT]
 {
@@ -938,7 +958,7 @@ ${tasksInstructions}
     rawList.forEach(b => {
       const res = sanitizeBlockStructure(b);
       if (Array.isArray(res)) cleanBlocks.push(...res);
-      else cleanBlocks.push(res);
+      else if (res && typeof res === 'object') cleanBlocks.push(res);
     });
 
     if (cleanBlocks.length === 0) {
