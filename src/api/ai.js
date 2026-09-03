@@ -101,7 +101,6 @@ export function sanitizeBlockStructure(b) {
 
   let type = String(b.type || '').toLowerCase().trim();
 
-  // Smart property-based type inference
   if (!type) {
     if (b.options || b.choices || b.questions || b.statement || b.question) type = 'multiple_choice';
     else if (b.cards || b.flashcards) type = 'flashcards';
@@ -118,7 +117,6 @@ export function sanitizeBlockStructure(b) {
     else return [];
   }
 
-  // Type normalization
   if (type === 'header' || type === 'title' || type === 'h1' || type === 'h2' || type === 'h3') type = 'heading';
   if (type === 'paragraph' || type === 'reading' || type === 'article' || type === 'story' || type === 'reading_comprehension') type = 'text';
   if (type === 'quiz' || type === 'question' || type === 'true_false' || type === 'true-false' || type === 'true/false' || type === 'mc' || type === 'multiple-choice') type = 'multiple_choice';
@@ -453,19 +451,11 @@ export async function evaluateOpenInputWithAI(env, { prompt, studentText, level 
 
   const systemPrompt = `[ROLE]
 You are a CELTA/DELTA Master Examiner evaluating an English learner's response.
-
-[CONTEXT]
 Target CEFR Level: ${level} (${cefrRules})
 Task Prompt: "${prompt}"
 
-[TASK]
 Evaluate the student's text for task achievement, grammar accuracy, vocabulary richness, and CEFR level alignment.
-
-[CONSTRAINTS]
-- Return ONLY a valid JSON object.
-- Score MUST be an integer from 1 to 5.
-- Provide constructive feedback (2-3 concise sentences).
-- List specific grammatical error corrections if present.
+Return ONLY valid JSON.
 
 [OUTPUT FORMAT]
 {
@@ -584,7 +574,7 @@ Write a rich 240-300 word educational story/passage for this lesson strictly ada
   const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${resolvedTopic}\nContext: ${audienceContext}\nNotes: ${text.substring(0, 400)}`, 1400);
   const storyText = stage2Result.data?.storyText || `${resolvedTopic} is an essential part of modern communication. By exploring key vocabulary and structures, learners develop natural conversational fluency.`;
 
-  // STAGE 3: Parallel Task Synthesis (Comprehensive Schema Hints)
+  // STAGE 3: Parallel Task Synthesis
   const tasksToGenerate = Array.isArray(selectedTasks) && selectedTasks.length > 0 
     ? selectedTasks 
     : ['multiple_choice', 'gap_fill_bank', 'matching', 'sentence_reorder'];
@@ -598,13 +588,13 @@ Target vocabulary: ${JSON.stringify(profile.targetWords)}
 Generate exercise blocks matching the requested types: ${JSON.stringify(tasksToGenerate)}.
 
 CRITICAL TASK SCHEMAS:
-- "matching": { "type": "matching", "instruction": "...", "pairs": [ { "left": "term", "right": "unique definition" } ] }
-- "gap_fill_bank": { "type": "gap_fill_bank", "instruction": "...", "text": "Paragraph with [word1] and [word2]...", "distractors": ["distractor1", "distractor2"] }
-- "gap_fill": { "type": "gap_fill", "instruction": "...", "text": "1. She [went]...\\n2. They [saw]...", "answers": ["went", "saw"] }
-- "multiple_choice": { "type": "multiple_choice", "question": "...", "options": ["Correct", "Wrong 1", "Wrong 2"], "correct": 0, "explanation": "..." }
-- "sentence_reorder": { "type": "sentence_reorder", "instruction": "...", "sentences": ["Sentence one (8-14 words).", "Sentence two (8-14 words)."] }
-- "inline_select": { "type": "inline_select", "instruction": "...", "text": "1. She [chose* | refused] the offer.\\n2. They [agreed* | denied]." }
-- "categorization": { "type": "categorization", "instruction": "...", "categories": ["Cat 1", "Cat 2"], "items": [ { "id": "it-1", "text": "Item 1", "categoryIndex": 0 } ] }
+- "matching": { "type": "matching", "instruction": "Match the words with their definitions / translations:", "pairs": [ { "left": "term", "right": "unique definition or Russian translation" } ] }
+- "gap_fill_bank": { "type": "gap_fill_bank", "instruction": "Fill the gaps using words from the bank:", "text": "Paragraph with [word1] and [word2]...", "distractors": ["distractor1", "distractor2"] }
+- "gap_fill": { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. She [went]...\\n2. They [saw]...", "answers": ["went", "saw"] }
+- "multiple_choice": { "type": "multiple_choice", "question": "Question text?", "options": ["Correct", "Wrong 1", "Wrong 2"], "correct": 0, "explanation": "Why correct." }
+- "sentence_reorder": { "type": "sentence_reorder", "instruction": "Put words in order:", "sentences": ["Sentence one (8-14 words).", "Sentence two (8-14 words)."] }
+- "inline_select": { "type": "inline_select", "instruction": "Choose correct word:", "text": "1. She [chose* | refused] the offer.\\n2. They [agreed* | denied]." }
+- "categorization": { "type": "categorization", "instruction": "Sort words:", "categories": ["Cat 1", "Cat 2"], "items": [ { "id": "it-1", "text": "Item 1", "categoryIndex": 0 } ] }
 
 [OUTPUT FORMAT]
 {
@@ -751,7 +741,7 @@ CRITICAL TASK SCHEMAS:
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Universal Extractor & Self-Healing Fallback)
+// 1-CLICK BLOCK AI ASSISTANT (Explicit Language & Style Enforcement)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -780,6 +770,48 @@ export async function transformBlockWithAI(env, payload) {
   const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
   let tasksInstructions = '';
+
+  // PAIR MATCHING WITH EXPLICIT STYLE RULES
+  if (actions.includes('matching')) {
+    let styleRules = '';
+    let exampleRight = 'Russian translation';
+
+    if (matchingType === 'russian') {
+      styleRules = 'CRITICAL: The "left" key MUST be the English word/term from context, and the "right" key MUST be the accurate Russian translation (e.g. left: "transference", right: "перенос"). DO NOT use English definitions.';
+      exampleRight = 'русский перевод';
+    } else if (matchingType === 'synonym') {
+      styleRules = 'CRITICAL: The "left" key MUST be the English word, and the "right" key MUST be an English SYNONYM of that word.';
+      exampleRight = 'English synonym';
+    } else if (matchingType === 'antonym') {
+      styleRules = 'CRITICAL: The "left" key MUST be the English word, and the "right" key MUST be an English ANTONYM (opposite meaning).';
+      exampleRight = 'English antonym';
+    } else if (matchingType === 'collocation') {
+      styleRules = 'CRITICAL: Split natural English collocations between left and right (e.g. left: "pay", right: "attention to").';
+      exampleRight = 'collocation ending';
+    } else {
+      styleRules = 'CRITICAL: The "left" key is the English term, and the "right" key is the concise English definition.';
+      exampleRight = 'English definition';
+    }
+
+    tasksInstructions += `
+- GENERATE 1 "matching" block with 6 distinct pairs based on context words.
+  ${styleRules}
+  CRITICAL: Every right-side value MUST be 100% unique.
+  Schema: { "type": "matching", "instruction": "Match the words with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
+  }
+
+  // FLASHCARDS WITH EXPLICIT BACK STYLE
+  if (actions.includes('flashcards')) {
+    const backInstruction = flashcardType === 'russian' 
+      ? 'The "back" key MUST be the natural Russian translation of the word.' 
+      : 'The "back" key MUST be a concise English definition.';
+
+    tasksInstructions += `
+- GENERATE 1 "flashcards" block with 6 target vocabulary words from the context.
+  CRITICAL: ${backInstruction}
+  CRITICAL: Each card must have a distinct, natural 10-14 word context sentence.
+  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "Natural 10-14 word context sentence." } ] }`;
+  }
 
   if (actions.includes('inline_select')) {
     tasksInstructions += `
@@ -823,19 +855,6 @@ export async function transformBlockWithAI(env, payload) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the source text.
   Schema: { "type": "multiple_choice", "question": "Statement from the passage...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the passage." }`;
-  }
-
-  if (actions.includes('matching')) {
-    tasksInstructions += `
-- GENERATE 1 "matching" block with 6 distinct pairs (${matchingType} style) based on context words.
-  Schema: { "type": "matching", "instruction": "Match the words with their definitions / translations:", "pairs": [ { "left": "term", "right": "unique definition or translation" } ] }`;
-  }
-
-  if (actions.includes('flashcards')) {
-    const backStyle = flashcardType === 'russian' ? 'Russian translation' : 'English definition';
-    tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 target vocabulary words from the context.
-  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "word", "back": "${backStyle}", "example": "Natural 10-14 word context sentence." } ] }`;
   }
 
   if (actions.includes('spinning_wheel')) {
@@ -935,7 +954,23 @@ ${tasksInstructions}
       const s2 = sentencesFromText[1] || 'Empirical evidence-based practice formed the cornerstone of his methodology.';
       const s3 = sentencesFromText[2] || 'Unconscious thoughts and transference played a significant role in long-term treatment.';
 
-      if (actions.includes('true_false')) {
+      if (actions.includes('matching')) {
+        const isRussian = matchingType === 'russian';
+        cleanBlocks = [
+          {
+            type: 'matching',
+            instruction: isRussian ? 'Соедините слова и их переводы:' : 'Match the words with their definitions:',
+            pairs: [
+              { left: 'Cognitive', right: isRussian ? 'Когнитивный / Познавательный' : 'Relating to mental processes' },
+              { left: 'Transference', right: isRussian ? 'Перенос (эмоций на терапевта)' : 'Redirection of feelings onto therapist' },
+              { left: 'Empirical', right: isRussian ? 'Эмпирический / Опытный' : 'Based on observed evidence' },
+              { left: 'Neurosis', right: isRussian ? 'Невроз' : 'Mild mental or emotional distress' },
+              { left: 'Methodology', right: isRussian ? 'Методология' : 'System of therapeutic methods' },
+              { left: 'Pioneering', right: isRussian ? 'Новаторский / Передовой' : 'Involving new ideas or methods' }
+            ]
+          }
+        ];
+      } else if (actions.includes('true_false')) {
         cleanBlocks = [
           {
             type: 'multiple_choice',
