@@ -2,7 +2,14 @@ import { ensureTables } from './db/schema.js';
 import { verifyTeacherLogin, getLessons, saveLesson, getSingleLesson, deleteLesson } from './api/lessons.js';
 import { generateFullLessonWithAI, transformBlockWithAI, fetchYouTubeTranscriptNative } from './api/ai.js';
 import { submitHomework, getHomeworkSubmissions } from './api/homework.js';
-import { updateRoomState, getRoomState, recordStudentHeartbeat } from './api/rooms.js';
+import { 
+  createRoomSession, 
+  getRoomState, 
+  updateTeacherBroadcast, 
+  recordStudentPresence, 
+  saveStudentAnswer,
+  resetRoomState
+} from './api/rooms.js';
 
 const JSON_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -99,23 +106,44 @@ export default {
         return jsonResponse(list);
       }
 
-      // ROOM STATE & STUDENT HEARTBEAT
-      if (path.match(/\/api\/rooms\/[^/]+\/heartbeat/) && method === 'POST') {
-        const roomId = path.split('/')[3];
-        const res = await recordStudentHeartbeat(env, roomId);
+      // ROOMS & REAL-TIME SESSIONS
+      if (path === '/api/rooms/create' && method === 'POST') {
+        const { lessonId } = await request.json();
+        if (!lessonId) return jsonResponse({ error: 'Lesson ID is required' }, 400);
+        const res = await createRoomSession(env, lessonId);
         return jsonResponse(res);
       }
 
-      if (path.match(/\/api\/rooms\/[^/]+\/state/) && method === 'GET') {
+      if (path.match(/\/api\/rooms\/[^/]+\/state$/) && method === 'GET') {
         const roomId = path.split('/')[3];
         const state = await getRoomState(env, roomId);
         return jsonResponse(state);
       }
 
-      if (path.match(/\/api\/rooms\/[^/]+\/state/) && method === 'POST') {
+      if (path.match(/\/api\/rooms\/[^/]+\/broadcast$/) && method === 'POST') {
         const roomId = path.split('/')[3];
-        const { pageIdx = 0, answers = {} } = await request.json();
-        const res = await updateRoomState(env, roomId, pageIdx, answers);
+        const payload = await request.json();
+        const res = await updateTeacherBroadcast(env, roomId, payload);
+        return jsonResponse(res);
+      }
+
+      if (path.match(/\/api\/rooms\/[^/]+\/heartbeat$/) && method === 'POST') {
+        const roomId = path.split('/')[3];
+        const { studentId, studentName } = await request.json();
+        const res = await recordStudentPresence(env, roomId, studentId, studentName);
+        return jsonResponse(res);
+      }
+
+      if (path.match(/\/api\/rooms\/[^/]+\/answer$/) && method === 'POST') {
+        const roomId = path.split('/')[3];
+        const { studentId, blockId, answer } = await request.json();
+        const res = await saveStudentAnswer(env, roomId, studentId, blockId, answer);
+        return jsonResponse(res);
+      }
+
+      if (path.match(/\/api\/rooms\/[^/]+\/reset$/) && method === 'POST') {
+        const roomId = path.split('/')[3];
+        const res = await resetRoomState(env, roomId);
         return jsonResponse(res);
       }
 
