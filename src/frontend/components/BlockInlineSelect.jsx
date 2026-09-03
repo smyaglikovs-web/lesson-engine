@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { playCorrectSound, playWrongSound } from '../utils/sounds.js';
+import { areAnswersEquivalent } from '../../api/homework.js';
 
 export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
   const rawText = block.text || '';
@@ -7,18 +8,15 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
   const submitted = Boolean(value?.submitted);
   const selections = value?.selections || {};
 
-  // Clean lines: strip duplicate dashes/underscores generated before brackets
   const parsedLines = useMemo(() => {
     return lines.map((line, lineIdx) => {
-      // Clean residual dashes/underscores like "----- [choice]"
       const cleanedLine = line.replace(/_{2,}\s*\[/g, '[').replace(/-{2,}\s*\[/g, '[');
       const parts = cleanedLine.split(/\[(.*?)\]/);
       const segments = [];
 
       for (let i = 0; i < parts.length; i++) {
         if (i % 2 === 0) {
-          const textPart = parts[i].replace(/_{2,}/g, '').replace(/-{2,}/g, '');
-          segments.push({ type: 'text', text: textPart });
+          segments.push({ type: 'text', text: parts[i].replace(/_{2,}/g, '').replace(/-{2,}/g, '') });
         } else {
           const rawOptions = parts[i].split('|').map(o => o.trim());
           let correctOption = '';
@@ -31,9 +29,7 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
             return opt;
           });
 
-          if (!correctOption && cleanOptions.length > 0) {
-            correctOption = cleanOptions[0];
-          }
+          if (!correctOption && cleanOptions.length > 0) correctOption = cleanOptions[0];
 
           segments.push({
             type: 'select',
@@ -55,7 +51,7 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
       if (seg.type === 'select') {
         totalGaps++;
         const studentPick = selections[seg.gapKey];
-        if (studentPick && studentPick.trim().toLowerCase() === seg.correct.trim().toLowerCase()) {
+        if (studentPick && areAnswersEquivalent(studentPick, seg.correct)) {
           correctCount++;
         }
       }
@@ -74,31 +70,30 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
 
   const handleSubmit = () => {
     if (!allFilled || !onChange) return;
-    if (correctCount === totalGaps) {
-      playCorrectSound();
-    } else {
-      playWrongSound();
-    }
+    if (correctCount === totalGaps) playCorrectSound();
+    else playWrongSound();
     onChange({ selections, submitted: true });
   };
 
   const handleReset = () => {
-    if (onChange) {
-      onChange({ selections: {}, submitted: false });
-    }
+    if (onChange) onChange({ selections: {}, submitted: false });
   };
 
-  if (parsedLines.length === 0 || totalGaps === 0) {
-    return null;
-  }
+  if (parsedLines.length === 0 || totalGaps === 0) return null;
 
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4">
-      {block.instruction && (
-        <h4 className="font-extrabold text-slate-800 text-base leading-snug">
-          {block.instruction}
+    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4">
+      {/* CATEGORY BADGE & INSTRUCTION */}
+      <div>
+        <div className="mb-2.5">
+          <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] uppercase tracking-wider">
+            Inline Select
+          </span>
+        </div>
+        <h4 className="font-extrabold text-slate-900 text-base border-l-4 border-indigo-600 pl-3 leading-snug">
+          {block.instruction || 'Choose the correct word in context:'}
         </h4>
-      )}
+      </div>
 
       <div className="space-y-4 text-base sm:text-lg leading-relaxed font-medium text-slate-800">
         {parsedLines.map((lineSegments, lIdx) => (
@@ -109,7 +104,7 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
               }
 
               const selectedVal = selections[seg.gapKey] || '';
-              const isCorrect = selectedVal.trim().toLowerCase() === seg.correct.trim().toLowerCase();
+              const isCorrect = areAnswersEquivalent(selectedVal, seg.correct);
 
               let borderStyle = 'border-indigo-300 bg-indigo-50/70 text-indigo-900';
               if (submitted) {
@@ -123,21 +118,14 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
                   <select
                     disabled={submitted}
                     value={selectedVal}
-                    onChange={(e) => handleSelectChange(seg.gapKey, e.target.value)}
+                    onChange={e => handleSelectChange(seg.gapKey, e.target.value)}
                     className={`px-3 py-1.5 border-2 rounded-xl text-xs sm:text-sm font-bold outline-none transition cursor-pointer shadow-2xs ${borderStyle}`}
                   >
-                    <option value="">-- выберите --</option>
+                    <option value="">-- select --</option>
                     {seg.options.map((opt, oIdx) => (
                       <option key={oIdx} value={opt}>{opt}</option>
                     ))}
                   </select>
-
-                  {submitted && (
-                    <span
-                      className={`w-2 h-4 rounded-full ${isCorrect ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                      title={isCorrect ? 'Верно' : `Правильно: ${seg.correct}`}
-                    ></span>
-                  )}
                 </span>
               );
             })}
@@ -152,29 +140,29 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
             onClick={handleSubmit}
             className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs shadow-md transition disabled:opacity-40 cursor-pointer"
           >
-            Проверить
+            Check
           </button>
           {Object.keys(selections).length > 0 && (
             <button 
               onClick={handleReset} 
               className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-2xl text-xs font-bold hover:bg-slate-50 cursor-pointer"
             >
-              Сбросить
+              Reset
             </button>
           )}
         </div>
       ) : (
-        <div className={`p-4 rounded-2xl text-xs font-bold flex justify-between items-center ${correctCount === totalGaps ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+        <div className={`p-4 rounded-2xl text-xs font-bold flex justify-between items-center ${correctCount === totalGaps ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
           <span>
             {correctCount === totalGaps 
-              ? '🎉 Отлично! Все варианты выбраны верно!' 
-              : `❌ Результат: ${correctCount} из ${totalGaps} верно.`}
+              ? '🎉 All selections are correct!' 
+              : `Result: ${correctCount} of ${totalGaps} points awarded.`}
           </span>
           <button 
             onClick={handleReset} 
             className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 cursor-pointer"
           >
-            Попробовать снова 🔄
+            Try Again 🔄
           </button>
         </div>
       )}
