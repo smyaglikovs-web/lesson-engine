@@ -71,7 +71,7 @@ export function sanitizeBlockStructure(b) {
 
   b.type = type;
 
-  // 1. MATCHING NORMALIZATION (Enforces 1-to-1 unique pairs)
+  // 1. MATCHING NORMALIZATION
   if (b.type === 'matching') {
     let rawPairs = b.pairs || b.items || b.matches || b.data || b.questions || [];
     let normalizedPairs = [];
@@ -100,7 +100,6 @@ export function sanitizeBlockStructure(b) {
         rightVal = String(rightVal).trim();
 
         if (leftVal && rightVal) {
-          // Disambiguate duplicate right-side values
           if (usedRightVals.has(rightVal.toLowerCase())) {
             rightVal = `${rightVal} (${leftVal.slice(0, 12)}...)`;
           }
@@ -183,7 +182,7 @@ export function sanitizeBlockStructure(b) {
     b.title = b.title || 'Key Target Vocabulary';
   }
 
-  // 5. GAP FILL NORMALIZATION & DASH FILTER
+  // 5. GAP FILL NORMALIZATION
   if (b.type === 'gap_fill') {
     b.text = (b.text || '').replace(/\[[-_.\s]{2,}\]/g, '[answer]');
     const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)]
@@ -193,7 +192,7 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Type the missing words in the blanks:';
   }
 
-  // 6. GAP FILL BANK (DRAG & DROP) NORMALIZATION
+  // 6. GAP FILL BANK NORMALIZATION
   if (b.type === 'gap_fill_bank') {
     b.text = (b.text || '').replace(/\[[-_.\s]{2,}\]/g, '[practice]');
     let distractors = Array.isArray(b.distractors) ? b.distractors : [];
@@ -248,7 +247,7 @@ export function sanitizeBlockStructure(b) {
     }
   }
 
-  // 10. LINK / EMBED BLOCK NORMALIZATION
+  // 10. LINK BLOCK NORMALIZATION
   if (b.type === 'link') {
     b.url = b.url || 'https://en.wikipedia.org';
     b.title = b.title || 'Resource Link';
@@ -496,7 +495,7 @@ export async function generateFullLessonWithAI(env, payload) {
     ? `MANDATORY KEYWORDS TO TEST: ${JSON.stringify(targetKeywords)}`
     : `Extract 6-8 high-yield vocabulary items specifically relevant to "${resolvedTopic}".`;
 
-  // STAGE 1: Lexical Profiler (Strict distinct example sentences)
+  // STAGE 1: Lexical Profiler
   const stage1SystemPrompt = `[ROLE]
 You are a CELTA/DELTA Master Methodologist.
 
@@ -770,7 +769,7 @@ Format: ${format === 'live' ? 'Live teacher-led lesson' : 'Self-paced auto-grade
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (All 10 Tools Fully Handled)
+// 1-CLICK BLOCK AI ASSISTANT (All Modal Tasks Handled Without Hallucination)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -800,81 +799,114 @@ export async function transformBlockWithAI(env, payload) {
 
   let tasksInstructions = '';
 
+  // 1. TRUE / FALSE STATEMENTS
+  if (actions.includes('true_false')) {
+    tasksInstructions += `
+- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the source text.
+  Schema: { "type": "multiple_choice", "question": "Statement from the context...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the passage." }`;
+  }
+
+  // 2. COMPREHENSION / MULTIPLE CHOICE QUESTIONS
+  if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
+    tasksInstructions += `
+- GENERATE 3 "multiple_choice" blocks testing comprehension of the material.
+  Schema: { "type": "multiple_choice", "question": "Clear question text?", "options": ["Correct answer", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Why this is correct based on the context." }`;
+  }
+
+  // 3. GRAMMAR DRILL QUESTIONS
+  if (actions.includes('grammar_quiz')) {
+    tasksInstructions += `
+- GENERATE 3 "multiple_choice" blocks specifically testing the target grammar structure.
+  Schema: { "type": "multiple_choice", "question": "Choose the grammatically correct sentence:", "options": ["Correct sentence", "Grammatical error 1", "Grammatical error 2"], "correct": 0, "explanation": "Grammar rule breakdown." }`;
+  }
+
+  // 4. PAIR MATCHING
   if (actions.includes('matching')) {
     tasksInstructions += `
 - GENERATE 1 "matching" block with 6 distinct pairs (${matchingType} style).
-  CRITICAL: Every right-side value MUST be unique.
-  Schema: { "type": "matching", "instruction": "Match the words with their meanings:", "pairs": [ { "left": "term", "right": "unique definition or translation" } ] }`;
+  CRITICAL: Every right-side value MUST be 100% unique.
+  Schema: { "type": "matching", "instruction": "Match the words with their definitions / translations:", "pairs": [ { "left": "term", "right": "unique definition or translation" } ] }`;
   }
 
+  // 5. VOCABULARY FLASHCARDS
   if (actions.includes('flashcards')) {
     const backStyle = flashcardType === 'russian' ? 'Russian translation' : 'English definition';
     tasksInstructions += `
 - GENERATE 1 "flashcards" block with 6 target vocabulary words.
   CRITICAL: Each card must have a distinct, natural 10-14 word context sentence.
-  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "word", "back": "${backStyle}", "example": "Natural 10-14 word sentence." } ] }`;
+  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "word", "back": "${backStyle}", "example": "Natural 10-14 word context sentence." } ] }`;
   }
 
-  if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('grammar_quiz')) {
-    tasksInstructions += `
-- GENERATE 1 "multiple_choice" block with 3 questions.
-  Schema: { "type": "multiple_choice", "question": "Question text?", "options": ["Correct", "Wrong 1", "Wrong 2"], "correct": 0, "explanation": "Why this is correct." }`;
-  }
-
+  // 6. GAP FILL & GRAMMAR TRANSFORMATIONS
   if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill" block with 4 sentences containing [target words] in brackets.
-  CRITICAL: Never put dashes inside brackets.
-  Schema: { "type": "gap_fill", "instruction": "Fill the missing words:", "text": "1. She [went] home.\\n2. They [have seen] it.", "answers": ["went", "have seen"] }`;
+  CRITICAL: Never put dashes [---] inside brackets.
+  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. Yesterday she [went] home.\\n2. They [have seen] it before.", "answers": ["went", "have seen"] }`;
   }
 
+  // 7. GAP FILL BANK (DRAG & DROP)
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets and 3 distractors.
-  CRITICAL: NEVER put dashes [---] in brackets. Put the actual words inside brackets.
-  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "A cohesive passage with [word1] and [word2] in brackets...", "distractors": ["wrong1", "wrong2", "wrong3"] }`;
+  CRITICAL: Put the actual word inside brackets. NO [---].
+  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "A cohesive paragraph containing [word1] and [word2] in brackets...", "distractors": ["wrong1", "wrong2", "wrong3"] }`;
   }
 
+  // 8. SENTENCE REORDER
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
 - GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences (each strictly 8 to 14 words).
-  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Sentence one is eight to twelve words.", "Sentence two drills target grammar and vocabulary."] }`;
+  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Sentence one is eight to twelve words.", "Sentence two drills target grammar."] }`;
   }
 
+  // 9. SPEAKING WHEEL
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
 - GENERATE 1 "spinning_wheel" block with 6 to 8 communicative discussion questions.
-  Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"], "eliminateMode": true }`;
+  Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Discussion Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"], "eliminateMode": true }`;
   }
 
+  // 10. CATEGORIZATION
   if (actions.includes('categorization')) {
     tasksInstructions += `
 - GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 to 8 items to sort.
   Schema: { "type": "categorization", "instruction": "Sort the words into the correct boxes:", "categories": ["Category 1", "Category 2"], "items": [ { "id": "it-1", "text": "Word 1", "categoryIndex": 0 }, { "id": "it-2", "text": "Word 2", "categoryIndex": 1 } ] }`;
   }
 
+  // 11. INLINE SELECT
   if (actions.includes('inline_select')) {
     tasksInstructions += `
 - GENERATE 1 "inline_select" block with 4 sentences containing [option1* | option2] dropdowns where the asterisk (*) marks the correct answer.
   Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. We should [focus on* | ignore] the main goal.\\n2. She [completed* | missed] the assignment." }`;
   }
 
+  // 12. GRAMMAR RULE CARD
   if (actions.includes('generate_grammar_card')) {
     tasksInstructions += `
 - GENERATE 1 "grammar_card" block detailing the target grammar rule.
-  Schema: { "type": "grammar_card", "title": "Rule Name", "formula": "Subject + Formula", "explanation": "Clear explanation of usage.", "examples": ["Example 1", "Example 2"] }`;
+  Schema: { "type": "grammar_card", "title": "Grammar Rule Name", "formula": "Subject + Formula", "explanation": "Clear explanation of usage.", "examples": ["Example 1", "Example 2"] }`;
   }
 
+  // 13. TEXT PASSAGE REFINEMENT
   if (actions.includes('generate_text_passage') || actions.includes('expand_text') || actions.includes('shorten_text') || actions.includes('refine_level')) {
     tasksInstructions += `
 - GENERATE 1 "text" block with an engaging reading passage (${targetLength} words) adapted to level ${level}.
   Schema: { "type": "text", "text": "Full reading passage here..." }`;
   }
 
+  // 14. COMMUNICATIVE DISCUSSION
   if (actions.includes('discussion')) {
     tasksInstructions += `
 - GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts.
   Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. Question 1?\\n2. Question 2?" }`;
+  }
+
+  // Fallback safe instruction if no match
+  if (!tasksInstructions.trim()) {
+    tasksInstructions = `
+- GENERATE 3 "multiple_choice" blocks based on the context.
+  Schema: { "type": "multiple_choice", "question": "Question text?", "options": ["Correct", "Wrong 1", "Wrong 2"], "correct": 0, "explanation": "Explanation." }`;
   }
 
   const prompt = `[ROLE]
@@ -885,12 +917,13 @@ Target CEFR Level: ${level} (${cefrRules})
 Source Context: "${safeContextData}"
 
 [TASK]
-Generate exercise blocks matching the requested actions:
+Generate ONLY the exercise blocks requested below. Do NOT generate unrequested blocks:
 ${tasksInstructions}
 
-[CONSTRAINTS]
+[STRICT CONSTRAINTS]
 - Return a JSON object with a "blocks" array.
-- Follow each block type schema strictly.
+- ONLY output the block types explicitly requested in the task list above.
+- Never output full lessons or random flashcards/grammar cards unless requested.
 
 [OUTPUT FORMAT]
 {
