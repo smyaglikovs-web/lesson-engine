@@ -112,6 +112,7 @@ export function sanitizeBlockStructure(b) {
 
   let type = String(b.type || '').toLowerCase().trim();
 
+  // Smart property-based type inference
   if (!type) {
     if (b.options || b.choices || b.questions || b.statement || b.question) type = 'multiple_choice';
     else if (b.cards || b.flashcards) type = 'flashcards';
@@ -128,6 +129,7 @@ export function sanitizeBlockStructure(b) {
     else return [];
   }
 
+  // Type normalization
   if (type === 'header' || type === 'title' || type === 'h1' || type === 'h2' || type === 'h3') type = 'heading';
   if (type === 'paragraph' || type === 'reading' || type === 'article' || type === 'story' || type === 'reading_comprehension') type = 'text';
   if (type === 'quiz' || type === 'question' || type === 'true_false' || type === 'true-false' || type === 'true/false' || type === 'mc' || type === 'multiple-choice') type = 'multiple_choice';
@@ -195,7 +197,7 @@ export function sanitizeBlockStructure(b) {
     const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)]
       .map(m => m[1].trim())
       .filter(w => !/^[-_.\s]+$/.test(w));
-    b.answers = matches.length > 0 ? matches : ['answer'];
+    b.answers = matches.length > 0 ? matches : (Array.isArray(b.answers) ? b.answers : ['answer']);
     b.instruction = b.instruction || 'Fill the missing words in the blanks:';
   }
 
@@ -317,9 +319,60 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// MULTI-PROVIDER AI INFERENCE PIPELINE
+// MULTI-PROVIDER AI INFERENCE PIPELINE (With Error Capture & Logs)
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
+  let errors = [];
+
+  // 1. OPENROUTER FREE MODELS (Primary)
+  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
+    const openrouterKey = env.OPENROUTER_API_KEY.trim();
+    const openRouterModels = [
+      'openrouter/free',
+      'google/gemma-4-31b-it:free',
+      'z-ai/glm-5.2:free',
+      'nvidia/nemotron-3-ultra-550b-a55b:free',
+      'liquid/lfm-2.5-2.6b:free'
+    ];
+
+    for (const model of openRouterModels) {
+      try {
+        const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openrouterKey}`,
+            'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
+            'X-Title': 'Lesson Engine'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
+              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
+            ],
+            temperature: 0.2,
+            response_format: { type: 'json_object' }
+          })
+        }, 12000);
+
+        if (res.ok) {
+          const data = await res.json();
+          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+          if (parsed) return { data: parsed, isFallback: false };
+        } else {
+          const errText = await res.text();
+          console.error(`OpenRouter Error (${model}) [${res.status}]:`, errText);
+          errors.push(`OpenRouter (${model}) [${res.status}]: ${errText}`);
+        }
+      } catch (eOr) {
+        console.error(`OpenRouter Exception (${model}):`, eOr?.message || eOr);
+        errors.push(`OpenRouter (${model}) Exception: ${eOr?.message || eOr}`);
+      }
+    }
+  }
+
+  // 2. GROQ API (Secondary)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
@@ -348,13 +401,16 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
         } else {
           const errText = await res.text();
           console.error(`Groq API Error (${model}) [${res.status}]:`, errText);
+          errors.push(`Groq (${model}) [${res.status}]: ${errText}`);
         }
       } catch (eGroq) {
         console.error(`Groq Exception (${model}):`, eGroq?.message || eGroq);
+        errors.push(`Groq (${model}) Exception: ${eGroq?.message || eGroq}`);
       }
     }
   }
 
+  // 3. GEMINI API (Tertiary)
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -377,16 +433,19 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
         } else {
           const gErrText = await gRes.text();
           console.error(`Gemini API Error (${gModel}) [${gRes.status}]:`, gErrText);
+          errors.push(`Gemini (${gModel}) [${gRes.status}]: ${gErrText}`);
         }
       } catch (eG) {
         console.error(`Gemini Exception (${gModel}):`, eG?.message || eG);
+        errors.push(`Gemini (${gModel}) Exception: ${eG?.message || eG}`);
       }
     }
   }
 
+  // 4. Cloudflare Workers AI Native Binding
   if (env.AI) {
     const cfModels = [
-      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      '@cf/deepseek-ai/deepseek-v4-flash-0731',
       '@cf/meta/llama-3.1-8b-instruct-fast'
     ];
     for (const cfModel of cfModels) {
@@ -412,11 +471,12 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
         }
       } catch (eCf) {
         console.error(`Workers AI Exception (${cfModel}):`, eCf?.message || eCf);
+        errors.push(`Workers AI (${cfModel}) Exception: ${eCf?.message || eCf}`);
       }
     }
   }
 
-  return { data: null, isFallback: true };
+  return { data: null, error: errors.join('; ') || 'All providers failed.', isFallback: true };
 }
 
 export async function fetchYouTubeTranscriptNative(videoUrl) {
@@ -590,7 +650,7 @@ Every vocabulary item MUST have a UNIQUE, natural example sentence (10-14 words 
 You are an award-winning ELT graded reader writer.
 Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
-Target vocabulary to weave in naturally: ${wordsToWeave}
+Target vocabulary: ${wordsToWeave}
 
 Write an engaging, rich 250-320 word educational story/reading passage for this lesson strictly adapted to CEFR ${level}.
 CRITICAL JSON FORMAT RULE: Inside the "storyText" string, NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy', 'Blurryface') for titles, albums, character names, or dialogue.
@@ -789,7 +849,7 @@ CRITICAL TASK SCHEMAS:
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Fully Dynamic & Context-Grounded Fallback)
+// 1-CLICK BLOCK AI ASSISTANT (Universal Extractor & Dynamic Fallbacks)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -815,10 +875,11 @@ export async function transformBlockWithAI(env, payload) {
 
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   
-  // Clean raw context
+  // Clean raw context while preserving Title and Transcript cleanly
   let rawContext = sourceText || sourceBlock.text || sourceBlock.transcript || sourceBlock.title || sourceBlock.explanation || JSON.stringify(sourceBlock);
   let safeContext = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
+  // SMART CHUNKING: If context is huge (> 2800 chars), take the most concept-dense portion so Workers AI never overflows
   if (safeContext.length > 2800) {
     const titleHeader = sourceBlock.title ? `Video Title: ${sourceBlock.title}. ` : '';
     const startPortion = safeContext.slice(0, 1400);
@@ -832,13 +893,14 @@ export async function transformBlockWithAI(env, payload) {
   if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key arguments and concepts in the material.
+  Each question MUST be grounded strictly in the facts and statements of the provided content.
   Schema: { "type": "multiple_choice", "question": "Question testing a specific teaching from the context?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
   }
 
   // 2. TRUE / FALSE QUESTIONS
   if (actions.includes('true_false')) {
     tasksInstructions += `
-- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the content claims.
+- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the speaker's claims and teachings.
   Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the lecture." }`;
   }
 
@@ -885,7 +947,7 @@ export async function transformBlockWithAI(env, payload) {
     }
 
     tasksInstructions += `
-- GENERATE 1 "matching" block with 6 distinct pairs based on context concepts.
+- GENERATE 1 "matching" block with 6 distinct pairs based on context words.
   ${styleRules}
   CRITICAL: Every right-side value MUST be 100% unique.
   Schema: { "type": "matching", "instruction": "Match the terms with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
@@ -1054,7 +1116,7 @@ ${tasksInstructions}
             explanation: 'Affirmed in the reading context.'
           }
         ];
-      } else if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension') || actions.includes('grammar_quiz')) {
+      } else if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
         cleanBlocks = [
           {
             type: 'multiple_choice',
@@ -1077,6 +1139,20 @@ ${tasksInstructions}
             ],
             correct: 0,
             explanation: 'Directly supported by the context details.'
+          }
+        ];
+      } else if (actions.includes('grammar_quiz')) {
+        cleanBlocks = [
+          {
+            type: 'multiple_choice',
+            question: `Which option correctly completes the sentence to describe ${topicTitle}?`,
+            options: [
+              `Consistent application of ${topicTitle} leads to reliable results.`,
+              'Speculative rules without practical basis.',
+              'Ignoring established grammatical frameworks.'
+            ],
+            correct: 0,
+            explanation: 'Directly supported by the grammatical patterns.'
           }
         ];
       } else if (actions.includes('flashcards')) {
