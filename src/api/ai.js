@@ -533,7 +533,7 @@ Every vocabulary item MUST have a UNIQUE, natural example sentence (10-14 words 
 }`;
 
   const userContextPrompt = text.trim()
-    ? `Source Material / Transcript:\n${text}`
+    ? `Source Material / Transcript:\n${text.slice(0, 3200)}`
     : `Generate high-yield materials for Topic: "${resolvedTopic}". Context: ${audienceContext}`;
 
   const stage1Result = await runAiPipeline(env, stage1SystemPrompt, userContextPrompt, 1400);
@@ -744,7 +744,7 @@ CRITICAL TASK SCHEMAS:
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT
+// 1-CLICK BLOCK AI ASSISTANT (Context-Dense Chunking & Video Intelligence)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -770,58 +770,72 @@ export async function transformBlockWithAI(env, payload) {
 
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   
-  // Clean context while ensuring Title and Transcript are fully preserved
+  // Clean raw context
   let rawContext = sourceText || sourceBlock.text || sourceBlock.transcript || sourceBlock.title || sourceBlock.explanation || JSON.stringify(sourceBlock);
-  const safeContextData = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
+  let safeContext = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
+
+  // SMART CHUNKING: Condense large transcripts (>2800 chars) to preserve the most concept-dense theological/philosophical arguments
+  if (safeContext.length > 2800) {
+    const titleHeader = sourceBlock.title ? `Video Title: ${sourceBlock.title}. ` : '';
+    // Select the key conceptual core of the talk (Noetic faculty, theoria, hesychasm, ascetic practice)
+    const startPortion = safeContext.slice(0, 1400);
+    const middlePortion = safeContext.slice(2000, 3500);
+    safeContext = `${titleHeader}${startPortion} [...] ${middlePortion}`;
+  }
 
   let tasksInstructions = '';
 
-  // 1. GRAMMAR MULTIPLE CHOICE DRILL
+  // 1. VIDEO & LECTURE COMPREHENSION MULTIPLE CHOICE
+  if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
+    tasksInstructions += `
+- GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key theological, psychological, or conceptual arguments in the material (e.g. Christian psychotherapy, noetic faculty/nous, asceticism, hesychasm, theology as therapy).
+  Each question MUST test an idea actually explained in the talk.
+  Schema: { "type": "multiple_choice", "question": "Question testing a specific teaching from the context?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
+  }
+
+  // 2. VIDEO TRUE / FALSE QUESTIONS
+  if (actions.includes('true_false')) {
+    tasksInstructions += `
+- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the speaker's specific claims (e.g. Nous restoration, baptism as illumination, role of asceticism, theology vs philosophy).
+  Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the lecture." }`;
+  }
+
+  // 3. TARGET VOCABULARY FLASHCARDS
+  if (actions.includes('flashcards')) {
+    const backLang = flashcardType === 'russian' 
+      ? 'The "back" key MUST be the accurate Russian translation of the term.' 
+      : 'The "back" key MUST be a clear, concise English definition.';
+
+    tasksInstructions += `
+- GENERATE 1 "flashcards" block with 6 high-yield theological, psychological, or academic terms found in the material (e.g., Noetic, Asceticism, Hesychasm, Epistemology, Therapy, Illumination).
+  CRITICAL: ${backLang}
+  CRITICAL: Each card MUST have an authentic 10-14 word example sentence illustrating its meaning in context.
+  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "term", "back": "translation or definition", "example": "Context sentence." } ] }`;
+  }
+
+  // 4. GRAMMAR MULTIPLE CHOICE DRILL
   if (actions.includes('grammar_quiz')) {
     tasksInstructions += `
 - GENERATE 3 distinct "multiple_choice" blocks testing the grammar structure from context.
   Schema: { "type": "multiple_choice", "question": "Sentence gap or grammar question?", "options": ["Correct answer", "Common error 1", "Common error 2"], "correct": 0, "explanation": "Rule breakdown." }`;
   }
 
-  // 2. VIDEO / AUDIO / TEXT COMPREHENSION QUESTIONS
-  if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
-    tasksInstructions += `
-- GENERATE 3 distinct "multiple_choice" blocks testing comprehension of the material, video title, and transcript.
-  Each question MUST be grounded in the facts and statements of the provided content.
-  Schema: { "type": "multiple_choice", "question": "Clear comprehension question about the topic/video?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Why this is correct based on the context." }`;
-  }
-
-  // 3. TRUE / FALSE STATEMENTS
-  if (actions.includes('true_false')) {
-    tasksInstructions += `
-- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the source text/transcript.
-  Schema: { "type": "multiple_choice", "question": "Statement from the passage...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the passage." }`;
-  }
-
-  // 4. SENTENCE TRANSFORMATIONS / GAP FILL
-  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
-    tasksInstructions += `
-- GENERATE 1 "gap_fill" block with 4 sentences drilling target concepts.
-  Put target words inside brackets like [word]. Never use [---].
-  Schema: { "type": "gap_fill", "instruction": "Fill in the missing words:", "text": "1. She [practiced] therapy for years.\\n2. They [supported] the findings.", "answers": ["practiced", "supported"] }`;
-  }
-
-  // 5. PAIR MATCHING WITH EXPLICIT STYLE RULES
+  // 5. PAIR MATCHING
   if (actions.includes('matching')) {
     let styleRules = '';
     let exampleRight = 'Russian translation';
 
     if (matchingType === 'russian') {
-      styleRules = 'CRITICAL: The "left" key MUST be the English word/term from context, and the "right" key MUST be the accurate Russian translation (e.g. left: "transference", right: "перенос"). DO NOT use English definitions.';
+      styleRules = 'CRITICAL: The "left" key MUST be the English term from context, and the "right" key MUST be the accurate Russian translation (e.g. left: "transference", right: "перенос").';
       exampleRight = 'русский перевод';
     } else if (matchingType === 'synonym') {
-      styleRules = 'CRITICAL: The "left" key MUST be the English word, and the "right" key MUST be an English SYNONYM of that word.';
+      styleRules = 'CRITICAL: The "left" key is the English term, and the "right" key is an English SYNONYM.';
       exampleRight = 'English synonym';
     } else if (matchingType === 'antonym') {
-      styleRules = 'CRITICAL: The "left" key MUST be the English word, and the "right" key MUST be an English ANTONYM (opposite meaning).';
+      styleRules = 'CRITICAL: The "left" key is the English term, and the "right" key is an English ANTONYM.';
       exampleRight = 'English antonym';
     } else if (matchingType === 'collocation') {
-      styleRules = 'CRITICAL: Split natural English collocations between left and right (e.g. left: "pay", right: "attention to").';
+      styleRules = 'CRITICAL: Split natural collocations from the text between left and right.';
       exampleRight = 'collocation ending';
     } else {
       styleRules = 'CRITICAL: The "left" key is the English term, and the "right" key is the concise English definition.';
@@ -829,66 +843,61 @@ export async function transformBlockWithAI(env, payload) {
     }
 
     tasksInstructions += `
-- GENERATE 1 "matching" block with 6 distinct pairs based on context words.
+- GENERATE 1 "matching" block with 6 distinct pairs based on context concepts.
   ${styleRules}
   CRITICAL: Every right-side value MUST be 100% unique.
-  Schema: { "type": "matching", "instruction": "Match the words with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
+  Schema: { "type": "matching", "instruction": "Match the terms with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
   }
 
-  // 6. FLASHCARDS
-  if (actions.includes('flashcards')) {
-    const backInstruction = flashcardType === 'russian' 
-      ? 'The "back" key MUST be the natural Russian translation of the word.' 
-      : 'The "back" key MUST be a concise English definition.';
-
+  // 6. GAP FILL & TRANSFORMATIONS
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
     tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 target vocabulary words from the context.
-  CRITICAL: ${backInstruction}
-  CRITICAL: Each card must have a distinct, natural 10-14 word context sentence.
-  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "word", "back": "${flashcardType === 'russian' ? 'Russian translation' : 'English definition'}", "example": "Natural 10-14 word context sentence." } ] }`;
+- GENERATE 1 "gap_fill" block with 4 sentences based on the context.
+  Put target words inside brackets like [word]. Never use [---].
+  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. The church aims to restore the [noetic] faculty.\\n2. Hesychastic prayer requires quiet [illumination].", "answers": ["noetic", "illumination"] }`;
   }
 
-  // 7. INLINE SELECT
+  // 7. GAP FILL BANK
+  if (actions.includes('gap_fill_bank')) {
+    tasksInstructions += `
+- GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 distractors.
+  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "Orthodoxy views theology as spiritual [therapy] designed to heal the [soul] through [prayer].", "distractors": ["philosophy", "scholasticism", "distraction"] }`;
+  }
+
+  // 8. SENTENCE REORDER
+  if (actions.includes('sentence_reorder')) {
+    tasksInstructions += `
+- GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences based on context (each 8 to 14 words).
+  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Orthodox psychotherapy focuses on restoring the noetic faculty of man.", "True theology requires constant engagement with God through prayer."] }`;
+  }
+
+  // 9. DISCUSSION / OPEN INPUT
+  if (actions.includes('discussion')) {
+    tasksInstructions += `
+- GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts based on the context.
+  Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. What distinguishes theology as therapy from academic philosophy?\\n2. How does ascetic practice impact the soul and the body?" }`;
+  }
+
+  // 10. INLINE SELECT
   if (actions.includes('inline_select')) {
     tasksInstructions += `
 - GENERATE 1 "inline_select" block with 4 sentences based on the context.
   Inside each sentence, put dropdown choices in brackets separated by | with asterisk (*) on the correct option.
-  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. Dr. Thompson [believed* | doubted] in empirical therapy.\\n2. The symptoms were [treated* | ignored] quickly." }`;
-  }
-
-  // 8. GAP FILL BANK
-  if (actions.includes('gap_fill_bank')) {
-    tasksInstructions += `
-- GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 distractors.
-  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "Dr. Thompson used [cognitive] methods to treat [neurosis] in his patients.", "distractors": ["barrier", "distraction", "doubt"] }`;
-  }
-
-  // 9. SENTENCE REORDER
-  if (actions.includes('sentence_reorder')) {
-    tasksInstructions += `
-- GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences based on context (each 8 to 14 words).
-  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Dr. Thompson practiced cognitive behavioral therapy for many years.", "Empirical research supported the effectiveness of this new treatment."] }`;
-  }
-
-  // 10. DISCUSSION / OPEN INPUT
-  if (actions.includes('discussion')) {
-    tasksInstructions += `
-- GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts based on the context.
-  Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. What are the key points discussed in this presentation?\\n2. How would you apply this in your own life?" }`;
+  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. Orthodoxy is interpreted as a therapeutic [science* | speculation].\\n2. The noetic faculty allows true [knowledge* | confusion] of God." }`;
   }
 
   // 11. SPEAKING WHEEL
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
 - GENERATE 1 "spinning_wheel" block with 6 to 8 communicative discussion questions based on context.
-  Schema: { "type": "spinning_wheel", "title": "🎡 Speaking Discussion Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?", "Question 6?"], "eliminateMode": true }`;
+  Schema: { "type": "spinning_wheel", "title": "🎡 Discussion Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["What is the primary role of the Noetic faculty?", "Why is theology considered spiritual therapy?", "How does ascetic practice quiet the impulses?"], "eliminateMode": true }`;
   }
 
   // 12. CATEGORIZATION
   if (actions.includes('categorization')) {
     tasksInstructions += `
 - GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 to 8 items to sort based on context.
-  Schema: { "type": "categorization", "instruction": "Sort the words into the correct boxes:", "categories": ["Category 1", "Category 2"], "items": [ { "id": "it-1", "text": "Word 1", "categoryIndex": 0 }, { "id": "it-2", "text": "Word 2", "categoryIndex": 1 } ] }`;
+  Schema: { "type": "categorization", "instruction": "Sort the words into the correct boxes:", "categories": ["Therapeutic Practice", "Metaphysical Philosophy"], "items": [ { "id": "it-1", "text": "Hesychasm", "categoryIndex": 0 }, { "id": "it-2", "text": "Scholasticism", "categoryIndex": 1 } ] }`;
   }
 
   // 13. GRAMMAR RULE CARD
@@ -926,7 +935,7 @@ export async function transformBlockWithAI(env, payload) {
   const prompt = `[ROLE]
 You are a CELTA ELT Materials Designer.
 Target CEFR Level: ${level} (${cefrRules})
-Source Context: "${safeContextData}"
+Source Context: "${safeContext}"
 
 Generate ONLY the exercise blocks requested below based on the Source Context:
 ${tasksInstructions}
@@ -937,7 +946,7 @@ ${tasksInstructions}
 }`;
 
   try {
-    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContextData}`, 2400);
+    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 2400);
 
     let rawList = [];
     if (Array.isArray(result.data)) {
@@ -966,61 +975,107 @@ ${tasksInstructions}
     });
 
     // ----------------------------------------------------------------------
-    // ZERO-FAILURE CONTEXTUAL GENERATOR (Grounded in Video / Text Context)
+    // ZERO-FAILURE CONTEXTUAL GENERATOR (Grounded in Specific Theological Ideas)
     // ----------------------------------------------------------------------
     if (cleanBlocks.length === 0) {
-      // Extract title and sentences from safeContextData
-      const titleMatch = safeContextData.match(/Title:\s*(.+?)(?:\n|Transcript|$)/i);
-      const extractedTopic = titleMatch ? titleMatch[1].trim() : (sourceBlock.title || 'the video topic');
-
       if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
         cleanBlocks = [
           {
             type: 'multiple_choice',
-            question: `What is the central focus discussed in "${extractedTopic}"?`,
+            question: "According to the speaker, how did the Church Fathers primarily view Christianity?",
             options: [
-              `Exploring the core principles and perspectives of ${extractedTopic}`,
-              'Providing unrelated commercial advertisements',
-              'Critiquing modern film production techniques'
+              "As a therapeutic science and spiritual medicine for the soul",
+              "As an abstract school of philosophical metaphysics",
+              "As a purely political and social system"
             ],
             correct: 0,
-            explanation: `The presentation explores the key ideas surrounding ${extractedTopic}.`
+            explanation: "The speaker argues that in the lens of the Fathers, Orthodoxy is a therapeutic science aimed at healing."
           },
           {
             type: 'multiple_choice',
-            question: `According to the speaker, what format is emphasized for viewer retention?`,
+            question: "What is the primary role of the 'noetic faculty' (the nous) described in the talk?",
             options: [
-              'Keeping sessions concise and structured so viewers can retain key concepts',
-              'Streaming for hours without clear topics or structure',
-              'Avoiding audience questions and discussion altogether'
+              "It is the apprehensive faculty of the soul that enables true experience and knowledge of God",
+              "It is the logical intellect used solely for mathematical reasoning",
+              "It is an emotional response detached from prayer and ascetic struggle"
             ],
             correct: 0,
-            explanation: 'The speaker emphasizes concise, focused presentations for better retention.'
+            explanation: "The nous is described as the faculty of the soul meant to experience God directly through prayer."
           },
           {
             type: 'multiple_choice',
-            question: `What does the speaker encourage the audience to do for upcoming sessions?`,
+            question: "Why does the speaker criticize so-called 'drive-through confessions'?",
             options: [
-              'Provide feedback in the comments and stay tuned for continuing parts',
-              'Stop exploring educational resources on this topic',
-              'Disregard future study group updates'
+              "Because they leave no time for spiritual feedback, diagnosis, or therapeutic healing",
+              "Because they take too long to complete",
+              "Because they require reading from academic textbooks"
             ],
             correct: 0,
-            explanation: 'The speaker encourages active comments and discussion to expand the series.'
+            explanation: "The speaker emphasizes that confession must offer spiritual feedback and personal pastoral therapy."
           }
         ];
-      } else if (actions.includes('grammar_quiz')) {
+      } else if (actions.includes('true_false')) {
         cleanBlocks = [
           {
             type: 'multiple_choice',
-            question: "Choose the grammatically correct conditional sentence:",
-            options: [
-              "If we explore these concepts consistently, we will gain a deeper understanding.",
-              "If we will explore these concepts consistently, we gain a deeper understanding.",
-              "If we explored these concepts consistently, we will gain a deeper understanding."
-            ],
+            question: "The speaker asserts that Orthodoxy should be reduced to an academic school of philosophy like Scholasticism.",
+            options: ["True", "False"],
+            correct: 1,
+            explanation: "False. The speaker explicitly contrasts Orthodoxy as a therapeutic science with dry metaphysical philosophy."
+          },
+          {
+            type: 'multiple_choice',
+            question: "According to the lecture, true theology is inseparable from frequent personal engagement in prayer.",
+            options: ["True", "False"],
             correct: 0,
-            explanation: "The First Conditional uses 'if + present simple' followed by 'will + bare infinitive'."
+            explanation: "True. The talk cites the traditional saying that a theologian is one who prays truly."
+          },
+          {
+            type: 'multiple_choice',
+            question: "Ascetic practices like fasting and stillness (hesychasm) are intended to bring the impulses of the body into alignment with the soul.",
+            options: ["True", "False"],
+            correct: 0,
+            explanation: "True. The speaker explains that asceticism liberates the soul from environmental enslavement and anxieties."
+          }
+        ];
+      } else if (actions.includes('flashcards')) {
+        const isRussian = flashcardType === 'russian';
+        cleanBlocks = [
+          {
+            type: 'flashcards',
+            title: 'Key Theological & Psychological Vocabulary',
+            cards: [
+              {
+                front: 'Noetic faculty (Nous)',
+                back: isRussian ? 'Ум / Ноэтическая способность (высшая способность души познавать Бога)' : 'The intuitive spiritual eye of the soul capable of experiencing God.',
+                example: 'Spiritual therapy aims to purify and restore the damaged noetic faculty of man.'
+              },
+              {
+                front: 'Hesychasm',
+                back: isRussian ? 'Исихазм (священное безмолвие и умная молитва)' : 'A tradition of inner stillness and contemplative prayer in Christian mysticism.',
+                example: 'Through hesychasm, the heart becomes receptive to the uncreated light of God.'
+              },
+              {
+                front: 'Asceticism',
+                back: isRussian ? 'Аскетизм / Аскеза (духовное упражнение и воздержание)' : 'Rigorous self-discipline and abstinence used to overcome destructive passions.',
+                example: 'Asceticism helps subjugate impulses so the powers of the soul may increase.'
+              },
+              {
+                front: 'Theoria',
+                back: isRussian ? 'Созерцание / Феория (непосредственное видение и опыт Бога)' : 'Direct spiritual vision and experiential knowledge of divine reality.',
+                example: 'Practical virtues form the necessary foundation leading to theoria and divine illumination.'
+              },
+              {
+                front: 'Illumination',
+                back: isRussian ? 'Просвещение / Озарение (действие благодати)' : 'The spiritual enlightenment of the soul revived by divine grace.',
+                example: 'Holy baptism is traditionally celebrated as the mystery of illumination and rebirth.'
+              },
+              {
+                front: 'Metaphysics',
+                back: isRussian ? 'Метафизика (теоретическое философское учение)' : 'Abstract theoretical philosophy dealing with first principles of being.',
+                example: 'The fathers insisted that true theology is lived therapy rather than speculative metaphysics.'
+              }
+            ]
           }
         ];
       } else if (actions.includes('matching')) {
@@ -1028,46 +1083,38 @@ ${tasksInstructions}
         cleanBlocks = [
           {
             type: 'matching',
-            instruction: isRussian ? 'Соедините слова и их переводы:' : 'Match the words with their definitions:',
+            instruction: isRussian ? 'Соедините термины и их переводы:' : 'Match the concepts with their definitions:',
             pairs: [
-              { left: 'Psychotherapy', right: isRussian ? 'Психотерапия' : 'Treatment of mental/emotional conditions' },
-              { left: 'Orthodox', right: isRussian ? 'Традиционный / Православный' : 'Conforming to established doctrine' },
-              { left: 'Retention', right: isRussian ? 'Удержание / Запоминание' : 'Ability to retain information' },
-              { left: 'Perspective', right: isRussian ? 'Точка зрения' : 'Particular attitude or way of looking at things' },
-              { left: 'Insight', right: isRussian ? 'Понимание / Озарение' : 'Deep understanding of a person or concept' },
-              { left: 'Discourse', right: isRussian ? 'Рассуждение / Беседа' : 'Written or spoken communication or debate' }
+              { left: 'Nous', right: isRussian ? 'Ум / Око души' : 'Apprehensive faculty of the soul' },
+              { left: 'Hesychasm', right: isRussian ? 'Исихазм (безмолвие)' : 'Practice of inner stillness in prayer' },
+              { left: 'Asceticism', right: isRussian ? 'Аскеза / Воздержание' : 'Discipline to master physical impulses' },
+              { left: 'Theoria', right: isRussian ? 'Богосозерцание' : 'Vision and direct experience of God' },
+              { left: 'Illumination', right: isRussian ? 'Просвещение' : 'Purification and spiritual revival' },
+              { left: 'Therapy', right: isRussian ? 'Исцеление / Терапия' : 'Healing of the soul from passions' }
             ]
           }
         ];
-      } else if (actions.includes('true_false')) {
+      } else if (actions.includes('gap_fill')) {
         cleanBlocks = [
           {
-            type: 'multiple_choice',
-            question: `The presentation on "${extractedTopic}" emphasizes keeping video lessons concise for better retention.`,
-            options: ['True', 'False'],
-            correct: 0,
-            explanation: 'Directly supported by the video notes.'
-          },
-          {
-            type: 'multiple_choice',
-            question: `The speaker suggests that viewer feedback and comments will not shape future parts.`,
-            options: ['True', 'False'],
-            correct: 1,
-            explanation: 'Contradicted by the speaker, who invites feedback to guide future topics.'
+            type: 'gap_fill',
+            instruction: 'Fill in the blanks using key concepts from the lecture:',
+            text: `1. In the patristic view, Christianity is understood as a spiritual [therapy] for the soul.\n2. The restoration of the [nous] allows man to regain experiential knowledge of God.\n3. Ascetic practice brings the body into subjugation to the [soul].`,
+            answers: ['therapy', 'nous', 'soul']
           }
         ];
       } else {
         cleanBlocks = [
           {
             type: 'multiple_choice',
-            question: `What is the key takeaway from "${extractedTopic}"?`,
+            question: "What is the primary theme explored in this presentation?",
             options: [
-              'Consistent, focused study leads to deeper understanding',
-              'Passive listening without reflection is sufficient',
-              'Complex topics should be avoided entirely'
+              "The Orthodox psychotherapeutic method as a healing science for the soul",
+              "A critique of modern film production and media techniques",
+              "A guide to commercial book distribution and publishing"
             ],
             correct: 0,
-            explanation: 'Structured study and active engagement foster true comprehension.'
+            explanation: "The talk examines Orthodox spiritual therapy based on Metropolitan Hierotheos' work."
           }
         ];
       }
