@@ -1,4 +1,5 @@
-// UTF-8 Safe Base64URL encoding (zero runtime exceptions)
+// Pure Web Crypto API (HMAC-SHA256) JWT Engine for Cloudflare Workers
+
 function stringToBase64Url(str) {
   try {
     return btoa(unescape(encodeURIComponent(str)))
@@ -29,6 +30,17 @@ async function getCryptoKey(secret) {
     false,
     ['sign', 'verify']
   );
+}
+
+// Timing-safe string comparison to prevent timing attacks
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  let mismatch = a.length === b.length ? 0 : 1;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
 export async function signJWT(payload, secret, expiresInSeconds = 86400 * 7) {
@@ -100,42 +112,35 @@ export async function verifyJWT(token, secret) {
   }
 }
 
+// Server-Only Password Verification & JWT Token Issuance
 export async function authenticateTeacher(env, passwordInput) {
-  const clean = (passwordInput || '').trim();
+  const cleanInput = (passwordInput || '').trim();
   const expectedPass = (env.TEACHER_PASSWORD || 'teacher123').trim();
 
-  if (clean === expectedPass || clean === 'teacher123') {
+  // Timing-safe password check
+  if (timingSafeEqual(cleanInput, expectedPass)) {
     const secret = env.JWT_SECRET || env.TEACHER_PASSWORD || 'lesson-engine-super-secret-key';
     const token = await signJWT({ role: 'teacher', authenticated: true }, secret);
     return { success: true, token };
   }
 
-  return { success: false, error: 'Invalid password' };
+  return { success: false, error: 'Invalid credentials' };
 }
 
+// Middleware Helper: Strictly checks Authorization Bearer Header
 export async function isRequestAuthorized(request, env) {
   const authHeader = request.headers.get('Authorization') || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : null;
 
-  if (token === 'dev_teacher_token_123' || token === 'dev_token_123') return true;
+  if (!token) return false;
 
   const secret = env.JWT_SECRET || env.TEACHER_PASSWORD || 'lesson-engine-super-secret-key';
-
-  if (token) {
-    const result = await verifyJWT(token, secret);
-    if (result.valid) return true;
-  }
-
-  const legacyPassword = request.headers.get('x-teacher-password');
-  if (legacyPassword) {
-    const clean = legacyPassword.trim();
-    const expected = (env.TEACHER_PASSWORD || 'teacher123').trim();
-    if (clean === expected || clean === 'teacher123') return true;
-  }
-
-  return false;
+  const result = await verifyJWT(token, secret);
+  
+  return result.valid && result.payload?.role === 'teacher';
 }
 
+// Edge Sliding-Window Rate Limiter
 const rateLimitMap = new Map();
 
 export function checkRateLimit(ipAddress, limit = 25, windowMs = 60000) {
