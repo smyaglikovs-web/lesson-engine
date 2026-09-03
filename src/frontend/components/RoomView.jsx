@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { BlockRenderer } from './BlockRenderer.jsx';
 import { triggerConfetti, playVictorySound } from '../utils/sounds.js';
 
@@ -24,6 +24,9 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [showNotepad, setShowNotepad] = useState(false);
   const [xpAward, setXpAward] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Network Sync Debounce Ref
+  const debounceTimersRef = useRef({});
 
   // Determine Homework mode vs Live Room mode
   const isHomeworkMode = useMemo(() => {
@@ -115,7 +118,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         setBroadcastSlideIdx(data.broadcastPage ?? 0);
         if (data.notepad !== undefined) setNotepadText(data.notepad);
 
-        // Synchronize student's view when teacher broadcasts
+        // Synchronize student view when teacher broadcasts
         if (!isTeacher && !isHomeworkMode && typeof data.broadcastPage === 'number') {
           if (data.broadcastPage !== currentSlideIdxRef.current) {
             setCurrentSlideIdx(data.broadcastPage);
@@ -123,7 +126,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           }
         }
 
-        // Aggregate live responses stream for teacher cockpit
+        // Aggregate live responses for teacher cockpit
         if (isTeacher && data.participants) {
           const stream = [];
           Object.values(data.participants).forEach(p => {
@@ -142,7 +145,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     };
 
     fetchState();
-    const interval = setInterval(fetchState, 1600);
+    const interval = setInterval(fetchState, 1800);
     return () => clearInterval(interval);
   }, [roomId, isTeacher, isHomeworkMode]);
 
@@ -163,7 +166,24 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     } catch (e) {}
   };
 
-  // Student Answers Handler
+  // Debounced Network Answer Sync
+  const syncAnswerToServer = useCallback((blockId, answerVal) => {
+    if (isTeacher || !roomId || !studentId) return;
+
+    if (debounceTimersRef.current[blockId]) {
+      clearTimeout(debounceTimersRef.current[blockId]);
+    }
+
+    debounceTimersRef.current[blockId] = setTimeout(() => {
+      fetch(`/api/rooms/${roomId}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, blockId, answer: answerVal })
+      }).catch(() => {});
+    }, 400);
+  }, [isTeacher, roomId, studentId]);
+
+  // Student Answers Local State & Sync Trigger
   const handleAnswerChange = (blockId, newVal) => {
     setUserAnswers(prev => {
       const updated = newVal === null || newVal === undefined 
@@ -175,17 +195,10 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         localStorage.setItem(`ls_ans_${roomId}`, JSON.stringify(updated));
       } catch (e) {}
 
-      // Push answer to room session
-      if (!isTeacher && roomId && studentId) {
-        fetch(`/api/rooms/${roomId}/answer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studentId, blockId, answer: newVal })
-        }).catch(() => {});
-      }
-
       return updated;
     });
+
+    syncAnswerToServer(blockId, newVal);
   };
 
   const handleStartSession = () => {
@@ -197,7 +210,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const handleCopyStudentLink = () => {
     const url = `${window.location.origin}/?room=${roomId}&role=student`;
     navigator.clipboard.writeText(url);
-    alert('🔗 Ссылка для учеников скопирована!');
+    alert('🔗 Ссылка для учеников скопирована в буфер обмена!');
   };
 
   const handleSaveNotepad = async () => {
@@ -229,7 +242,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
       return;
     }
 
-    // Homework final submission
     try {
       const res = await fetch('/api/homework/submit', {
         method: 'POST',
