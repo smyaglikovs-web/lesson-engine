@@ -35,7 +35,8 @@ export const TeacherAuthModal = ({ onLogin, loginError }) => {
               type={showPassword ? 'text' : 'password'}
               value={passwordInput}
               onChange={e => setPasswordInput(e.target.value)}
-              placeholder="Введите пароль..."
+              placeholder="••••••••••••"
+              autoComplete="current-password"
               className="w-full px-4 py-3.5 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-600 rounded-2xl text-sm font-medium text-slate-900 outline-none transition pr-12"
             />
             <button
@@ -56,12 +57,8 @@ export const TeacherAuthModal = ({ onLogin, loginError }) => {
           disabled={loading || !passwordInput.trim()}
           className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-sm shadow-md transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"
         >
-          {loading ? '⌛ Проверка...' : 'Войти в кабинет ➔'}
+          {loading ? 'Проверка...' : 'Войти в кабинет ➔'}
         </button>
-
-        <p className="text-[11px] text-slate-400 text-center">
-          По умолчанию: <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-700">teacher123</code>
-        </p>
       </form>
     </div>
   );
