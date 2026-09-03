@@ -3,6 +3,7 @@ import { BuilderPagesBar } from './builder/BuilderPagesBar.jsx';
 import { BuilderPalette } from './builder/BuilderPalette.jsx';
 import { EditableBlockCard } from './builder/EditableBlockCard.jsx';
 import { BuilderAiModal } from './builder/BuilderAiModal.jsx';
+import { normalizeBlockType } from './BlockRenderer.jsx';
 
 const DEFAULT_LESSON = {
   title: 'New Interactive English Lesson',
@@ -65,7 +66,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     lesson.pages?.forEach(p => {
       if (p && Array.isArray(p.blocks)) {
         p.blocks.forEach(b => {
-          if (b && (b.type === 'text' || b.type === 'video' || b.type === 'audio' || b.type === 'grammar_card')) {
+          if (b && (b.type === 'text' || b.type === 'video' || b.type === 'audio' || b.type === 'grammar_card' || b.type === 'link')) {
             list.push(b);
           }
         });
@@ -81,7 +82,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         if (found.type === 'grammar_card') {
           return `Grammar Rule: ${found.title || ''}\nFormula: ${found.formula || ''}\nExplanation: ${found.explanation || ''}\nExamples: ${(found.examples || []).join('; ')}`;
         }
-        return found.text || found.transcript || found.explanation || JSON.stringify(found);
+        return found.text || found.transcript || found.explanation || found.description || JSON.stringify(found);
       }
     }
     let contextText = '';
@@ -90,6 +91,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         page.blocks.forEach(b => {
           if (b && b.type === 'text' && b.text) contextText += b.text + '\n';
           if (b && b.type === 'video' && b.transcript) contextText += b.transcript + '\n';
+          if (b && b.type === 'link' && b.description) contextText += `${b.title}: ${b.description}\n`;
           if (b && b.type === 'grammar_card') {
             contextText += `Grammar Rule (${b.title}): Formula: ${b.formula || ''} - Explanation: ${b.explanation || ''}\n`;
           }
@@ -118,32 +120,110 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
-  const handleAddBlock = (type) => {
+  const handleAddBlock = (rawType) => {
+    const type = normalizeBlockType(rawType);
     const newBlock = { id: 'b-' + Date.now(), type };
-    if (type === 'heading') { newBlock.level = 2; newBlock.text = 'Новый раздел'; }
-    else if (type === 'text') { newBlock.text = 'Введите текст статьи или рассказа здесь...'; }
-    else if (type === 'video') { newBlock.title = 'Посмотрите видео:'; newBlock.url = ''; }
-    else if (type === 'audio') { newBlock.title = 'Прослушайте аудиозапись:'; newBlock.url = ''; newBlock.transcript = ''; }
-    else if (type === 'image') { newBlock.caption = ''; newBlock.images = []; }
-    else if (type === 'grammar_card') { newBlock.title = 'Правило грамматики'; newBlock.formula = 'Subject + Verb'; newBlock.explanation = 'Объяснение правила...'; newBlock.examples = ['Пример предложения']; }
-    else if (type === 'teacher_notes') { newBlock.aim = 'To introduce target vocabulary...'; newBlock.speech = 'Look at these sentences and choose the best option.'; }
-    else if (type === 'inline_select') { newBlock.instruction = 'Выберите правильный вариант:'; newBlock.text = '1. We should [focus on* | ignore] the main goal.\n2. By next year they [will have completed* | completed] the project.'; }
-    else if (type === 'spinning_wheel') { newBlock.title = '🎡 Speaking Warm-Up Wheel'; newBlock.instruction = 'Крутите колесо и ответьте на выпавший вопрос!'; newBlock.items = ['What is your favorite travel memory?', 'Have you ever been lost in a city?', 'What country would you visit tomorrow?']; newBlock.eliminateMode = true; }
-    else if (type === 'flashcards') { newBlock.title = 'Ключевые слова'; newBlock.cards = [{ front: 'Key Concept', back: 'Основная идея', example: 'Understanding this is crucial.' }, { front: 'To engage with', back: 'Взаимодействовать', example: 'Students engage with materials.' }]; }
-    else if (type === 'multiple_choice') { newBlock.question = 'Вопрос по материалу?'; newBlock.options = ['Правильный вариант', 'Дистрактор 1', 'Дистрактор 2']; newBlock.correct = 0; }
-    else if (type === 'gap_fill') { newBlock.instruction = 'Вставьте пропущенное слово:'; newBlock.text = '1. Yesterday she [went] home.'; newBlock.answers = ['went']; }
-    else if (type === 'gap_fill_bank') { newBlock.instruction = 'Заполните пропуски словами из банка:'; newBlock.text = 'Consistent [practice] is the foundation of mastering any foreign [language].'; newBlock.distractors = ['barrier', 'hesitation']; }
-    else if (type === 'matching') { 
-      newBlock.instruction = 'Соедините пары:'; 
-      newBlock.pairs = [
-        { left: 'Key Concept', right: 'Основное понятие / Главная идея' },
-        { left: 'To cultivate', right: 'Развивать / Культивировать' },
-        { left: 'Perspective', right: 'Точка зрения / Взгляд' }
+
+    if (type === 'heading') { 
+      newBlock.level = 2; 
+      newBlock.text = 'Новый раздел'; 
+    }
+    else if (type === 'text') { 
+      newBlock.text = 'Введите текст статьи или рассказа здесь...'; 
+    }
+    else if (type === 'link') {
+      newBlock.title = 'Полезный ресурс';
+      newBlock.url = 'https://en.wikipedia.org';
+      newBlock.description = 'Нажмите для просмотра справочных материалов.';
+      newBlock.displayMode = 'modal';
+    }
+    else if (type === 'video') { 
+      newBlock.title = 'Посмотрите видео:'; 
+      newBlock.url = ''; 
+    }
+    else if (type === 'audio') { 
+      newBlock.title = 'Прослушайте аудиозапись:'; 
+      newBlock.url = ''; 
+      newBlock.transcript = ''; 
+    }
+    else if (type === 'image') { 
+      newBlock.caption = ''; 
+      newBlock.images = []; 
+    }
+    else if (type === 'grammar_card') { 
+      newBlock.title = 'Правило грамматики'; 
+      newBlock.formula = 'Subject + Verb'; 
+      newBlock.explanation = 'Объяснение правила...'; 
+      newBlock.examples = ['Пример предложения в контексте.']; 
+    }
+    else if (type === 'teacher_notes') { 
+      newBlock.aim = 'To introduce target vocabulary in communicative context...'; 
+      newBlock.speech = 'Look at these sentences and discuss what you notice.'; 
+    }
+    else if (type === 'inline_select') { 
+      newBlock.instruction = 'Выберите правильный вариант:'; 
+      newBlock.text = '1. We should [focus on* | ignore] the main goal.\n2. By next year they [will have completed* | completed] the project.'; 
+    }
+    else if (type === 'spinning_wheel') { 
+      newBlock.title = '🎡 Speaking Warm-Up Wheel'; 
+      newBlock.instruction = 'Крутите колесо и ответьте на выпавший вопрос!'; 
+      newBlock.items = [
+        'What is your favorite travel memory?', 
+        'Have you ever been lost in a city?', 
+        'What country would you visit tomorrow?'
+      ]; 
+      newBlock.eliminateMode = true; 
+    }
+    else if (type === 'flashcards') { 
+      newBlock.title = 'Ключевые слова'; 
+      newBlock.cards = [
+        { front: 'Key Concept', back: 'Основная идея', example: 'Understanding this key concept will help you grasp the whole lesson.' }, 
+        { front: 'To engage with', back: 'Взаимодействовать', example: 'Students should engage with the material through interactive discussions.' }
       ]; 
     }
-    else if (type === 'sentence_reorder') { newBlock.instruction = 'Соберите предложение из слов:'; newBlock.sentence = 'She had never seen such a dress before.'; }
-    else if (type === 'categorization') { newBlock.instruction = 'Распределите слова по категориям:'; newBlock.categories = ['Формальный стиль', 'Разговорный стиль']; newBlock.items = [{ id: 'it-1', text: 'Furthermore', categoryIndex: 0 }, { id: 'it-2', text: 'Catch you later', categoryIndex: 1 }]; }
-    else if (type === 'open_input') { newBlock.prompt = '💬 Вопрос для обсуждения:\n1. Что вы думаете по этой теме?'; }
+    else if (type === 'multiple_choice') { 
+      newBlock.question = 'Вопрос по материалу?'; 
+      newBlock.options = ['Правильный вариант', 'Дистрактор 1', 'Дистрактор 2']; 
+      newBlock.correct = 0; 
+    }
+    else if (type === 'gap_fill') { 
+      newBlock.instruction = 'Вставьте пропущенное слово:'; 
+      newBlock.text = '1. Yesterday she [went] home.\n2. They [have seen] this movie before.'; 
+      newBlock.answers = ['went', 'have seen']; 
+    }
+    else if (type === 'gap_fill_bank') { 
+      newBlock.instruction = 'Заполните пропуски словами из банка:'; 
+      newBlock.text = 'Consistent [practice] is the foundation of mastering any foreign [language].'; 
+      newBlock.distractors = ['barrier', 'hesitation']; 
+    }
+    else if (type === 'matching') { 
+      newBlock.instruction = 'Соедините слова и их значения:'; 
+      newBlock.pairs = [
+        { left: 'Key Concept', right: 'Основное понятие (main idea)' },
+        { left: 'To cultivate', right: 'Развивать (develop over time)' },
+        { left: 'Perspective', right: 'Точка зрения (viewpoint)' }
+      ]; 
+    }
+    else if (type === 'sentence_reorder') { 
+      newBlock.instruction = 'Соберите предложения из слов:'; 
+      newBlock.sentences = [
+        'Consistent daily practice is the key to speaking fluently.',
+        'She had never encountered such a challenging problem before.',
+        'They decided to explore different perspectives on this issue.'
+      ]; 
+      newBlock.sentence = newBlock.sentences[0];
+    }
+    else if (type === 'categorization') { 
+      newBlock.instruction = 'Распределите слова по категориям:'; 
+      newBlock.categories = ['Формальный стиль', 'Разговорный стиль']; 
+      newBlock.items = [
+        { id: 'it-1', text: 'Furthermore', categoryIndex: 0 }, 
+        { id: 'it-2', text: 'Catch you later', categoryIndex: 1 }
+      ]; 
+    }
+    else if (type === 'open_input') { 
+      newBlock.prompt = '💬 Вопрос для обсуждения:\n1. Что вы думаете по этой теме?\n2. Приведите пример из своего опыта.'; 
+    }
 
     const updatedPages = [...(lesson.pages || [])];
     if (!updatedPages[activePageIndex]) {
@@ -196,8 +276,10 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
   };
 
   const handleOpenAiModal = (block, blockIdx) => {
-    setAiModalTarget({ block, blockIdx });
-    const isAnchor = block.type === 'text' || block.type === 'grammar_card' || block.type === 'video' || block.type === 'audio';
+    const normType = normalizeBlockType(block.type);
+    setAiModalTarget({ block: { ...block, type: normType }, blockIdx });
+
+    const isAnchor = normType === 'text' || normType === 'grammar_card' || normType === 'video' || normType === 'audio' || normType === 'link';
     if (isAnchor) {
       setSelectedSourceId(block.id);
     } else {
@@ -205,10 +287,13 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
       setSelectedSourceId(nearestSource ? nearestSource.id : '');
     }
 
-    if (block.type === 'grammar_card') setSelectedTasks(['grammar_quiz']);
-    else if (block.type === 'matching') setSelectedTasks(['matching']);
-    else if (block.type === 'flashcards') setSelectedTasks(['flashcards']);
-    else if (block.type === 'categorization') setSelectedTasks(['categorization']);
+    if (normType === 'grammar_card') setSelectedTasks(['grammar_quiz']);
+    else if (normType === 'matching') setSelectedTasks(['matching']);
+    else if (normType === 'flashcards') setSelectedTasks(['flashcards']);
+    else if (normType === 'categorization') setSelectedTasks(['categorization']);
+    else if (normType === 'spinning_wheel') setSelectedTasks(['spinning_wheel']);
+    else if (normType === 'sentence_reorder') setSelectedTasks(['sentence_reorder']);
+    else if (normType === 'inline_select') setSelectedTasks(['inline_select']);
     else setSelectedTasks(['listening']);
   };
 
@@ -365,7 +450,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
                   <div className="flex items-center gap-2">
                     <span className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-600 font-bold px-1 text-base select-none" title="Drag to reorder block">⣿</span>
                     <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">#{idx + 1}</span>
-                    <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">{block?.type?.replace(/_/g, ' ') || 'block'}</span>
+                    <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">
+                      {normalizeBlockType(block?.type).replace(/_/g, ' ')}
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
