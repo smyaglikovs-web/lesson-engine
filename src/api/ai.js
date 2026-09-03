@@ -32,7 +32,7 @@ export function getYouTubeId(url = '') {
   return null;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -324,7 +324,7 @@ export function sanitizeBlockStructure(b) {
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
   let errors = [];
 
-  // 1. OPENROUTER FREE MODELS (Primary)
+  // 1. OPENROUTER FREE MODELS (Primary Gateway)
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
     const openRouterModels = [
@@ -348,8 +348,8 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           body: JSON.stringify({
             model: model,
             messages: [
-              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
-              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
+              { role: 'system', content: `${systemPrompt}\nYou must output your response in valid JSON format.` },
+              { role: 'user', content: `${userContent}\nPlease respond in JSON format.` }
             ],
             temperature: 0.2,
             response_format: { type: 'json_object' }
@@ -372,7 +372,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. GROQ API (Secondary)
+  // 2. GROQ API (Secondary Fallback)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
@@ -410,7 +410,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 3. GEMINI API (Tertiary)
+  // 3. GEMINI API (Tertiary Fallback)
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -623,26 +623,10 @@ Every vocabulary item MUST have a UNIQUE, natural example sentence (10-14 words 
     : `Generate high-yield materials for Topic: "${resolvedTopic}". Context: ${audienceContext}`;
 
   const stage1Result = await runAiPipeline(env, stage1SystemPrompt, userContextPrompt, 1400);
-  const profile = stage1Result.data || {
-    warmupQuestions: [
-      `What comes to your mind first when you think about ${resolvedTopic}?`,
-      "Have you ever experienced this in real life?",
-      "Why is this topic relevant today?"
-    ],
-    targetWords: targetKeywords.length > 0 
-      ? targetKeywords.map(k => ({ front: k, back: 'Ключевое понятие', example: `Mastering ${k} helps learners express their ideas with greater confidence.` }))
-      : [
-          { front: 'Key Concept', back: 'Основное понятие', example: 'Understanding this key concept will help you grasp the whole lesson easily.' },
-          { front: 'To engage with', back: 'Взаимодействовать', example: 'Students should engage with the material through interactive discussions every day.' },
-          { front: 'Perspective', back: 'Точка зрения', example: 'Listening to different opinions gives you a much broader perspective on life.' },
-          { front: 'Significance', back: 'Значимость', example: 'The historical significance of this discovery cannot be overstated by modern scientists.' },
-          { front: 'To cultivate', back: 'Развивать', example: 'Consistent reading helps cultivate a rich and expressive vocabulary over time.' },
-          { front: 'Outcome', back: 'Результат', example: 'Hard work and persistence will always produce a positive learning outcome.' }
-        ],
-    grammarTitle: 'Present Perfect & Key Stems',
-    grammarFormula: 'Subject + have/has + V3',
-    grammarExplanation: 'Used for actions with current conversational relevance.'
-  };
+  if (!stage1Result.data) {
+    return { error: `Stage 1 (Lexical Profiler) failed: ${stage1Result.error || 'All models failed.'}` };
+  }
+  const profile = stage1Result.data;
 
   // STAGE 2: Story Synthesizer
   const wordsToWeave = (profile.targetWords || []).map(w => w.front).join(', ');
@@ -650,7 +634,7 @@ Every vocabulary item MUST have a UNIQUE, natural example sentence (10-14 words 
 You are an award-winning ELT graded reader writer.
 Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
-Target vocabulary: ${wordsToWeave}
+Target vocabulary to weave in naturally: ${wordsToWeave}
 
 Write an engaging, rich 250-320 word educational story/reading passage for this lesson strictly adapted to CEFR ${level}.
 CRITICAL JSON FORMAT RULE: Inside the "storyText" string, NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy', 'Blurryface') for titles, albums, character names, or dialogue.
@@ -662,6 +646,9 @@ CRITICAL JSON FORMAT RULE: Inside the "storyText" string, NEVER use raw double q
 }`;
 
   const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${resolvedTopic}\nContext: ${audienceContext}\nNotes: ${text.substring(0, 400)}`, 1600);
+  if (!stage2Result.data) {
+    return { error: `Stage 2 (Story Synthesizer) failed: ${stage2Result.error || 'All models failed.'}` };
+  }
 
   let storyText = stage2Result.data?.storyText 
     || stage2Result.data?.text 
@@ -669,17 +656,12 @@ CRITICAL JSON FORMAT RULE: Inside the "storyText" string, NEVER use raw double q
     || stage2Result.data?.passage 
     || stage2Result.data?.content;
 
-  if (!storyText || storyText.length < 60) {
-    if (typeof stage2Result.data === 'string' && stage2Result.data.length > 60) {
-      storyText = stage2Result.data;
-    } else {
-      const w1 = profile.targetWords[0]?.front || 'concept';
-      const w2 = profile.targetWords[1]?.front || 'perspective';
-      const w3 = profile.targetWords[2]?.front || 'significance';
-      const w4 = profile.targetWords[3]?.front || 'outcome';
+  if (typeof stage2Result.data === 'string' && stage2Result.data.length > 50) {
+    storyText = stage2Result.data;
+  }
 
-      storyText = `${resolvedTopic} represents a compelling narrative that continues to resonate with audiences around the world. At its heart, the story explores deep emotional landscapes, encouraging individuals to confront their vulnerabilities and find strength through creative expression. By examining the overarching themes, listeners and readers uncover symbolic layers that mirror real-world personal struggles.\n\nThroughout the journey of ${resolvedTopic}, pivotal ideas such as ${w1} and ${w2} play an essential role in guiding the characters forward. Rather than providing easy solutions, the narrative challenges conventional wisdom, emphasizing that true growth requires patience, reflection, and dedication. The cultural ${w3} of this narrative extends far beyond entertainment, inspiring a dedicated community to discuss and analyze its intricate details.\n\nUltimately, immersing oneself in ${resolvedTopic} offers valuable lessons about resilience, identity, and shared purpose. By exploring these themes through rich metaphors and dynamic storytelling, learners can expand their vocabulary while engaging with meaningful philosophical concepts. The positive ${w4} of this journey demonstrates the enduring power of art to unite people and inspire transformative change.`;
-    }
+  if (!storyText) {
+    return { error: `Stage 2 failed: No valid story text could be parsed from AI response.` };
   }
 
   // STAGE 3: Parallel Task Synthesis
@@ -710,37 +692,29 @@ CRITICAL TASK SCHEMAS:
 }`;
 
   const stage3Result = await runAiPipeline(env, stage3SystemPrompt, `Generate exercises for: ${JSON.stringify(tasksToGenerate)}`, 2400);
+  if (!stage3Result.data) {
+    return { error: `Stage 3 (Task Synthesizer) failed: ${stage3Result.error || 'All models failed.'}` };
+  }
+
   let synthesizedBlocks = stage3Result.data?.blocks || [];
+  if (!Array.isArray(synthesizedBlocks) && typeof stage3Result.data === 'object' && stage3Result.data !== null) {
+    const anyArray = Object.values(stage3Result.data).find(val => Array.isArray(val));
+    if (anyArray) {
+      synthesizedBlocks = anyArray;
+    } else {
+      synthesizedBlocks = [stage3Result.data];
+    }
+  }
 
   let cleanTaskBlocks = [];
   synthesizedBlocks.forEach(b => {
     const res = sanitizeBlockStructure(b);
     if (Array.isArray(res)) cleanTaskBlocks.push(...res);
-    else if (res) cleanTaskBlocks.push(res);
+    else if (res && typeof res === 'object') cleanTaskBlocks.push(res);
   });
 
   if (cleanTaskBlocks.length === 0) {
-    cleanTaskBlocks = [
-      {
-        type: 'matching',
-        instruction: 'Match the words with their definitions:',
-        pairs: profile.targetWords.slice(0, 6).map(w => ({ left: w.front, right: w.back }))
-      },
-      {
-        type: 'gap_fill_bank',
-        instruction: 'Fill the gaps using the correct words from the bank:',
-        text: `Consistent [practice] is the foundation of mastering any foreign [language].`,
-        distractors: ['barrier', 'hesitation']
-      },
-      {
-        type: 'sentence_reorder',
-        instruction: 'Put the words in order to form correct sentences:',
-        sentences: [
-          'Consistent daily practice is the key to speaking fluently.',
-          'She had never encountered such a challenging situation before.'
-        ]
-      }
-    ];
+    return { error: `Stage 3 failed: No valid exercise blocks could be parsed from response.` };
   }
 
   // STAGE 4: Assemble Complete Lesson Structure
@@ -849,7 +823,7 @@ CRITICAL TASK SCHEMAS:
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Universal Extractor & Dynamic Fallbacks)
+// 1-CLICK BLOCK AI ASSISTANT (Raw Error Reporting)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -875,11 +849,9 @@ export async function transformBlockWithAI(env, payload) {
 
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
   
-  // Clean raw context while preserving Title and Transcript cleanly
   let rawContext = sourceText || sourceBlock.text || sourceBlock.transcript || sourceBlock.title || sourceBlock.explanation || JSON.stringify(sourceBlock);
   let safeContext = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  // SMART CHUNKING: If context is huge (> 2800 chars), take the most concept-dense portion so Workers AI never overflows
   if (safeContext.length > 2800) {
     const titleHeader = sourceBlock.title ? `Video Title: ${sourceBlock.title}. ` : '';
     const startPortion = safeContext.slice(0, 1400);
@@ -889,7 +861,14 @@ export async function transformBlockWithAI(env, payload) {
 
   let tasksInstructions = '';
 
-  // 1. COMPREHENSION MULTIPLE CHOICE
+  // 1. GRAMMAR MULTIPLE CHOICE DRILL
+  if (actions.includes('grammar_quiz')) {
+    tasksInstructions += `
+- GENERATE 3 distinct "multiple_choice" blocks testing the grammar structure from context.
+  Schema: { "type": "multiple_choice", "question": "Sentence gap or grammar question?", "options": ["Correct answer", "Common error 1", "Common error 2"], "correct": 0, "explanation": "Rule breakdown." }`;
+  }
+
+  // 2. VIDEO / AUDIO / TEXT COMPREHENSION QUESTIONS
   if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key arguments and concepts in the material.
@@ -897,31 +876,19 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "multiple_choice", "question": "Question testing a specific teaching from the context?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
   }
 
-  // 2. TRUE / FALSE QUESTIONS
+  // 3. TRUE / FALSE QUESTIONS
   if (actions.includes('true_false')) {
     tasksInstructions += `
-- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the speaker's claims and teachings.
+- GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the content claims.
   Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the lecture." }`;
   }
 
-  // 3. TARGET VOCABULARY FLASHCARDS
-  if (actions.includes('flashcards')) {
-    const backLang = flashcardType === 'russian' 
-      ? 'The "back" key MUST be the accurate Russian translation of the term.' 
-      : 'The "back" key MUST be a clear, concise English definition.';
-
+  // 4. SENTENCE TRANSFORMATIONS / GAP FILL
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
     tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 high-yield terms found in the material.
-  CRITICAL: ${backLang}
-  CRITICAL: Each card MUST have an authentic 10-14 word example sentence illustrating its meaning in context.
-  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "term", "back": "translation or definition", "example": "Context sentence." } ] }`;
-  }
-
-  // 4. GRAMMAR MULTIPLE CHOICE DRILL
-  if (actions.includes('grammar_quiz')) {
-    tasksInstructions += `
-- GENERATE 3 distinct "multiple_choice" blocks testing the grammar structure from context.
-  Schema: { "type": "multiple_choice", "question": "Sentence gap or grammar question?", "options": ["Correct answer", "Common error 1", "Common error 2"], "correct": 0, "explanation": "Rule breakdown." }`;
+- GENERATE 1 "gap_fill" block with 4 sentences based on the context.
+  Put target words inside brackets like [word]. Never use [---].
+  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. The church aims to restore the [noetic] faculty.\\n2. Hesychastic prayer requires quiet [illumination].", "answers": ["noetic", "illumination"] }`;
   }
 
   // 5. PAIR MATCHING
@@ -947,47 +914,52 @@ export async function transformBlockWithAI(env, payload) {
     }
 
     tasksInstructions += `
-- GENERATE 1 "matching" block with 6 distinct pairs based on context words.
+- GENERATE 1 "matching" block with 6 distinct pairs based on context concepts.
   ${styleRules}
   CRITICAL: Every right-side value MUST be 100% unique.
   Schema: { "type": "matching", "instruction": "Match the terms with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
   }
 
-  // 6. GAP FILL & TRANSFORMATIONS
-  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
+  // 6. FLASHCARDS
+  if (actions.includes('flashcards')) {
+    const backLang = flashcardType === 'russian' 
+      ? 'The "back" key MUST be the accurate Russian translation of the term.' 
+      : 'The "back" key MUST be a clear, concise English definition.';
+
     tasksInstructions += `
-- GENERATE 1 "gap_fill" block with 4 sentences based on the context.
-  Put target words inside brackets like [word]. Never use [---].
-  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. The church aims to restore the [noetic] faculty.\\n2. Hesychastic prayer requires quiet [illumination].", "answers": ["noetic", "illumination"] }`;
+- GENERATE 1 "flashcards" block with 6 high-yield terms found in the material.
+  CRITICAL: ${backLang}
+  CRITICAL: Each card MUST have an authentic 10-14 word example sentence illustrating its meaning in context.
+  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "term", "back": "translation or definition", "example": "Context sentence." } ] }`;
   }
 
-  // 7. GAP FILL BANK
+  // 7. INLINE SELECT
+  if (actions.includes('inline_select')) {
+    tasksInstructions += `
+- GENERATE 1 "inline_select" block with 4 sentences based on the context.
+  Inside each sentence, put dropdown choices in brackets separated by | with asterisk (*) on the correct option.
+  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. Orthodoxy is interpreted as a therapeutic [science* | speculation].\\n2. The noetic faculty allows true [knowledge* | confusion] of God." }`;
+  }
+
+  // 8. GAP FILL BANK
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 distractors.
   Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "Orthodoxy views theology as spiritual [therapy] designed to heal the [soul] through [prayer].", "distractors": ["philosophy", "scholasticism", "distraction"] }`;
   }
 
-  // 8. SENTENCE REORDER
+  // 9. SENTENCE REORDER
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
 - GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences based on context (each 8 to 14 words).
   Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Orthodox psychotherapy focuses on restoring the noetic faculty of man.", "True theology requires constant engagement with God through prayer."] }`;
   }
 
-  // 9. DISCUSSION / OPEN INPUT
+  // 10. DISCUSSION / OPEN INPUT
   if (actions.includes('discussion')) {
     tasksInstructions += `
 - GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts based on the context.
   Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. What distinguishes theology as therapy from academic philosophy?\\n2. How does ascetic practice impact the soul and the body?" }`;
-  }
-
-  // 10. INLINE SELECT
-  if (actions.includes('inline_select')) {
-    tasksInstructions += `
-- GENERATE 1 "inline_select" block with 4 sentences based on the context.
-  Inside each sentence, put dropdown choices in brackets separated by | with asterisk (*) on the correct option.
-  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. Orthodoxy is interpreted as a therapeutic [science* | speculation].\\n2. The noetic faculty allows true [knowledge* | confusion] of God." }`;
   }
 
   // 11. SPEAKING WHEEL
@@ -1051,6 +1023,9 @@ ${tasksInstructions}
 
   try {
     const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 2400);
+    if (!result.data) {
+      return { error: `AI generation failed: ${result.error || 'All API providers failed or timed out.'}` };
+    }
 
     let rawList = [];
     if (Array.isArray(result.data)) {
@@ -1078,146 +1053,8 @@ ${tasksInstructions}
       else if (res && typeof res === 'object') cleanBlocks.push(res);
     });
 
-    // ----------------------------------------------------------------------
-    // DYNAMIC CONTEXT-GROUNDED FALLBACK (100% Derived from Active Payload)
-    // ----------------------------------------------------------------------
     if (cleanBlocks.length === 0) {
-      const sentencesFromText = (safeContext || '')
-        .split(/[.!?]/)
-        .map(s => s.trim())
-        .filter(s => s.length > 20);
-
-      const topicTitle = sourceBlock.title || 'the main subject';
-      const s1 = sentencesFromText[0] || `${topicTitle} explores key ideas and concepts in depth.`;
-      const s2 = sentencesFromText[1] || `Understanding the fundamental principles of ${topicTitle} enhances overall comprehension.`;
-      const s3 = sentencesFromText[2] || `Practitioners and learners engage with ${topicTitle} to develop practical insights.`;
-
-      if (actions.includes('true_false')) {
-        cleanBlocks = [
-          {
-            type: 'multiple_choice',
-            question: `${s1}`,
-            options: ['True', 'False'],
-            correct: 0,
-            explanation: 'Directly supported by the active context.'
-          },
-          {
-            type: 'multiple_choice',
-            question: `The passage suggests that ${topicTitle} should be ignored or dismissed entirely.`,
-            options: ['True', 'False'],
-            correct: 1,
-            explanation: 'Contradicted by the active context text.'
-          },
-          {
-            type: 'multiple_choice',
-            question: `${s2}`,
-            options: ['True', 'False'],
-            correct: 0,
-            explanation: 'Affirmed in the reading context.'
-          }
-        ];
-      } else if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
-        cleanBlocks = [
-          {
-            type: 'multiple_choice',
-            question: `What is the primary concept or theme explored in this material?`,
-            options: [
-              `${s1}`,
-              'An unrelated commercial advertisement',
-              'A minor detail that was dismissed by the author'
-            ],
-            correct: 0,
-            explanation: 'This option reflects the primary theme in the context.'
-          },
-          {
-            type: 'multiple_choice',
-            question: `According to the context, how is this topic best characterized?`,
-            options: [
-              `${s2}`,
-              'By ignoring all primary sources and evidence',
-              'By treating the subject as completely irrelevant'
-            ],
-            correct: 0,
-            explanation: 'Directly supported by the context details.'
-          }
-        ];
-      } else if (actions.includes('grammar_quiz')) {
-        cleanBlocks = [
-          {
-            type: 'multiple_choice',
-            question: `Which option correctly completes the sentence to describe ${topicTitle}?`,
-            options: [
-              `Consistent application of ${topicTitle} leads to reliable results.`,
-              'Speculative rules without practical basis.',
-              'Ignoring established grammatical frameworks.'
-            ],
-            correct: 0,
-            explanation: 'Directly supported by the grammatical patterns.'
-          }
-        ];
-      } else if (actions.includes('flashcards')) {
-        const isRussian = flashcardType === 'russian';
-        cleanBlocks = [
-          {
-            type: 'flashcards',
-            title: 'Key Target Vocabulary',
-            cards: [
-              {
-                front: 'Core concept',
-                back: isRussian ? 'Основная идея' : 'The central principle or idea.',
-                example: `${s1}`
-              },
-              {
-                front: 'Perspective',
-                back: isRussian ? 'Точка зрения' : 'A particular attitude or way of looking at something.',
-                example: `${s2}`
-              },
-              {
-                front: 'Outcome',
-                back: isRussian ? 'Результат' : 'The final result or consequence of an action.',
-                example: `${s3}`
-              }
-            ]
-          }
-        ];
-      } else if (actions.includes('matching')) {
-        const isRussian = matchingType === 'russian';
-        cleanBlocks = [
-          {
-            type: 'matching',
-            instruction: isRussian ? 'Соедините термины и их переводы:' : 'Match the concepts with their definitions:',
-            pairs: [
-              { left: 'Core concept', right: isRussian ? 'Основная идея' : 'Central principle of the topic' },
-              { left: 'Perspective', right: isRussian ? 'Точка зрения' : 'A particular way of viewing the topic' },
-              { left: 'Significance', right: isRussian ? 'Значимость' : 'Importance or meaning' },
-              { left: 'Outcome', right: isRussian ? 'Результат' : 'Final result of the process' }
-            ]
-          }
-        ];
-      } else if (actions.includes('gap_fill')) {
-        cleanBlocks = [
-          {
-            type: 'gap_fill',
-            instruction: 'Fill in the missing words from the context:',
-            text: `1. The material explores key [concepts] in depth.\n2. Understanding this yields a deeper [perspective].\n3. Consistent practice leads to a positive [outcome].`,
-            answers: ['concepts', 'perspective', 'outcome']
-          }
-        ];
-      } else {
-        cleanBlocks = [
-          {
-            type: 'multiple_choice',
-            question: `What is the main topic explored in this text?`,
-            options: [
-              `${s1}`,
-              'Unrelated historical trivia',
-              'Speculative administrative rules'
-            ],
-            correct: 0,
-            explanation: 'Reflects the main theme of the active payload.'
-          }
-        ];
-      }
+      return { error: `AI generation failed: No valid blocks could be parsed from the response. Raw response: ${JSON.stringify(result.data).slice(0, 150)}` };
     }
 
     return { success: true, isFallback: result.isFallback, newBlocks: cleanBlocks };
