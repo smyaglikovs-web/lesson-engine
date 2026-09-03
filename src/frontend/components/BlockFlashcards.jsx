@@ -1,54 +1,130 @@
 import React, { useState } from 'react';
 
-export const BlockFlashcards = ({ block }) => {
-  const [flippedIndex, setFlippedIndex] = useState(null);
-  const cards = block.cards || [];
+export const BlockFlashcards = ({ block = {} }) => {
+  const [flippedMap, setFlippedMap] = useState({});
+  const cards = Array.isArray(block.cards) ? block.cards : [];
 
-  const speakText = (text) => {
-    if ('speechSynthesis' in window) {
+  const handleCardToggle = (idx) => {
+    setFlippedMap(prev => ({
+      ...prev,
+      [idx]: !prev[idx]
+    }));
+  };
+
+  const speakText = (text, lang = 'en-US') => {
+    if ('speechSynthesis' in window && text) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = block.lang || 'en-US';
+      utterance.lang = lang;
+      utterance.rate = 0.9;
       window.speechSynthesis.speak(utterance);
     }
   };
 
-  return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
-      <h4 className="font-semibold text-lg text-slate-800 mb-2">{block.title || '🎴 Vocabulary Flashcards'}</h4>
-      <p className="text-slate-500 text-xs mb-4">Нажмите на карточку, чтобы перевернуть. Нажмите 🔊 для произношения.</p>
+  if (cards.length === 0) return null;
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+  return (
+    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4">
+      {/* HEADER & INSTRUCTIONS */}
+      <div>
+        <div className="mb-2.5">
+          <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] uppercase tracking-wider">
+            Vocabulary Cards
+          </span>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-l-4 border-indigo-600 pl-3">
+          <h4 className="font-extrabold text-base sm:text-lg text-slate-900 leading-snug">
+            {block.title || '🎴 Key Target Vocabulary'}
+          </h4>
+          <span className="text-slate-400 text-xs font-medium">
+            {cards.length} {cards.length === 1 ? 'card' : 'cards'}
+          </span>
+        </div>
+        <p className="text-slate-500 text-xs mt-1.5 pl-4">
+          Click any card to flip between the word and its translation. Click 🔊 to hear native pronunciation.
+        </p>
+      </div>
+
+      {/* FLASHCARDS GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2">
         {cards.map((card, idx) => {
-          const isFlipped = flippedIndex === idx;
+          const isFlipped = Boolean(flippedMap[idx]);
+          const frontText = card.front || card.word || 'Word';
+          const backText = card.back || card.translation || 'Translation';
+          const exampleText = card.example || card.sentence || '';
+          
+          // Adaptive font size based on length
+          const textLength = isFlipped ? backText.length : frontText.length;
+          const fontSizeClass = textLength > 22 
+            ? 'text-base sm:text-lg font-bold' 
+            : textLength > 14 
+            ? 'text-lg sm:text-xl font-bold' 
+            : 'text-xl sm:text-2xl font-extrabold';
+
           return (
             <div
               key={idx}
-              onClick={() => setFlippedIndex(isFlipped ? null : idx)}
-              className="h-40 cursor-pointer perspective-1000 relative group"
+              tabIndex={0}
+              role="button"
+              aria-label={`Flashcard ${idx + 1}: ${isFlipped ? backText : frontText}`}
+              onClick={() => handleCardToggle(idx)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleCardToggle(idx);
+                }
+              }}
+              className="min-h-[190px] rounded-3xl p-5 flex flex-col justify-between transition-all duration-300 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shadow-xs hover:shadow-md hover:-translate-y-0.5 border"
+              style={{
+                backgroundColor: isFlipped ? '#4f46e5' : '#f8fafc',
+                borderColor: isFlipped ? '#4338ca' : '#e2e8f0',
+                color: isFlipped ? '#ffffff' : '#0f172a'
+              }}
             >
-              <div className={`w-full h-full rounded-2xl border transition-all duration-300 p-5 flex flex-col justify-between items-center text-center shadow-xs ${isFlipped ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-800 border-slate-200 hover:border-indigo-300'}`}>
-                <div className="w-full flex justify-between items-center text-xs opacity-70">
-                  <span>{isFlipped ? 'Перевод' : 'Слово'}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); speakText(card.front); }}
-                    className="p-1 rounded-full hover:bg-slate-200/50 text-base"
-                    title="Прослушать произношение"
-                  >
-                    🔊
-                  </button>
-                </div>
+              {/* TOP CARD BAR */}
+              <div className="w-full flex justify-between items-center text-xs">
+                <span className={`font-extrabold uppercase tracking-wider text-[10px] px-2 py-0.5 rounded-md ${
+                  isFlipped ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-200/70 text-slate-600'
+                }`}>
+                  {isFlipped ? 'Перевод / Значение' : 'Слово / Термин'}
+                </span>
 
-                <div className="my-auto font-bold text-xl leading-tight">
-                  {isFlipped ? card.back : card.front}
-                </div>
-
-                {card.example && (
-                  <div className="text-xs italic opacity-80 line-clamp-1">
-                    "{card.example}"
-                  </div>
-                )}
+                <button
+                  type="button"
+                  title="Прослушать произношение"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    speakText(frontText, block.lang || 'en-US');
+                  }}
+                  className={`w-7 h-7 rounded-full flex items-center justify-center transition cursor-pointer text-sm ${
+                    isFlipped 
+                      ? 'bg-indigo-700/80 hover:bg-indigo-600 text-white' 
+                      : 'bg-white hover:bg-slate-200/80 text-slate-700 shadow-2xs border border-slate-200'
+                  }`}
+                >
+                  🔊
+                </button>
               </div>
+
+              {/* MAIN CONTENT (WORD OR TRANSLATION) */}
+              <div className="my-auto py-3 text-center">
+                <p className={`${fontSizeClass} leading-snug tracking-tight px-1`}>
+                  {isFlipped ? backText : frontText}
+                </p>
+              </div>
+
+              {/* CONTEXT EXAMPLE SENTENCE (FULL 2-3 LINE READABILITY) */}
+              {exampleText ? (
+                <div className={`text-xs leading-relaxed pt-2 border-t ${
+                  isFlipped ? 'border-indigo-400/40 text-indigo-100' : 'border-slate-200/70 text-slate-600'
+                }`}>
+                  <p className="italic font-medium line-clamp-3">
+                    "{exampleText}"
+                  </p>
+                </div>
+              ) : (
+                <div className="h-2"></div>
+              )}
             </div>
           );
         })}
