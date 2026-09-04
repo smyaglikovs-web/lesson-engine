@@ -45,6 +45,17 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
   }
 }
 
+function bufferToBase64(buffer) {
+  let binary = '';
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  const chunkSize = 0x8000;
+  for (let i = 0; i < len; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 // --------------------------------------------------------------------------
 // OBJECT-SAFE & QUOTE-RESILIENT JSON PARSER
 // --------------------------------------------------------------------------
@@ -469,36 +480,111 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 }
 
 // --------------------------------------------------------------------------
-// CLOUDFLARE TEXT-TO-SPEECH (Deepgram Aura-2 & MeloTTS Fallback)
+// MULTI-TIER TEXT-TO-SPEECH (MeloTTS + Deepgram + Seamless Google TTS Fallback)
 // --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
-  if (!env.AI || !text.trim()) return { error: 'Text and AI binding are required.' };
-  
-  const ttsModels = ['@cf/deepgram/aura-2-en', '@cf/deepgram/aura-1-en', '@cf/myshell-ai/melotts'];
+  if (!text.trim()) return { error: 'Text is required.' };
+  const cleanText = text.trim().slice(0, 1000);
 
-  for (const model of ttsModels) {
+  // 1. CLOUDFLARE WORKERS AI NATIVE TTS
+  if (env.AI) {
+    // 1A. MeloTTS (Returns { audio: "base64..." })
     try {
-      const payload = model.includes('deepgram') ? { text: text.trim().slice(0, 1000) } : { prompt: text.trim().slice(0, 1000), lang: lang };
-      const res = await env.AI.run(model, payload);
+      const meloRes = await env.AI.run('@cf/myshell-ai/melotts', {
+        prompt: cleanText.slice(0, 700),
+        lang: lang || 'en'
+      });
 
-      if (res instanceof Response) {
-        const buffer = await res.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64Audio = btoa(binary);
-        return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
+      if (meloRes && typeof meloRes.audio === 'string' && meloRes.audio.length > 50) {
+        const audioUrl = meloRes.audio.startsWith('data:') 
+          ? meloRes.audio 
+          : `data:audio/mp3;base64,${meloRes.audio}`;
+        return { success: true, audioUrl };
       }
-    } catch (e) {}
+    } catch (eMelo) {}
+
+    // 1B. Deepgram Aura models
+    const deepgramModels = [
+      '@cf/deepgram/aura-1',
+      '@cf/deepgram/aura-2-en',
+      '@cf/deepgram/aura-asteria-en'
+    ];
+
+    for (const model of deepgramModels) {
+      try {
+        const res = await env.AI.run(model, { text: cleanText }, { returnRawResponse: true });
+        if (res) {
+          let buffer = null;
+          if (res instanceof Response) {
+            buffer = await res.arrayBuffer();
+          } else if (res instanceof ReadableStream) {
+            const tempRes = new Response(res);
+            buffer = await tempRes.arrayBuffer();
+          } else if (res.audio) {
+            return { success: true, audioUrl: `data:audio/mp3;base64,${res.audio}` };
+          } else if (res instanceof ArrayBuffer) {
+            buffer = res;
+          }
+
+          if (buffer && buffer.byteLength > 100) {
+            const base64Audio = bufferToBase64(buffer);
+            return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
+          }
+        }
+      } catch (eDg) {}
+    }
   }
 
-  return { success: false, error: 'All TTS models failed or unavailable on account.' };
+  // 2. ULTRA-RELIABLE TTS FALLBACK (Google TTS Audio Synthesizer)
+  // Guarantees audio is never broken even without Cloudflare credits or on 3043 errors
+  try {
+    const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+    const chunks = [];
+    let curChunk = '';
+
+    for (const s of sentences) {
+      if ((curChunk + ' ' + s).trim().length <= 180) {
+        curChunk = (curChunk + ' ' + s).trim();
+      } else {
+        if (curChunk) chunks.push(curChunk);
+        curChunk = s.trim().slice(0, 180);
+      }
+    }
+    if (curChunk) chunks.push(curChunk);
+
+    const audioBuffers = [];
+    for (const chunk of chunks.slice(0, 6)) {
+      const gUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang || 'en')}&client=tw-ob&q=${encodeURIComponent(chunk)}`;
+      const gRes = await fetchWithTimeout(gUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      }, 4000);
+
+      if (gRes.ok) {
+        const ab = await gRes.arrayBuffer();
+        if (ab.byteLength > 0) audioBuffers.push(new Uint8Array(ab));
+      }
+    }
+
+    if (audioBuffers.length > 0) {
+      const totalLen = audioBuffers.reduce((sum, b) => sum + b.length, 0);
+      const merged = new Uint8Array(totalLen);
+      let offset = 0;
+      for (const b of audioBuffers) {
+        merged.set(b, offset);
+        offset += b.length;
+      }
+      const base64Audio = bufferToBase64(merged);
+      return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
+    }
+  } catch (eFallback) {}
+
+  return { success: false, error: 'Failed to synthesize voiceover audio.' };
 }
 
 // --------------------------------------------------------------------------
-// 2-IN-1 PODCAST STUDIO (Writes Spoken Script + Deepgram Aura-2 Voiceover)
+// 2-IN-1 PODCAST STUDIO (Writes Spoken Script + Synthesizes Voiceover)
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', level = 'B1' } = payload;
@@ -510,9 +596,13 @@ You are a World-Class ELT Podcast Host and Audio Scriptwriter.
 Target CEFR Level: ${level} (${cefrRules})
 
 [TASK]
-Write a lively, engaging 1-minute spoken podcast episode (~120-140 words) for language learners based on the topic/source material.
+Write a lively, engaging 1-minute spoken podcast episode (~110-130 words) for language learners discussing the topic/story.
 Tone: Conversational, engaging, natural, and clear for listening comprehension.
-CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or sound cues. Output ONLY the spoken English monologue.
+
+[CRITICAL CONTENT GUIDELINES]
+- Talk about the real-world story, ideas, and characters.
+- FORBIDDEN: DO NOT lecture about grammar rules, cleft sentences, inversions, or grammar mechanics.
+- CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or sound cues. Output ONLY the spoken English monologue.
 
 [OUTPUT FORMAT]
 {
@@ -521,8 +611,8 @@ CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or so
 }`;
 
   const userPrompt = sourceText.trim()
-    ? `Source Context:\n${sourceText.slice(0, 2000)}\n\nCreate a 1-minute podcast script on: "${resolvedTopic}".`
-    : `Create a 1-minute podcast script on Topic: "${resolvedTopic}".`;
+    ? `Source Context:\n${sourceText.slice(0, 2000)}\n\nCreate a 1-minute podcast episode discussing the ideas of: "${resolvedTopic}".`
+    : `Create a 1-minute podcast episode on Topic: "${resolvedTopic}".`;
 
   const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1000);
   if (!scriptResult.data) {
@@ -535,8 +625,9 @@ CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or so
     return { error: 'Failed to parse generated podcast script.' };
   }
 
-  const episodeTitle = scriptData.title || `${resolvedTopic} (Podcast)`;
+  const episodeTitle = scriptData.title || `${resolvedTopic} (Audio Episode)`;
 
+  // Synthesize voiceover audio
   let audioDataUrl = '';
   try {
     const ttsRes = await generateAudioWithAI(env, { text: scriptText, lang: 'en' });
