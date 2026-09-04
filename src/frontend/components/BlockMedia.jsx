@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { getYouTubeEmbedUrl } from '../utils/youtube.js';
 
 export const BlockHeading = ({ block }) => {
@@ -14,7 +14,7 @@ export const BlockHeading = ({ block }) => {
 };
 
 export const BlockText = ({ block }) => (
-  <p className="text-slate-700 text-base sm:text-lg leading-relaxed mb-4 font-sans font-medium">
+  <p className="text-slate-700 text-base sm:text-lg leading-relaxed mb-4 font-sans font-medium whitespace-pre-line">
     {block.text}
   </p>
 );
@@ -112,31 +112,105 @@ export const BlockVideo = ({ block, onEditMedia }) => {
   );
 };
 
-export const BlockAudio = ({ block, onEditMedia }) => {
+// UPGRADED AUDIO / PODCAST PLAYER WITH SPEED CONTROL & TRANSCRIPT
+export const BlockAudio = ({ block = {}, onEditMedia }) => {
   const [showTranscript, setShowTranscript] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1.0);
+  const audioRef = useRef(null);
+
+  const handleSpeedChange = (speed) => {
+    setPlaybackRate(speed);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = speed;
+    }
+  };
+
   return (
-    <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-md mb-6 relative">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-6 sm:p-7 rounded-3xl shadow-md mb-6 space-y-4 border border-slate-800">
+      {/* HEADER */}
+      <div className="flex justify-between items-start">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-bold">🎧</div>
-          <h4 className="font-semibold text-lg">{block.title || 'Прослушайте запись:'}</h4>
+          <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-md shrink-0">
+            🎙️
+          </div>
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300 bg-indigo-900/60 px-2.5 py-0.5 rounded-md border border-indigo-700/50 inline-block mb-1">
+              Listening Audio / Podcast
+            </span>
+            <h4 className="font-extrabold text-lg sm:text-xl text-white leading-snug">
+              {block.title || 'Audio Episode'}
+            </h4>
+          </div>
         </div>
+
         {onEditMedia && (
           <button
+            type="button"
             onClick={() => onEditMedia(block.id, 'url', block.url)}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer"
+            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-700 cursor-pointer transition shrink-0"
           >
-            🔗 Вставить MP3 ссылку
+            🔗 Edit Audio
           </button>
         )}
       </div>
-      <audio controls className="w-full mb-4"><source src={block.url} type="audio/mpeg" /></audio>
+
+      {/* AUDIO PLAYER & SPEED CONTROLS */}
+      {block.url ? (
+        <div className="space-y-3 bg-slate-800/60 p-4 rounded-2xl border border-slate-700/70">
+          <audio 
+            ref={audioRef}
+            controls 
+            className="w-full h-10" 
+            key={block.url}
+          >
+            <source src={block.url} type="audio/mpeg" />
+            <source src={block.url} type="audio/wav" />
+            Your browser does not support audio playback.
+          </audio>
+
+          {/* PLAYBACK SPEED BUTTONS */}
+          <div className="flex justify-between items-center text-xs font-bold pt-1">
+            <span className="text-[11px] text-slate-400">Playback Speed:</span>
+            <div className="flex gap-1.5">
+              {[0.8, 1.0, 1.2].map((speed) => (
+                <button
+                  key={speed}
+                  type="button"
+                  onClick={() => handleSpeedChange(speed)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    playbackRate === speed
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-700/70 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  {speed}x
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="p-4 bg-slate-800/40 rounded-2xl border border-slate-700 text-xs text-slate-400 italic">
+          Audio is being processed or not uploaded yet.
+        </div>
+      )}
+
+      {/* TRANSCRIPT COLLAPSIBLE DRAWER */}
       {block.transcript && (
-        <div>
-          <button onClick={() => setShowTranscript(!showTranscript)} className="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium cursor-pointer">
-            {showTranscript ? 'Скрыть текст' : 'Показать транскрипт'}
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={() => setShowTranscript(!showTranscript)}
+            className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1.5 cursor-pointer select-none"
+          >
+            <span>{showTranscript ? '▲ Скрыть текст записи' : '▼ Показать текст записи (Транскрипт)'}</span>
           </button>
-          {showTranscript && <div className="mt-3 p-3 bg-slate-800 rounded-xl text-sm text-slate-300 whitespace-pre-line border border-slate-700">{block.transcript}</div>}
+
+          {showTranscript && (
+            <div className="mt-3 p-4 bg-slate-800/90 rounded-2xl text-xs sm:text-sm text-slate-200 whitespace-pre-line border border-slate-700/80 leading-relaxed animate-fade-in font-sans">
+              {block.transcript}
+            </div>
+          )}
         </div>
       )}
     </div>
