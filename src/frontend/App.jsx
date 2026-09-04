@@ -31,7 +31,6 @@ export default function App() {
   };
 
   const fetchLessons = async () => {
-    setLoading(true);
     try {
       const res = await fetch('/api/lessons');
       if (res.ok) {
@@ -51,6 +50,8 @@ export default function App() {
       setIsAuthenticated(true);
       setIsTeacher(true);
       fetchLessons();
+    } else {
+      setLoading(false);
     }
 
     const params = new URLSearchParams(window.location.search);
@@ -118,15 +119,25 @@ export default function App() {
 
   const handleLaunchClassroom = async (lessonId) => {
     try {
-      const res = await fetch('/api/rooms/create', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ lessonId })
-      });
-      const data = await res.json();
-      if (data.sessionId) {
-        window.history.pushState({}, '', `/?room=${data.sessionId}&role=teacher`);
-        openRoomSession(data.sessionId, true);
+      // Parallelize room creation and lesson prefetch
+      const [createRes, lessonRes] = await Promise.all([
+        fetch('/api/rooms/create', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ lessonId })
+        }),
+        fetch(`/api/lessons/${lessonId}`)
+      ]);
+
+      const createData = await createRes.json();
+      const lessonData = await lessonRes.json();
+
+      if (createData.sessionId) {
+        window.history.pushState({}, '', `/?room=${createData.sessionId}&role=teacher`);
+        setActiveLesson(lessonData);
+        setRoomId(createData.sessionId);
+        setIsTeacher(true);
+        setView('room');
       }
     } catch (e) {
       alert('Ошибка запуска сессии');
@@ -164,8 +175,8 @@ export default function App() {
     }
   };
 
+  // Instant transition to edit mode without library skeleton flash
   const handleEditLesson = async (lessonSummary) => {
-    setLoading(true);
     try {
       const res = await fetch(`/api/lessons/${lessonSummary.id}`);
       const fullLessonData = await res.json();
@@ -173,8 +184,6 @@ export default function App() {
       setView('create');
     } catch (e) {
       alert('Ошибка загрузки содержимого урока');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -226,7 +235,7 @@ export default function App() {
         <TeacherHeader view={view} setView={setView} onLogout={handleTeacherLogout} />
       )}
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className={view === 'room' ? 'w-full' : 'max-w-6xl mx-auto px-4 py-8'}>
         {isTeacher && !isAuthenticated && view !== 'room' && (
           <TeacherAuthModal onLogin={handleTeacherLogin} loginError={loginError} />
         )}
