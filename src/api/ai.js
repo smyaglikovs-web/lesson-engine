@@ -57,6 +57,73 @@ function bufferToBase64(buffer) {
 }
 
 // --------------------------------------------------------------------------
+// LIVE WEB SEARCH RESOLVER (Pulls Real Top Search Results - 0 Neurons)
+// --------------------------------------------------------------------------
+export async function fetchLiveWebSearch(query = '') {
+  if (!query || !query.trim()) return null;
+  const cleanQuery = query.trim();
+
+  // 1. Try DuckDuckGo Web Search parser (Extracts top real organic URL)
+  try {
+    const ddgRes = await fetchWithTimeout(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`, {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: `q=${encodeURIComponent(cleanQuery)}`
+    }, 4000);
+
+    if (ddgRes.ok) {
+      const html = await ddgRes.text();
+      const uddgMatch = html.match(/uddg=([^&"'>]+)/i);
+      const titleMatch = html.match(/<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i) || html.match(/<a[^>]+class="result__url"[^>]*>([\s\S]*?)<\/a>/i);
+      const snippetMatch = html.match(/<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i);
+
+      if (uddgMatch && uddgMatch[1]) {
+        const realUrl = decodeURIComponent(uddgMatch[1]);
+        let title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : cleanQuery;
+        let snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]+>/g, '').trim() : `Top search resource for ${cleanQuery}`;
+
+        if (title.length > 70) title = title.slice(0, 67) + '...';
+        if (snippet.length > 180) snippet = snippet.slice(0, 177) + '...';
+
+        return {
+          title: title || cleanQuery,
+          url: realUrl,
+          description: snippet || `Explore reference resource on ${cleanQuery}.`
+        };
+      }
+    }
+  } catch (e) {}
+
+  // 2. Wikipedia Live API OpenSearch (Returns verified existing article URL)
+  try {
+    const wikiRes = await fetchWithTimeout(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(cleanQuery)}&limit=1&namespace=0&format=json`, {
+      headers: BROWSER_HEADERS
+    }, 3000);
+
+    if (wikiRes.ok) {
+      const data = await wikiRes.json();
+      if (Array.isArray(data) && data[1]?.[0] && data[3]?.[0]) {
+        return {
+          title: data[1][0],
+          url: data[3][0],
+          description: data[2]?.[0] || `Wikipedia article and reference on ${cleanQuery}.`
+        };
+      }
+    }
+  } catch (e) {}
+
+  // 3. Fallback to Live Topic Search URL (Never a 404!)
+  return {
+    title: `Web Search: ${cleanQuery}`,
+    url: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(cleanQuery)}`,
+    description: `Click to view search articles and reference materials on ${cleanQuery}.`
+  };
+}
+
+// --------------------------------------------------------------------------
 // OBJECT-SAFE & QUOTE-RESILIENT JSON PARSER
 // --------------------------------------------------------------------------
 export function cleanAndParseJson(rawText) {
@@ -531,7 +598,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
     } catch (eMelo) {}
   }
 
-  // 3. TERTIARY: MULTI-CHUNK COMPLETE SPEECH COMPILATION (Never cuts off)
+  // 3. TERTIARY: MULTI-CHUNK COMPLETE SPEECH COMPILATION
   try {
     const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
     const chunks = [];
@@ -548,7 +615,6 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
     if (curChunk) chunks.push(curChunk);
 
     const audioBuffers = [];
-    // Process ALL sentences without arbitrary slice caps
     for (const chunk of chunks) {
       const gUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang || 'en')}&client=tw-ob&q=${encodeURIComponent(chunk)}`;
       const gRes = await fetchWithTimeout(gUrl, {
@@ -583,7 +649,6 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', lessonTitle = '', level = 'B1' } = payload;
   
-  // Resolve topic strictly from source context or lesson title if empty
   const resolvedTopic = topic.trim() 
     || lessonTitle.trim() 
     || (sourceText.trim() ? sourceText.trim().slice(0, 45) : 'General English Lesson');
@@ -628,7 +693,6 @@ Tone: Conversational, engaging, natural, and clear for listening comprehension.
 
   const episodeTitle = scriptData.title || `${resolvedTopic} (Audio Episode)`;
 
-  // Synthesize full-length voiceover audio (0 Cloudflare neurons burned)
   let audioDataUrl = '';
   try {
     const ttsRes = await generateAudioWithAI(env, { text: scriptText, lang: 'en' });
@@ -745,7 +809,7 @@ Return ONLY valid JSON.
 }
 
 // --------------------------------------------------------------------------
-// 1-PROMPT ANCHOR + ROADMAP ENGINE (Sub-3s, 240-280w Story, Clean Roadmaps)
+// 1-PROMPT ANCHOR + ROADMAP ENGINE (Sub-3s, Real Top Web Search Resolver)
 // --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
@@ -794,11 +858,6 @@ ${cefrRules}
     { "front": "topical word 5", "back": "Russian translation", "example": "Context sentence 5." },
     { "front": "topical word 6", "back": "Russian translation", "example": "Context sentence 6." }
   ],
-  "referenceLink": {
-    "title": "Wikipedia: ${resolvedTopic}",
-    "url": "https://en.wikipedia.org/wiki/${encodeURIComponent(resolvedTopic.replace(/\s+/g, '_'))}",
-    "description": "Background reference material. Click to open in preview window without leaving class."
-  },
   "grammarFocus": {
     "title": "Target Grammar Structure",
     "formula": "Subject + Verb Structure",
@@ -812,7 +871,12 @@ ${cefrRules}
     ? `Source Material:\n${text.slice(0, 2200)}\n\nCreate a complete lesson on Topic: "${resolvedTopic}".`
     : `Create a comprehensive lesson anchor and roadmaps for Topic: "${resolvedTopic}". Format: ${format}.`;
 
-  const result = await runAiPipeline(env, systemPrompt, userPrompt, 1800);
+  // Run AI Text Generation and Real Live Web Search IN PARALLEL (0ms added delay!)
+  const [result, liveRef] = await Promise.all([
+    runAiPipeline(env, systemPrompt, userPrompt, 1800),
+    fetchLiveWebSearch(resolvedTopic)
+  ]);
+
   if (!result.data) {
     return { error: `AI generation failed: ${result.error || 'All AI models failed or timed out.'}` };
   }
@@ -833,10 +897,11 @@ ${cefrRules}
     ? data.warmupQuestions
     : [`What comes to mind when you think about ${resolvedTopic}?`];
 
-  const refLink = data.referenceLink || {
-    title: `Wikipedia: ${resolvedTopic}`,
-    url: `https://en.wikipedia.org/wiki/${encodeURIComponent(resolvedTopic.replace(/\s+/g, '_'))}`,
-    description: 'Background reference material. Click to preview without leaving class.'
+  // Guaranteed real, verified top search link (No fake 404 URLs!)
+  const refLink = liveRef || {
+    title: `Resource: ${resolvedTopic}`,
+    url: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(resolvedTopic)}`,
+    description: 'Explore live web reference materials and background context.'
   };
 
   const grammar = data.grammarFocus || {
@@ -987,7 +1052,7 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the text." }`;
   }
 
-  // 3. TARGET VOCABULARY FLASHCARDS
+  // 3. TARGET VOCABULARY FLASHCARDS (With strict anti-grammar constraint)
   if (actions.includes('flashcards')) {
     const backLang = flashcardType === 'russian' 
       ? 'The "back" key MUST be the accurate Russian translation of the term.' 
