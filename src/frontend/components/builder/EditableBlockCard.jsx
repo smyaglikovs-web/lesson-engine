@@ -480,7 +480,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 7. UPGRADED AI TEXT-TO-IMAGE STUDIO (WITH REFERRER PROTECTION)
+// 7. UPGRADED AI TEXT-TO-IMAGE STUDIO (UNIVERSAL CORS-SAFE IMAGE LOADER)
 const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }) => {
   const [promptInput, setPromptInput] = useState('');
   const [imageStyle, setImageStyle] = useState('cinematic, photorealistic, 4k, natural lighting');
@@ -504,12 +504,13 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
     const randomSeed = Math.floor(Math.random() * 1000000);
     const generatedUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=500&nologo=true&seed=${randomSeed}`;
 
-    const updated = [{ url: generatedUrl, caption: cleanInput }, ...images.filter(im => im.url !== generatedUrl)];
+    // Replace current single image with newly generated one
+    const updated = [{ url: generatedUrl, caption: cleanInput }];
     onChange({ ...block, images: updated, url: generatedUrl, caption: cleanInput });
 
     setTimeout(() => {
       setGeneratingAiImg(false);
-    }, 3000);
+    }, 2500);
   };
 
   const handleAutoSuggestPrompt = () => {
@@ -523,11 +524,22 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
   };
 
   const handleAddUrl = () => {
-    const url = prompt('Enter image URL:');
-    if (url) {
-      const updated = [...images, { url, caption: '' }];
-      onChange({ ...block, images: updated, url: updated[0]?.url || '' });
+    const rawUrl = prompt('Enter or paste image URL:');
+    if (!rawUrl || !rawUrl.trim()) return;
+
+    let cleanUrl = rawUrl.trim();
+
+    // Auto-extract real image link if user pasted a Google Images redirect
+    if (cleanUrl.includes('google.com/imgres') || cleanUrl.includes('imgurl=')) {
+      try {
+        const urlObj = new URL(cleanUrl);
+        const realImg = urlObj.searchParams.get('imgurl');
+        if (realImg) cleanUrl = decodeURIComponent(realImg);
+      } catch (e) {}
     }
+
+    const updated = [...images, { url: cleanUrl, caption: '' }];
+    onChange({ ...block, images: updated, url: cleanUrl });
   };
 
   const handleFileUpload = async (e) => {
@@ -611,7 +623,7 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
         className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold w-full outline-none focus:border-indigo-500"
       />
 
-      {/* IMAGE PREVIEWS (WITH REFERRER PROTECTION) */}
+      {/* IMAGE PREVIEWS (CORS-SAFE AND NO REFERRER BLOCKS) */}
       {images.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {images.map((img, i) => (
@@ -621,7 +633,6 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
                   src={img.url}
                   alt="Visual"
                   referrerPolicy="no-referrer"
-                  crossOrigin="anonymous"
                   loading="lazy"
                   className="w-full h-full object-cover"
                 />
