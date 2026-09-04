@@ -32,7 +32,7 @@ export function getYouTubeId(url = '') {
   return null;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -314,18 +314,54 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// MULTI-PROVIDER AI INFERENCE PIPELINE
+// HIGH-SPEED MULTI-PROVIDER AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
-export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2000) {
   let errors = [];
 
-  // 1. CLOUDFLARE WORKERS AI NATIVE (Primary: Sub-Second, Low-Neuron)
+  // 1. GROQ API FIRST (Fastest inference: 250-300 tps, completes in ~1.5s)
+  if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
+    const groqKey = env.GROQ_API_KEY.trim();
+    for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
+      try {
+        const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${groqKey}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
+              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
+            ],
+            temperature: 0.2,
+            response_format: { type: 'json_object' }
+          })
+        }, 5000);
+
+        if (res.ok) {
+          const data = await res.json();
+          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+          if (parsed) return { data: parsed, isFallback: false };
+        } else {
+          const errText = await res.text();
+          errors.push(`Groq (${model}) [${res.status}]: ${errText.slice(0, 100)}`);
+        }
+      } catch (eGroq) {
+        errors.push(`Groq (${model}) [Timeout/Fail]`);
+      }
+    }
+  }
+
+  // 2. CLOUDFLARE WORKERS AI (Using ONLY ultra-fast models to protect neuron limits)
   if (env.AI) {
     const cfModels = [
+      '@cf/meta/llama-3.1-8b-instruct-fast',
       '@cf/zai-org/glm-4.7-flash',
-      '@cf/openai/gpt-oss-20b',
-      '@cf/qwen/qwen3.8-27b',
-      '@cf/nvidia/nemotron-3-120b-a12b'
+      '@cf/meta/llama-3.1-8b-instruct',
+      '@cf/qwen/qwen3.8-27b'
     ];
 
     for (const cfModel of cfModels) {
@@ -355,13 +391,13 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. OPENROUTER FREE GATEWAY (Secondary)
+  // 3. OPENROUTER FREE GATEWAY
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
     const openRouterModels = [
-      'openrouter/free',
       'google/gemma-4-31b-it:free',
-      'z-ai/glm-5.2:free'
+      'z-ai/glm-5.2:free',
+      'openrouter/free'
     ];
 
     for (const model of openRouterModels) {
@@ -383,7 +419,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 8000);
+        }, 5500);
 
         if (res.ok) {
           const data = await res.json();
@@ -391,7 +427,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           if (parsed) return { data: parsed, isFallback: false };
         } else {
           const errText = await res.text();
-          errors.push(`OpenRouter (${model}) [${res.status}]: ${errText}`);
+          errors.push(`OpenRouter (${model}) [${res.status}]: ${errText.slice(0, 100)}`);
         }
       } catch (eOr) {
         errors.push(`OpenRouter (${model}) [Timeout]`);
@@ -399,43 +435,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 3. GROQ API (Tertiary)
-  if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
-    const groqKey = env.GROQ_API_KEY.trim();
-    for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
-      try {
-        const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${groqKey}`
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
-              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
-            ],
-            temperature: 0.2,
-            response_format: { type: 'json_object' }
-          })
-        }, 7000);
-
-        if (res.ok) {
-          const data = await res.json();
-          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
-          if (parsed) return { data: parsed, isFallback: false };
-        } else {
-          const errText = await res.text();
-          errors.push(`Groq (${model}) [${res.status}]: ${errText}`);
-        }
-      } catch (eGroq) {
-        errors.push(`Groq (${model}) [Timeout]`);
-      }
-    }
-  }
-
-  // 4. GEMINI DIRECT (Quaternary)
+  // 4. GEMINI DIRECT
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -449,7 +449,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             contents: [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }],
             generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
           })
-        }, 8000);
+        }, 6000);
 
         if (gRes.ok) {
           const gData = await gRes.json();
@@ -457,7 +457,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           if (parsed) return { data: parsed, isFallback: false };
         } else {
           const gErrText = await gRes.text();
-          errors.push(`Gemini (${gModel}) [${gRes.status}]: ${gErrText}`);
+          errors.push(`Gemini (${gModel}) [${gRes.status}]: ${gErrText.slice(0, 100)}`);
         }
       } catch (eG) {
         errors.push(`Gemini (${gModel}) Exception: ${eG?.message || eG}`);
@@ -478,9 +478,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 
   for (const model of ttsModels) {
     try {
-      // Deepgram Aura expects { text }, MeloTTS expects { prompt, lang }
       const payload = model.includes('deepgram') ? { text: text.trim().slice(0, 1000) } : { prompt: text.trim().slice(0, 1000), lang: lang };
-      
       const res = await env.AI.run(model, payload);
 
       if (res instanceof Response) {
@@ -526,7 +524,7 @@ CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or so
     ? `Source Context:\n${sourceText.slice(0, 2000)}\n\nCreate a 1-minute podcast script on: "${resolvedTopic}".`
     : `Create a 1-minute podcast script on Topic: "${resolvedTopic}".`;
 
-  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1200);
+  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1000);
   if (!scriptResult.data) {
     return { error: `Failed to write podcast script: ${scriptResult.error}` };
   }
@@ -539,7 +537,6 @@ CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or so
 
   const episodeTitle = scriptData.title || `${resolvedTopic} (Podcast)`;
 
-  // Synthesize voiceover audio via Deepgram Aura-2
   let audioDataUrl = '';
   try {
     const ttsRes = await generateAudioWithAI(env, { text: scriptText, lang: 'en' });
@@ -634,7 +631,7 @@ Return ONLY valid JSON.
 }`;
 
   try {
-    const result = await runAiPipeline(env, systemPrompt, `Student Response:\n"${studentText}"`, 1200);
+    const result = await runAiPipeline(env, systemPrompt, `Student Response:\n"${studentText}"`, 1000);
     return result.data || {
       rubricScore: 4,
       maxRubric: 5,
@@ -656,7 +653,7 @@ Return ONLY valid JSON.
 }
 
 // --------------------------------------------------------------------------
-// 1-PROMPT ANCHOR + ROADMAP ENGINE (Sub-3s, 280-350w Story, Clean Roadmaps)
+// 1-PROMPT ANCHOR + ROADMAP ENGINE (Sub-3s, 240-280w Story, Clean Roadmaps)
 // --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
@@ -673,31 +670,37 @@ export async function generateFullLessonWithAI(env, payload) {
 
   const systemPrompt = `[ROLE]
 You are an award-winning CELTA/DELTA ELT Graded Reader Writer and Methodologist.
-Target CEFR Level: ${level} (${cefrRules})
+Target CEFR Level: ${level}
 Topic: "${resolvedTopic}"
 ${audienceContext}
 
-[TASK]
-Create a rich Master Reading Passage, Target Vocabulary, Warm-up Discussion, and Pedagogical Roadmaps for the teacher.
-Return a SINGLE valid JSON object.
+[CEFR LEVEL GUIDELINE FOR READING PASSAGE]
+${cefrRules}
+
+[CRITICAL VOCABULARY INSTRUCTIONS - STRICT!]
+- "targetWords" MUST contain exactly 6 high-yield TOPICAL English words, collocations, or idioms that appear directly in your "storyText".
+- NEVER include grammar rules, linguistic terms, or meta-concepts in "targetWords" (FORBIDDEN: "inversion", "cleft sentence", "participle clause", "modal verb", "passive voice", "relative clause", "tense", "aspect", "verb", "noun").
+- Example good words for a dystopian story: "surveillance", "authoritarian", "propaganda", "rebellion", "conformity", "bleak".
+- "back" MUST be an accurate Russian translation of the word.
+- "example" MUST be an authentic 10-14 word context sentence.
 
 [STRICT STORY REQUIREMENTS]
-- "storyText" MUST be a comprehensive, engaging 280 to 350-word reading passage divided into 3 full paragraphs (Introduction, Exploration, Conclusion).
-- Strictly adapt sentence structures, idioms, and discourse markers to CEFR ${level}.
-- CRITICAL JSON RULE: Inside the "storyText" string, NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy') for titles or names.
+- "storyText" MUST be an engaging 220 to 280-word reading passage divided into 3 paragraphs.
+- Adapt language complexity to CEFR ${level}.
+- CRITICAL JSON RULE: Inside the "storyText" string, NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy') for titles or speech.
 
 [OUTPUT FORMAT]
 {
   "title": "${resolvedTopic}",
-  "storyText": "Complete 3-paragraph (280-350 words) reading story here...",
+  "storyText": "Complete 3-paragraph (220-280 words) reading story here...",
   "warmupQuestions": ["Warm-up question 1?", "Warm-up question 2?", "Warm-up question 3?"],
   "targetWords": [
-    { "front": "target term", "back": "Russian translation or concise definition", "example": "Authentic 10-14 word context sentence." },
-    { "front": "term 2", "back": "translation 2", "example": "Context sentence 2." },
-    { "front": "term 3", "back": "translation 3", "example": "Context sentence 3." },
-    { "front": "term 4", "back": "translation 4", "example": "Context sentence 4." },
-    { "front": "term 5", "back": "translation 5", "example": "Context sentence 5." },
-    { "front": "term 6", "back": "translation 6", "example": "Context sentence 6." }
+    { "front": "topical word 1", "back": "Russian translation", "example": "Context sentence 1." },
+    { "front": "topical word 2", "back": "Russian translation", "example": "Context sentence 2." },
+    { "front": "topical word 3", "back": "Russian translation", "example": "Context sentence 3." },
+    { "front": "topical word 4", "back": "Russian translation", "example": "Context sentence 4." },
+    { "front": "topical word 5", "back": "Russian translation", "example": "Context sentence 5." },
+    { "front": "topical word 6", "back": "Russian translation", "example": "Context sentence 6." }
   ],
   "referenceLink": {
     "title": "Wikipedia: ${resolvedTopic}",
@@ -714,17 +717,17 @@ Return a SINGLE valid JSON object.
 }`;
 
   const userPrompt = text.trim() 
-    ? `Source Material:\n${text.slice(0, 2500)}\n\nCreate a complete 280-350 word lesson on Topic: "${resolvedTopic}".`
-    : `Create a comprehensive 280-350 word lesson anchor and roadmaps for Topic: "${resolvedTopic}". Format: ${format}.`;
+    ? `Source Material:\n${text.slice(0, 2200)}\n\nCreate a complete lesson on Topic: "${resolvedTopic}".`
+    : `Create a comprehensive lesson anchor and roadmaps for Topic: "${resolvedTopic}". Format: ${format}.`;
 
-  const result = await runAiPipeline(env, systemPrompt, userPrompt, 2400);
+  const result = await runAiPipeline(env, systemPrompt, userPrompt, 1800);
   if (!result.data) {
     return { error: `AI generation failed: ${result.error || 'All AI models failed or timed out.'}` };
   }
 
   const data = result.data;
   const storyText = data.storyText || data.text || data.story || data.passage;
-  if (!storyText || storyText.length < 60) {
+  if (!storyText || storyText.length < 50) {
     return { error: `AI generation failed: No valid reading story text could be parsed from the response.` };
   }
 
@@ -759,7 +762,6 @@ Return a SINGLE valid JSON object.
     topic: resolvedTopic,
     description: `Interactive ${level} lesson on ${resolvedTopic}. ${audienceContext}`,
     pages: [
-      // PAGE 1: MASTER ANCHOR (Warmup + Vocab + 280-350w Reading + Auto Link)
       {
         id: 'p1',
         title: 'Part 1: Warm-up, Vocab & Reading',
@@ -791,8 +793,6 @@ Return a SINGLE valid JSON object.
           }
         ]
       },
-
-      // PAGE 2: GRAMMAR ROADMAP (Aims, CCQs, and Rule Blueprint for Teacher)
       {
         id: 'p2',
         title: 'Part 2: Grammar Focus',
@@ -806,8 +806,6 @@ Return a SINGLE valid JSON object.
           }
         ]
       },
-
-      // PAGE 3: CONTROLLED PRACTICE ROADMAP
       {
         id: 'p3',
         title: 'Part 3: Practice & Tasks',
@@ -821,8 +819,6 @@ Return a SINGLE valid JSON object.
           }
         ]
       },
-
-      // PAGE 4: FREER PRODUCTION & WRAP-UP ROADMAP
       {
         id: 'p4',
         title: `Part 4: Production & Wrap-up`,
@@ -850,7 +846,7 @@ Return a SINGLE valid JSON object.
 // 1-CLICK BLOCK AI ASSISTANT (Universal Task Handlers)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
-  let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
+  let { actions = [], sourceBlock = {}, sourceText = '', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (!actions || actions.length === 0) return { error: 'Select at least one task.' };
 
   const targetBlockType = String(sourceBlock.type || '').toLowerCase().trim();
@@ -876,10 +872,10 @@ export async function transformBlockWithAI(env, payload) {
   let rawContext = sourceText || sourceBlock.text || sourceBlock.transcript || sourceBlock.title || sourceBlock.explanation || JSON.stringify(sourceBlock);
   let safeContext = (rawContext || '').replace(/[\r\n]+/g, ' ').replace(/"/g, "'").trim();
 
-  if (safeContext.length > 2800) {
+  if (safeContext.length > 2400) {
     const titleHeader = sourceBlock.title ? `Video Title: ${sourceBlock.title}. ` : '';
-    const startPortion = safeContext.slice(0, 1400);
-    const middlePortion = safeContext.slice(2000, 3500);
+    const startPortion = safeContext.slice(0, 1200);
+    const middlePortion = safeContext.slice(1800, 3000);
     safeContext = `${titleHeader}${startPortion} [...] ${middlePortion}`;
   }
 
@@ -889,25 +885,26 @@ export async function transformBlockWithAI(env, payload) {
   if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key arguments and concepts in the material.
-  Schema: { "type": "multiple_choice", "question": "Question testing a specific teaching from the context?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
+  Schema: { "type": "multiple_choice", "question": "Question testing a specific point?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
   }
 
   // 2. TRUE / FALSE QUESTIONS
   if (actions.includes('true_false')) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the content claims.
-  Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the lecture." }`;
+  Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the text." }`;
   }
 
-  // 3. TARGET VOCABULARY FLASHCARDS
+  // 3. TARGET VOCABULARY FLASHCARDS (With strict anti-grammar constraint)
   if (actions.includes('flashcards')) {
     const backLang = flashcardType === 'russian' 
       ? 'The "back" key MUST be the accurate Russian translation of the term.' 
       : 'The "back" key MUST be a clear, concise English definition.';
 
     tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 high-yield terms found in the material.
-  CRITICAL: ${backLang}
+- GENERATE 1 "flashcards" block with 6 high-yield TOPICAL vocabulary words or idioms from the material.
+  CRITICAL: Do NOT output grammar labels or meta-terms (e.g. "inversion", "modal verb", "cleft sentence", "participle"). Output real-world topic vocabulary only!
+  ${backLang}
   CRITICAL: Each card MUST have an authentic 10-14 word example sentence illustrating its meaning in context.
   Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "term", "back": "translation or definition", "example": "Context sentence." } ] }`;
   }
@@ -925,7 +922,7 @@ export async function transformBlockWithAI(env, payload) {
     let exampleRight = 'Russian translation';
 
     if (matchingType === 'russian') {
-      styleRules = 'CRITICAL: The "left" key MUST be the English term from context, and the "right" key MUST be the accurate Russian translation (e.g. left: "transference", right: "перенос").';
+      styleRules = 'CRITICAL: The "left" key MUST be the English term from context, and the "right" key MUST be the accurate Russian translation.';
       exampleRight = 'русский перевод';
     } else if (matchingType === 'synonym') {
       styleRules = 'CRITICAL: The "left" key is the English term, and the "right" key is an English SYNONYM.';
@@ -942,7 +939,8 @@ export async function transformBlockWithAI(env, payload) {
     }
 
     tasksInstructions += `
-- GENERATE 1 "matching" block with 6 distinct pairs based on context concepts.
+- GENERATE 1 "matching" block with 6 distinct topical pairs based on context.
+  Do NOT use grammar terms.
   ${styleRules}
   CRITICAL: Every right-side value MUST be 100% unique.
   Schema: { "type": "matching", "instruction": "Match the terms with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
@@ -953,28 +951,28 @@ export async function transformBlockWithAI(env, payload) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill" block with 4 sentences based on the context.
   Put target words inside brackets like [word]. Never use [---].
-  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. The church aims to restore the [noetic] faculty.\\n2. Hesychastic prayer requires quiet [illumination].", "answers": ["noetic", "illumination"] }`;
+  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. Sentence with [word].\\n2. Another sentence with [word].", "answers": ["word1", "word2"] }`;
   }
 
   // 7. GAP FILL BANK
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 distractors.
-  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "Orthodoxy views theology as spiritual [therapy] designed to heal the [soul] through [prayer].", "distractors": ["philosophy", "scholasticism", "distraction"] }`;
+  Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "The atmosphere was [bleak] due to widespread [surveillance] by the regime.", "distractors": ["hesitation", "distraction", "comfort"] }`;
   }
 
   // 8. SENTENCE REORDER
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
-- GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences based on context (each 8 to 14 words).
-  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Orthodox psychotherapy focuses on restoring the noetic faculty of man.", "True theology requires constant engagement with God through prayer."] }`;
+- GENERATE 1 "sentence_reorder" block with 3 to 4 distinct sentences based on context (each 8 to 12 words).
+  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Consistent practice is necessary for mastering new vocabulary.", "The characters struggled to adapt to their harsh new reality."] }`;
   }
 
   // 9. DISCUSSION / OPEN INPUT
   if (actions.includes('discussion')) {
     tasksInstructions += `
 - GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts based on the context.
-  Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. What distinguishes theology as therapy from academic philosophy?\\n2. How does ascetic practice impact the soul and the body?" }`;
+  Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. What were the key factors highlighted in the story?\\n2. How would you react in a similar situation?" }`;
   }
 
   // 10. INLINE SELECT
@@ -982,21 +980,21 @@ export async function transformBlockWithAI(env, payload) {
     tasksInstructions += `
 - GENERATE 1 "inline_select" block with 4 sentences based on the context.
   Inside each sentence, put dropdown choices in brackets separated by | with asterisk (*) on the correct option.
-  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. Orthodoxy is interpreted as a therapeutic [science* | speculation].\\n2. The noetic faculty allows true [knowledge* | confusion] of God." }`;
+  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. The report was [accurate* | misleading] in its description.\\n2. Citizens expressed their [dissent* | agreement] peacefully." }`;
   }
 
   // 11. SPEAKING WHEEL
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
-- GENERATE 1 "spinning_wheel" block with 6 to 8 communicative discussion questions based on context.
-  Schema: { "type": "spinning_wheel", "title": "🎡 Discussion Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["What is the primary role of the Noetic faculty?", "Why is theology considered spiritual therapy?", "How does ascetic practice quiet the impulses?"], "eliminateMode": true }`;
+- GENERATE 1 "spinning_wheel" block with 6 communicative discussion questions based on context.
+  Schema: { "type": "spinning_wheel", "title": "🎡 Discussion Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["What was the most surprising revelation?", "How does this relate to contemporary events?", "What alternative solution would you propose?"], "eliminateMode": true }`;
   }
 
   // 12. CATEGORIZATION
   if (actions.includes('categorization')) {
     tasksInstructions += `
-- GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 to 8 items to sort based on context.
-  Schema: { "type": "categorization", "instruction": "Sort the items into the correct boxes:", "categories": ["Therapeutic Practice", "Metaphysical Philosophy"], "items": [ { "id": "it-1", "text": "Hesychasm", "categoryIndex": 0 }, { "id": "it-2", "text": "Scholasticism", "categoryIndex": 1 } ] }`;
+- GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 items to sort based on context.
+  Schema: { "type": "categorization", "instruction": "Sort the items into the correct boxes:", "categories": ["Category A", "Category B"], "items": [ { "id": "it-1", "text": "Item text 1", "categoryIndex": 0 }, { "id": "it-2", "text": "Item text 2", "categoryIndex": 1 } ] }`;
   }
 
   // 13. GRAMMAR RULE CARD
@@ -1009,13 +1007,13 @@ export async function transformBlockWithAI(env, payload) {
   // 14. TEXT PASSAGE TOOLS
   if (actions.includes('generate_text_passage') || actions.includes('expand_text')) {
     tasksInstructions += `
-- GENERATE 1 "text" block with an expanded reading passage (approximately 380-450 words) based on the context, adapted to CEFR ${level}.
+- GENERATE 1 "text" block with an expanded reading passage (approximately 300-350 words) based on the context, adapted to CEFR ${level}.
   Schema: { "type": "text", "text": "Expanded reading story text here..." }`;
   }
 
   if (actions.includes('shorten_text')) {
     tasksInstructions += `
-- GENERATE 1 "text" block with a concise, shortened version (approximately 120-160 words) preserving key facts, adapted to CEFR ${level}.
+- GENERATE 1 "text" block with a concise, shortened version (approximately 120-150 words) preserving key facts, adapted to CEFR ${level}.
   Schema: { "type": "text", "text": "Shortened summary reading passage here..." }`;
   }
 
@@ -1045,7 +1043,7 @@ ${tasksInstructions}
 }`;
 
   try {
-    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 2400);
+    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 1800);
     if (!result.data) {
       return { error: `AI generation failed: ${result.error || 'All API providers failed or timed out.'}` };
     }
