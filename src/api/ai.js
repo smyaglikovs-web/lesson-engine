@@ -67,9 +67,11 @@ export function cleanAndParseJson(rawText) {
     if (lastBracket > firstBracket) clean = clean.substring(firstBracket, lastBracket + 1);
   }
 
+  // 1. Standard JSON Parse
   try {
     return JSON.parse(clean);
   } catch (e1) {
+    // 2. Escape literal newlines/tabs inside quotes
     try {
       let fixed = '';
       let inString = false;
@@ -88,6 +90,7 @@ export function cleanAndParseJson(rawText) {
       }
       return JSON.parse(fixed);
     } catch (e2) {
+      // 3. Regex Fallback for storyText objects with internal quotes
       const titleMatch = rawText.match(/"title":\s*"([^"]+)"/i);
       const storyMatch = rawText.match(/"(?:storyText|text|story|passage|content)":\s*"([\s\S]*?)"\s*\}/i);
       if (storyMatch && storyMatch[1].length > 40) {
@@ -109,6 +112,7 @@ export function sanitizeBlockStructure(b) {
 
   let type = String(b.type || '').toLowerCase().trim();
 
+  // Smart property-based type inference
   if (!type) {
     if (b.options || b.choices || b.questions || b.statement || b.question) type = 'multiple_choice';
     else if (b.cards || b.flashcards) type = 'flashcards';
@@ -125,6 +129,7 @@ export function sanitizeBlockStructure(b) {
     else return [];
   }
 
+  // Type normalization
   if (type === 'header' || type === 'title' || type === 'h1' || type === 'h2' || type === 'h3') type = 'heading';
   if (type === 'paragraph' || type === 'reading' || type === 'article' || type === 'story' || type === 'reading_comprehension') type = 'text';
   if (type === 'quiz' || type === 'question' || type === 'true_false' || type === 'true-false' || type === 'true/false' || type === 'mc' || type === 'multiple-choice') type = 'multiple_choice';
@@ -314,12 +319,12 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// MULTI-PROVIDER AI INFERENCE PIPELINE (CF Flash -> OpenRouter -> Groq -> Gemini)
+// 4-TIER MULTI-PROVIDER AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
   let errors = [];
 
-  // 1. CLOUDFLARE WORKERS AI NATIVE (Fastest, Local, Zero-Network Hops, Low-Neuron)
+  // 1. CLOUDFLARE WORKERS AI NATIVE (Primary: Local, Sub-Second, Low-Neuron)
   if (env.AI) {
     const cfModels = [
       '@cf/deepseek-ai/deepseek-v4-flash-0731',
@@ -357,7 +362,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. OPENROUTER FREE MODELS (Secondary Gateway)
+  // 2. OPENROUTER FREE GATEWAY (Secondary: When CF Neurons Exceeded)
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
     const openRouterModels = [
@@ -421,7 +426,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 8000);
+        }, 7000);
 
         if (res.ok) {
           const data = await res.json();
@@ -437,7 +442,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 4. GEMINI API
+  // 4. GEMINI DIRECT (Quaternary Fallback)
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -599,7 +604,7 @@ Return ONLY valid JSON.
 }
 
 // --------------------------------------------------------------------------
-// 1-PROMPT ANCHOR + ROADMAP ARCHITECTURE (Sub-3s Generation, Zero Fallbacks)
+// 1-PROMPT ANCHOR + ROADMAP ENGINE (Sub-3s, 280-350w Story, Clean Roadmaps)
 // --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
@@ -607,9 +612,7 @@ export async function generateFullLessonWithAI(env, payload) {
     level = 'B1', 
     topic = 'General English Practice',
     context = '',
-    format = 'live',
-    includeGrammar = false,
-    finalTask = 'speaking'
+    format = 'live'
   } = payload;
 
   const resolvedTopic = topic.trim() || 'General English Lesson';
@@ -617,69 +620,60 @@ export async function generateFullLessonWithAI(env, payload) {
   const audienceContext = context ? `Target Context: "${context}"` : 'General Adult ESL Learners';
 
   const systemPrompt = `[ROLE]
-You are a World-Class CELTA/DELTA Master Methodologist.
+You are an award-winning CELTA/DELTA ELT Graded Reader Writer and Methodologist.
 Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
 ${audienceContext}
 
 [TASK]
-Generate a complete, high-quality Page 1 Master Anchor and Pedagogical Roadmaps for the upcoming stages.
-You must return a single valid JSON object.
+Create a rich Master Reading Passage, Target Vocabulary, Warm-up Discussion, and Pedagogical Roadmaps for the teacher.
+Return a SINGLE valid JSON object.
 
-[CRITICAL REQUIREMENTS]
-1. "storyText": A rich, natural 240-300 word educational reading story strictly adapted to CEFR ${level}.
-   CRITICAL: Never use unescaped double quotes inside storyText. Use single quotes ('Trench', 'Clancy') for titles or names.
-2. "targetWords": Exactly 6 high-yield vocabulary words/phrases with:
-   - "front": English term
-   - "back": Russian translation or clear definition
-   - "example": Authentic 10-14 word context sentence
-3. "warmupQuestions": Exactly 3 engaging lead-in discussion questions.
-4. "referenceLink": Real canonical encyclopedia or reference link for background reading:
-   - "title": e.g. "Wikipedia: ${resolvedTopic}"
-   - "url": Direct canonical URL, e.g. "https://en.wikipedia.org/wiki/${encodeURIComponent(resolvedTopic.replace(/\s+/g, '_'))}"
-   - "description": Contextual note guiding the student.
-5. "grammarFocus": The primary grammar rule relevant to this level/topic:
-   - "title": Rule title
-   - "formula": Structural formula (e.g. Subject + had + V3)
-   - "explanation": Methodological explanation
-   - "ccqs": 2 Concept Checking Questions for the teacher to verify understanding.
-6. "practiceAims": Methodological guidance for controlled practice (which exercises to use).
+[STRICT STORY REQUIREMENTS]
+- "storyText" MUST be a comprehensive, engaging 280 to 350-word reading passage divided into 3 full paragraphs (Introduction, Exploration, Conclusion).
+- Strictly adapt sentence structures, idioms, and discourse markers to CEFR ${level}.
+- CRITICAL JSON RULE: Inside the "storyText" string, NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy') for titles or names.
 
 [OUTPUT FORMAT]
 {
   "title": "${resolvedTopic}",
-  "storyText": "Full 240-300 word reading story here...",
-  "warmupQuestions": ["Question 1?", "Question 2?", "Question 3?"],
+  "storyText": "Complete 3-paragraph (280-350 words) reading story here...",
+  "warmupQuestions": ["Warm-up question 1?", "Warm-up question 2?", "Warm-up question 3?"],
   "targetWords": [
-    { "front": "term", "back": "translation", "example": "Context sentence." }
+    { "front": "target term", "back": "Russian translation or concise definition", "example": "Authentic 10-14 word context sentence." },
+    { "front": "term 2", "back": "translation 2", "example": "Context sentence 2." },
+    { "front": "term 3", "back": "translation 3", "example": "Context sentence 3." },
+    { "front": "term 4", "back": "translation 4", "example": "Context sentence 4." },
+    { "front": "term 5", "back": "translation 5", "example": "Context sentence 5." },
+    { "front": "term 6", "back": "translation 6", "example": "Context sentence 6." }
   ],
   "referenceLink": {
     "title": "Wikipedia: ${resolvedTopic}",
     "url": "https://en.wikipedia.org/wiki/${encodeURIComponent(resolvedTopic.replace(/\s+/g, '_'))}",
-    "description": "Background reference material. Click to open in the preview window."
+    "description": "Background reference material. Click to open in preview window without leaving class."
   },
   "grammarFocus": {
-    "title": "Target Grammar Rule",
+    "title": "Target Grammar Structure",
     "formula": "Subject + Verb Structure",
-    "explanation": "Explanation of the rule.",
+    "explanation": "Clear explanation of when and why to use this structure.",
     "ccqs": ["Concept checking question 1?", "Concept checking question 2?"]
   },
-  "practiceAims": "Recommended: Use Matching for vocabulary consolidation and Gap Fill or Inline Select for grammar drilling."
+  "practiceAims": "Recommended practice: Use Matching for vocabulary consolidation, followed by Gap Fill or Inline Select to drill the target grammar."
 }`;
 
   const userPrompt = text.trim() 
-    ? `Source Notes / Content:\n${text.slice(0, 2500)}\n\nCreate the lesson on Topic: "${resolvedTopic}".`
-    : `Create the master lesson anchor and roadmaps for Topic: "${resolvedTopic}". Format: ${format}.`;
+    ? `Source Material:\n${text.slice(0, 2500)}\n\nCreate a complete 280-350 word lesson on Topic: "${resolvedTopic}".`
+    : `Create a comprehensive 280-350 word lesson anchor and roadmaps for Topic: "${resolvedTopic}". Format: ${format}.`;
 
-  const result = await runAiPipeline(env, systemPrompt, userPrompt, 2200);
+  const result = await runAiPipeline(env, systemPrompt, userPrompt, 2400);
   if (!result.data) {
     return { error: `AI generation failed: ${result.error || 'All AI models failed or timed out.'}` };
   }
 
   const data = result.data;
   const storyText = data.storyText || data.text || data.story || data.passage;
-  if (!storyText || storyText.length < 50) {
-    return { error: `AI generation failed: No valid reading text could be parsed from the response.` };
+  if (!storyText || storyText.length < 60) {
+    return { error: `AI generation failed: No valid reading story text could be parsed from the response.` };
   }
 
   const targetWords = Array.isArray(data.targetWords) && data.targetWords.length > 0
@@ -700,12 +694,12 @@ You must return a single valid JSON object.
 
   const grammar = data.grammarFocus || {
     title: 'Target Grammar Structure',
-    formula: 'Subject + Verb',
+    formula: 'Subject + Verb Structure',
     explanation: 'Grammar rule explanation.',
     ccqs: ['Does this describe a real or hypothetical event?']
   };
 
-  // ASSEMBLE THE 4-PAGE LESSON
+  // ASSEMBLE CLEAN 4-PAGE LESSON
   const assembledLesson = {
     id: 'lesson_' + Date.now(),
     title: resolvedTopic,
@@ -713,7 +707,7 @@ You must return a single valid JSON object.
     topic: resolvedTopic,
     description: `Interactive ${level} lesson on ${resolvedTopic}. ${audienceContext}`,
     pages: [
-      // PAGE 1: MASTER ANCHOR (Warmup + Vocab + Reading + Auto-Generated Link)
+      // PAGE 1: MASTER ANCHOR (Warmup + Vocab + 280-350w Reading + Auto Link)
       {
         id: 'p1',
         title: 'Part 1: Warm-up, Vocab & Reading',
@@ -746,25 +740,17 @@ You must return a single valid JSON object.
         ]
       },
 
-      // PAGE 2: GRAMMAR ROADMAP (Aims, CCQs, and Pre-configured Rule Card)
+      // PAGE 2: GRAMMAR ROADMAP (Aims, CCQs, and Rule Blueprint for Teacher)
       {
         id: 'p2',
         title: 'Part 2: Grammar Focus',
         blocks: [
-          { id: `b_gh_${Date.now()}`, type: 'heading', level: 2, text: 'Grammar Presentation' },
+          { id: `b_gh_${Date.now()}`, type: 'heading', level: 2, text: 'Grammar Focus' },
           {
             id: `b_gnotes_${Date.now()}`,
             type: 'teacher_notes',
             aim: `To clarify meaning, form, and pronunciation of ${grammar.title}.`,
-            speech: `Ask students Concept Checking Questions (CCQs):\n${(grammar.ccqs || []).map((c, i) => `${i + 1}. ${c}`).join('\n')}`
-          },
-          {
-            id: `b_gcard_${Date.now()}`,
-            type: 'grammar_card',
-            title: grammar.title,
-            formula: grammar.formula,
-            explanation: grammar.explanation,
-            examples: [`Example: Consistent practice yields mastery over ${resolvedTopic}.`]
+            speech: `Rule: ${grammar.title} (${grammar.formula})\nExplanation: ${grammar.explanation}\n\nConcept Checking Questions (CCQs):\n${(grammar.ccqs || []).map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\n👉 Tip: Click "📘 Правило Грамматики" from the left Lego palette if you want to display an interactive rule card here.`
           }
         ]
       },
@@ -779,37 +765,22 @@ You must return a single valid JSON object.
             id: `b_pnotes_${Date.now()}`,
             type: 'teacher_notes',
             aim: 'To provide controlled practice of target vocabulary and grammar.',
-            speech: `${data.practiceAims || 'Click "Generate / Fill with AI" on any exercise from the left palette to drill the text.'}`
+            speech: `${data.practiceAims || 'Recommended: Add a 6-pair Matching block for vocabulary and an Inline Select or Gap Fill for grammar.'}\n\n👉 Tip: Click any task from the left palette and tap "✨ Generate / Fill with AI" to drill Page 1 text instantly.`
           }
         ]
       },
 
-      // PAGE 4: PRODUCTION & WRAP-UP ROADMAP
+      // PAGE 4: FREER PRODUCTION & WRAP-UP ROADMAP
       {
         id: 'p4',
         title: `Part 4: Production & Wrap-up`,
         blocks: [
-          { id: `b_prodh_${Date.now()}`, type: 'heading', level: 2, text: finalTask === 'writing' ? 'Writing Submission' : 'Speaking Wrap-up' },
+          { id: `b_prodh_${Date.now()}`, type: 'heading', level: 2, text: 'Speaking & Wrap-up' },
           {
             id: `b_prodnotes_${Date.now()}`,
             type: 'teacher_notes',
-            aim: 'To develop communicative fluency and allow students to personalize the language.',
-            speech: 'Encourage students to speak freely using the newly acquired vocabulary and grammar.'
-          },
-          finalTask === 'writing' ? {
-            id: `b_write_${Date.now()}`,
-            type: 'open_input',
-            prompt: `📝 Final Writing Task:\nWrite a short paragraph (70-100 words) summarizing your perspective on "${resolvedTopic}". In your answer, use at least 3 target vocabulary words from Page 1.`
-          } : {
-            id: `b_wheel_${Date.now()}`,
-            type: 'spinning_wheel',
-            title: '🎡 Speaking Discussion Roulette',
-            instruction: 'Spin the wheel and answer the question!',
-            items: warmupQuestions.concat([
-              `How will you apply this in your own life?`,
-              `Summarize the key takeaway in 2 sentences.`
-            ]),
-            eliminateMode: true
+            aim: 'To develop communicative fluency and allow students to personalize the target language.',
+            speech: 'Encourage students to personalize the newly learned vocabulary and grammar.\n\n👉 Tip: Click "🎡 Колесо вопросов" or "💬 Письменный вопрос" from the left palette when you are ready to insert a production activity.'
           }
         ]
       }
@@ -824,7 +795,7 @@ You must return a single valid JSON object.
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Universal Task Handlers)
+// 1-CLICK BLOCK AI ASSISTANT (Raw Error Reporting)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
