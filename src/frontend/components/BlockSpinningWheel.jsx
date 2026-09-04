@@ -160,7 +160,7 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
       ctx.rotate(midAngle);
 
       const rawLabel = items[i];
-      const maxChars = numItems > 8 ? 11 : 15;
+      const maxChars = numItems > 8 ? 11 : 14;
       const textLines = wrapTextToLines(rawLabel, maxChars);
       const fontSize = numItems > 8 ? 10 : 12;
 
@@ -297,36 +297,36 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
   };
 
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-6 text-center">
+    <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4 sm:space-y-6 text-center w-full min-w-0 overflow-hidden">
       {/* HEADER */}
       <div>
-        <div className="flex items-center justify-center gap-2 mb-1.5">
-          <span className="text-2xl animate-pulse">🎡</span>
-          <h4 className="font-extrabold text-slate-900 text-xl sm:text-2xl tracking-tight">
+        <div className="flex items-center justify-center gap-2 mb-1">
+          <span className="text-xl sm:text-2xl animate-pulse">🎡</span>
+          <h4 className="font-extrabold text-slate-900 text-lg sm:text-2xl tracking-tight leading-snug">
             {block.title || 'Speaking & Discussion Roulette'}
           </h4>
         </div>
-        <p className="text-slate-500 text-xs sm:text-sm font-medium max-w-md mx-auto">
+        <p className="text-slate-500 text-xs sm:text-sm font-medium max-w-md mx-auto px-2">
           {block.instruction || 'Spin the wheel and answer the selected question!'}
         </p>
       </div>
 
-      {/* CANVAS CONTAINER */}
-      <div className="relative inline-block mx-auto max-w-full">
+      {/* RESPONSIVE ASPECT-SQUARE CANVAS CONTAINER (PREVENTS OVAL DISTORTION) */}
+      <div className="relative inline-flex items-center justify-center mx-auto w-full max-w-[320px] sm:max-w-[380px] aspect-square">
         <canvas
           ref={canvasRef}
-          style={{ width: '380px', height: '380px', maxWidth: '100%' }}
-          className="drop-shadow-md rounded-full select-none"
+          style={{ width: '100%', height: '100%', aspectRatio: '1 / 1' }}
+          className="drop-shadow-md rounded-full select-none block"
         ></canvas>
       </div>
 
       {/* SPIN BUTTON */}
-      <div>
+      <div className="pt-1">
         <button
           type="button"
           onClick={handleSpin}
           disabled={spinning || numItems === 0}
-          className="px-10 py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 active:scale-95 text-white font-extrabold rounded-2xl text-sm shadow-md transition disabled:opacity-40 cursor-pointer"
+          className="w-full sm:w-auto px-8 sm:px-10 py-3 sm:py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 active:scale-95 text-white font-extrabold rounded-2xl text-xs sm:text-sm shadow-md transition disabled:opacity-40 cursor-pointer"
         >
           {spinning ? '🌀 Spinning...' : '🎡 SPIN THE WHEEL'}
         </button>
@@ -334,18 +334,18 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
 
       {/* SELECTED RESULT CARD */}
       {selectedItem && (
-        <div className="p-6 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-500 rounded-3xl space-y-3 max-w-xl mx-auto shadow-md">
-          <span className="px-3.5 py-1 bg-indigo-600 text-white text-[10px] font-extrabold rounded-full uppercase tracking-wider inline-block shadow-2xs">
+        <div className="p-4 sm:p-6 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-500 rounded-2xl sm:rounded-3xl space-y-2.5 max-w-xl mx-auto shadow-md animate-fade-in">
+          <span className="px-3 py-1 bg-indigo-600 text-white text-[10px] font-extrabold rounded-full uppercase tracking-wider inline-block shadow-2xs">
             🎯 Selected Question
           </span>
-          <p className="font-extrabold text-slate-900 text-lg sm:text-xl leading-relaxed">
+          <p className="font-extrabold text-slate-900 text-base sm:text-xl leading-relaxed">
             "{selectedItem}"
           </p>
           {block.eliminateMode && items.length > 2 && (
             <button
               type="button"
               onClick={handleEliminateCurrent}
-              className="mt-2 px-4 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 font-bold rounded-xl text-xs transition cursor-pointer shadow-2xs"
+              className="mt-1 px-3.5 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 font-bold rounded-xl text-xs transition cursor-pointer shadow-2xs"
             >
               ✕ Remove this question from the wheel
             </button>
