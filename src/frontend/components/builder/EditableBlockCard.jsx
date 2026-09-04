@@ -561,7 +561,7 @@ const ImageBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 8. UPGRADED AI PODCAST STUDIO (DIRECT LESSON TEXT INTEGRATION)
+// 8. CLEAN LIGHT-THEMED AI PODCAST STUDIO (DIRECT LESSON TEXT INTEGRATION)
 const AudioBlockEditor = ({
   block,
   onChange,
@@ -653,24 +653,24 @@ const AudioBlockEditor = ({
   const resolvedThemeDisplay = lessonTitle || lesson?.title || lesson?.topic || 'Lesson Story';
 
   return (
-    <div className="space-y-4 bg-slate-900 text-white p-5 rounded-3xl shadow-sm">
-      {/* AI PODCAST STUDIO HEADER */}
-      <div className="bg-slate-800/90 p-4 rounded-2xl border border-slate-700 space-y-3">
+    <div className="space-y-4 bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-slate-50 p-5 rounded-3xl border border-indigo-100/90 shadow-2xs">
+      {/* AI PODCAST STUDIO HEADER (CLEAN LIGHT THEME) */}
+      <div className="bg-white p-4 rounded-2xl border border-indigo-100 shadow-2xs space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="text-xl">🎙️</span>
-            <label className="block text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider">
+            <label className="block text-[11px] font-extrabold text-indigo-900 uppercase tracking-wider">
               AI Podcast Studio: Auto-generate 1-min spoken dialogue & voiceover
             </label>
           </div>
 
           {/* SOURCE CONTEXT DROPDOWN SELECTOR */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-slate-400 font-bold uppercase">Source:</span>
+            <span className="text-[10px] text-slate-500 font-bold uppercase">Source:</span>
             <select
               value={sourceMode}
               onChange={(e) => setSourceMode(e.target.value)}
-              className="bg-slate-900 border border-slate-700 text-indigo-300 text-xs font-bold rounded-xl px-2.5 py-1.5 outline-none cursor-pointer"
+              className="bg-slate-50 border border-slate-200 text-indigo-700 text-xs font-bold rounded-xl px-2.5 py-1.5 outline-none cursor-pointer hover:bg-slate-100 transition"
             >
               <option value="page1">📄 Use Lesson Story: {resolvedThemeDisplay}</option>
               <option value="custom">✍️ Custom Topic Prompt</option>
@@ -684,20 +684,20 @@ const AudioBlockEditor = ({
             value={customTopic}
             onChange={e => setCustomTopic(e.target.value)}
             placeholder={sourceMode === 'page1' ? `Topic: ${resolvedThemeDisplay}...` : 'Type podcast topic (e.g. Travel tips, Job interview)...'}
-            className="flex-1 p-2.5 bg-slate-900 border border-slate-700 focus:border-indigo-400 rounded-xl text-xs font-bold text-white outline-none"
+            className="flex-1 p-2.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl text-xs font-bold text-slate-800 outline-none transition"
           />
           <button
             type="button"
             disabled={generatingPodcast}
             onClick={handleGeneratePodcast}
-            className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl text-xs shadow-md transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+            className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl text-xs shadow-xs transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
           >
             {generatingPodcast ? '⌛ Creating Episode...' : '🎙️ AI Create Podcast'}
           </button>
         </div>
 
         {statusMsg && (
-          <p className="text-xs font-semibold text-emerald-400 bg-slate-900/60 p-2 rounded-lg border border-slate-700">
+          <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
             {statusMsg}
           </p>
         )}
@@ -706,31 +706,31 @@ const AudioBlockEditor = ({
       {/* EPISODE TITLE & AUDIO URL */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-slate-400 uppercase">Episode Title:</label>
+          <label className="text-[10px] font-bold text-slate-500 uppercase">Episode Title:</label>
           <input
             type="text"
             value={block.title || ''}
             onChange={e => onChange({ ...block, title: e.target.value })}
             placeholder="Podcast Episode Title..."
-            className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white outline-none"
+            className="w-full p-2.5 bg-white border border-slate-200 focus:border-indigo-500 rounded-xl text-xs font-semibold text-slate-800 outline-none transition"
           />
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-slate-400 uppercase">Audio Source (MP3 URL or Generated Base64):</label>
+          <label className="text-[10px] font-bold text-slate-500 uppercase">Audio Source (MP3 URL or Generated Base64):</label>
           <input
             type="text"
             value={block.url || ''}
             onChange={e => onChange({ ...block, url: e.target.value })}
             placeholder="Direct MP3 URL or generated voiceover..."
-            className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono text-slate-300 outline-none"
+            className="w-full p-2.5 bg-white border border-slate-200 focus:border-indigo-500 rounded-xl text-xs font-mono text-slate-700 outline-none transition"
           />
         </div>
       </div>
 
       {/* LIVE AUDIO PLAYER PREVIEW */}
       {block.url && (
-        <div className="p-3 bg-slate-800 rounded-2xl border border-slate-700 space-y-1.5">
-          <span className="text-[10px] font-extrabold text-indigo-400 uppercase tracking-wider block">Live Audio Preview:</span>
+        <div className="p-3.5 bg-white rounded-2xl border border-slate-200 space-y-1.5 shadow-2xs">
+          <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">Live Audio Preview:</span>
           <audio controls className="w-full h-10" key={block.url}>
             <source src={block.url} type="audio/mpeg" />
             <source src={block.url} type="audio/wav" />
@@ -740,7 +740,7 @@ const AudioBlockEditor = ({
 
       {/* TRANSCRIPT / SCRIPT EDITOR */}
       <div className="space-y-1.5">
-        <label className="text-[10px] font-bold text-slate-400 uppercase block">
+        <label className="text-[10px] font-bold text-slate-500 uppercase block">
           📝 Spoken Podcast Script / Transcript (Used by AI Assistant for Tasks):
         </label>
         <textarea
@@ -748,7 +748,7 @@ const AudioBlockEditor = ({
           value={block.transcript || ''}
           onChange={e => onChange({ ...block, transcript: e.target.value })}
           placeholder="The spoken script text will appear here. Teachers can click '✨ Generate / Fill with AI' to build comprehension questions from this script..."
-          className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-sans text-slate-200 outline-none focus:border-indigo-400 leading-relaxed"
+          className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-sans text-slate-800 outline-none focus:border-indigo-500 leading-relaxed transition"
         ></textarea>
       </div>
     </div>
