@@ -562,9 +562,18 @@ const ImageBlockEditor = ({ block, onChange }) => {
 };
 
 // 8. UPGRADED AI PODCAST STUDIO (DIRECT LESSON TEXT INTEGRATION)
-const AudioBlockEditor = ({ block, onChange, sourceText = '', lessonTitle = '', level = 'B1', extractLessonContext }) => {
+const AudioBlockEditor = ({
+  block,
+  onChange,
+  lesson,
+  pages = [],
+  sourceText = '',
+  lessonTitle = '',
+  level = 'B1',
+  extractLessonContext
+}) => {
   const [sourceMode, setSourceMode] = useState('page1');
-  const [customTopic, setCustomTopic] = useState(block.title && !block.title.includes('аудиозапись') ? block.title : '');
+  const [customTopic, setCustomTopic] = useState(block.title && !block.title.includes('аудиозапись') && !block.title.includes('Story Discussion') ? block.title : '');
   const [generatingPodcast, setGeneratingPodcast] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
@@ -572,20 +581,41 @@ const AudioBlockEditor = ({ block, onChange, sourceText = '', lessonTitle = '', 
     setGeneratingPodcast(true);
     setStatusMsg('⌛ AI writing 1-min podcast script and synthesizing audio...');
 
-    // 1. Resolve actual lesson reading story text
+    // 1. Thoroughly extract lesson reading story text from all available pages
     let sourceContent = '';
-    if (typeof extractLessonContext === 'function') {
+    
+    if (pages && Array.isArray(pages)) {
+      for (const p of pages) {
+        for (const b of (p.blocks || [])) {
+          if (b.type === 'text' && b.text && b.text.trim().length > 30) {
+            sourceContent += b.text + '\n';
+          }
+        }
+      }
+    }
+
+    if (!sourceContent && typeof extractLessonContext === 'function') {
       sourceContent = extractLessonContext();
-    } else if (sourceText) {
+    }
+
+    if (!sourceContent && sourceText) {
       sourceContent = sourceText;
-    } else if (block.transcript) {
+    }
+
+    if (!sourceContent && block.transcript) {
       sourceContent = block.transcript;
     }
 
-    // 2. Resolve topic name from input, or lesson title/topic
+    // 2. Resolve topic name cleanly (never use generic fallback)
     let topicToUse = customTopic.trim();
+    if (!topicToUse || topicToUse.toLowerCase().includes('аудиозапись') || topicToUse.toLowerCase().includes('story discussion')) {
+      topicToUse = lessonTitle || lesson?.title || lesson?.topic || '';
+    }
+    if (!topicToUse && sourceContent) {
+      topicToUse = sourceContent.slice(0, 50).split('\n')[0].replace(/[#*]/g, '').trim();
+    }
     if (!topicToUse) {
-      topicToUse = lessonTitle || 'Lesson Discussion';
+      topicToUse = 'Lesson Story Discussion';
     }
 
     try {
@@ -594,9 +624,9 @@ const AudioBlockEditor = ({ block, onChange, sourceText = '', lessonTitle = '', 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topic: topicToUse,
-          lessonTitle: lessonTitle || '',
+          lessonTitle: lessonTitle || lesson?.title || lesson?.topic || '',
           sourceText: sourceMode === 'custom' ? '' : sourceContent,
-          level: level || 'B1'
+          level: level || lesson?.level || 'B1'
         })
       });
       const data = await res.json();
@@ -620,6 +650,8 @@ const AudioBlockEditor = ({ block, onChange, sourceText = '', lessonTitle = '', 
     }
   };
 
+  const resolvedThemeDisplay = lessonTitle || lesson?.title || lesson?.topic || 'Lesson Story';
+
   return (
     <div className="space-y-4 bg-slate-900 text-white p-5 rounded-3xl shadow-sm">
       {/* AI PODCAST STUDIO HEADER */}
@@ -640,7 +672,7 @@ const AudioBlockEditor = ({ block, onChange, sourceText = '', lessonTitle = '', 
               onChange={(e) => setSourceMode(e.target.value)}
               className="bg-slate-900 border border-slate-700 text-indigo-300 text-xs font-bold rounded-xl px-2.5 py-1.5 outline-none cursor-pointer"
             >
-              <option value="page1">📄 Use Lesson Story Text</option>
+              <option value="page1">📄 Use Lesson Story: {resolvedThemeDisplay}</option>
               <option value="custom">✍️ Custom Topic Prompt</option>
             </select>
           </div>
@@ -651,7 +683,7 @@ const AudioBlockEditor = ({ block, onChange, sourceText = '', lessonTitle = '', 
             type="text"
             value={customTopic}
             onChange={e => setCustomTopic(e.target.value)}
-            placeholder={sourceMode === 'page1' ? `Topic: ${lessonTitle || 'Using lesson story theme'}...` : 'Type podcast topic (e.g. Travel tips, Job interview)...'}
+            placeholder={sourceMode === 'page1' ? `Topic: ${resolvedThemeDisplay}...` : 'Type podcast topic (e.g. Travel tips, Job interview)...'}
             className="flex-1 p-2.5 bg-slate-900 border border-slate-700 focus:border-indigo-400 rounded-xl text-xs font-bold text-white outline-none"
           />
           <button
@@ -1012,6 +1044,8 @@ export const EditableBlockCard = ({
       <AudioBlockEditor
         block={block}
         onChange={onChange}
+        lesson={lesson}
+        pages={pages || lesson?.pages || []}
         sourceText={sourceText}
         lessonTitle={lessonTitle || lesson?.title || lesson?.topic || ''}
         level={level || lesson?.level || 'B1'}
