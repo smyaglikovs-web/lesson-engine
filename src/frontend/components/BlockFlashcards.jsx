@@ -24,10 +24,10 @@ export const BlockFlashcards = ({ block = {} }) => {
   if (cards.length === 0) return null;
 
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4">
+    <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4 w-full min-w-0 overflow-hidden">
       {/* HEADER & INSTRUCTIONS */}
       <div>
-        <div className="mb-2.5">
+        <div className="mb-2">
           <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] uppercase tracking-wider">
             Vocabulary Cards
           </span>
@@ -40,26 +40,30 @@ export const BlockFlashcards = ({ block = {} }) => {
             {cards.length} {cards.length === 1 ? 'card' : 'cards'}
           </span>
         </div>
-        <p className="text-slate-500 text-xs mt-1.5 pl-4">
-          Click any card to flip between the word and its translation. Click 🔊 to hear native pronunciation.
+        <p className="text-slate-500 text-xs mt-1 pl-3.5 leading-relaxed">
+          Tap any card to flip between word and translation. Tap 🔊 for native audio.
         </p>
       </div>
 
       {/* FLASHCARDS GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 sm:gap-4 pt-1">
         {cards.map((card, idx) => {
           const isFlipped = Boolean(flippedMap[idx]);
           const frontText = card.front || card.word || 'Word';
           const backText = card.back || card.translation || 'Translation';
           const exampleText = card.example || card.sentence || '';
           
-          // Adaptive font size based on length
-          const textLength = isFlipped ? backText.length : frontText.length;
-          const fontSizeClass = textLength > 22 
+          const targetText = isFlipped ? backText : frontText;
+          const words = targetText.split(/\s+/);
+          const hasLongWord = words.some(w => w.length > 13);
+          const textLength = targetText.length;
+
+          // Adaptive font sizing to prevent overflow on mobile
+          const fontSizeClass = (textLength > 24 || hasLongWord)
+            ? 'text-sm sm:text-base font-bold' 
+            : textLength > 15 
             ? 'text-base sm:text-lg font-bold' 
-            : textLength > 14 
-            ? 'text-lg sm:text-xl font-bold' 
-            : 'text-xl sm:text-2xl font-extrabold';
+            : 'text-lg sm:text-xl font-extrabold';
 
           return (
             <div
@@ -74,7 +78,7 @@ export const BlockFlashcards = ({ block = {} }) => {
                   handleCardToggle(idx);
                 }
               }}
-              className="min-h-[190px] rounded-3xl p-5 flex flex-col justify-between transition-all duration-300 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shadow-xs hover:shadow-md hover:-translate-y-0.5 border"
+              className="min-h-[170px] sm:min-h-[190px] rounded-2xl sm:rounded-3xl p-4 sm:p-5 flex flex-col justify-between transition-all duration-300 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shadow-xs hover:shadow-md hover:-translate-y-0.5 border"
               style={{
                 backgroundColor: isFlipped ? '#4f46e5' : '#f8fafc',
                 borderColor: isFlipped ? '#4338ca' : '#e2e8f0',
@@ -86,7 +90,7 @@ export const BlockFlashcards = ({ block = {} }) => {
                 <span className={`font-extrabold uppercase tracking-wider text-[10px] px-2 py-0.5 rounded-md ${
                   isFlipped ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-200/70 text-slate-600'
                 }`}>
-                  {isFlipped ? 'Перевод / Значение' : 'Слово / Термин'}
+                  {isFlipped ? 'Перевод' : 'Слово'}
                 </span>
 
                 <button
@@ -106,24 +110,24 @@ export const BlockFlashcards = ({ block = {} }) => {
                 </button>
               </div>
 
-              {/* MAIN CONTENT (WORD OR TRANSLATION) */}
-              <div className="my-auto py-3 text-center">
-                <p className={`${fontSizeClass} leading-snug tracking-tight px-1`}>
-                  {isFlipped ? backText : frontText}
+              {/* MAIN CONTENT (WORD OR TRANSLATION WITH AUTO-BREAK) */}
+              <div className="my-auto py-2.5 text-center px-1">
+                <p className={`${fontSizeClass} leading-snug tracking-tight break-words hyphens-auto`}>
+                  {targetText}
                 </p>
               </div>
 
-              {/* CONTEXT EXAMPLE SENTENCE (FULL 2-3 LINE READABILITY) */}
+              {/* CONTEXT EXAMPLE SENTENCE */}
               {exampleText ? (
-                <div className={`text-xs leading-relaxed pt-2 border-t ${
+                <div className={`text-[11px] sm:text-xs leading-relaxed pt-2 border-t ${
                   isFlipped ? 'border-indigo-400/40 text-indigo-100' : 'border-slate-200/70 text-slate-600'
                 }`}>
-                  <p className="italic font-medium line-clamp-3">
+                  <p className="italic font-medium line-clamp-3 break-words">
                     "{exampleText}"
                   </p>
                 </div>
               ) : (
-                <div className="h-2"></div>
+                <div className="h-1"></div>
               )}
             </div>
           );
