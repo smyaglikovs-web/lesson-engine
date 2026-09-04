@@ -60,7 +60,7 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
   if (pairs.length === 0) return null;
 
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4">
+    <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4">
       {/* CATEGORY BADGE & INSTRUCTION */}
       <div>
         <div className="mb-2.5">
@@ -69,30 +69,30 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
           </span>
         </div>
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-          <h4 className="font-extrabold text-base sm:text-lg text-slate-900 border-l-4 border-indigo-600 pl-3 leading-snug">
+          <h4 className="font-extrabold text-sm sm:text-lg text-slate-900 border-l-4 border-indigo-600 pl-3 leading-snug">
             {block.instruction || 'Match the words with their definitions / translations:'}
           </h4>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
             {mistakes > 0 && (
-              <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-bold text-xs rounded-full border border-rose-200">
+              <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-bold text-[11px] sm:text-xs rounded-full border border-rose-200">
                 Mistakes: {mistakes}
               </span>
             )}
-            <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-full">
+            <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 font-bold text-[11px] sm:text-xs rounded-full">
               Matched: {matched.length} / {pairs.length}
             </span>
           </div>
         </div>
       </div>
 
-      {/* MATCHING GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+      {/* MATCHING GRID (2 COLUMNS EVEN ON MOBILE FOR EASY TAPPING) */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 pt-1">
         {/* LEFT COLUMN */}
         <div className="space-y-2">
           {pairs.map((p, idx) => {
             const isMatched = matched.some(m => m.left === p.left);
             const isSelected = selectedLeft === p.left;
-            let style = "w-full p-3.5 text-left rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer ";
+            let style = "w-full p-2.5 sm:p-3.5 min-h-[48px] text-left rounded-xl sm:rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer break-words hyphens-auto leading-tight sm:leading-snug ";
             if (isMatched) style += "bg-emerald-50 border-emerald-500 text-emerald-900 opacity-60 cursor-default";
             else if (isSelected) style += "bg-indigo-50 border-indigo-600 text-indigo-900 shadow-xs ring-2 ring-indigo-500/20 scale-102";
             else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-800 hover:bg-white";
@@ -105,8 +105,8 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
                 onClick={() => handleLeftClick(p.left)} 
                 className={style}
               >
-                <span>{p.left}</span>
-                {isMatched && <span className="text-emerald-600 font-extrabold">✓</span>}
+                <span className="flex-1 pr-1">{p.left}</span>
+                {isMatched && <span className="text-emerald-600 font-extrabold shrink-0 text-xs">✓</span>}
               </button>
             );
           })}
@@ -116,7 +116,7 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
         <div className="space-y-2">
           {rightItems.map((rightObj, idx) => {
             const isMatched = matched.some(m => m.right === rightObj.text);
-            let style = "w-full p-3.5 text-left rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer ";
+            let style = "w-full p-2.5 sm:p-3.5 min-h-[48px] text-left rounded-xl sm:rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer break-words hyphens-auto leading-tight sm:leading-snug ";
             if (isMatched) style += "bg-emerald-50 border-emerald-500 text-emerald-900 opacity-60 cursor-default";
             else if (wrongPair && selectedLeft) style += "bg-rose-50 border-rose-400 text-rose-900 animate-bounce";
             else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-800 hover:bg-white";
@@ -129,8 +129,8 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
                 onClick={() => handleRightClick(rightObj.text)} 
                 className={style}
               >
-                <span>{rightObj.text}</span>
-                {isMatched && <span className="text-emerald-600 font-extrabold">✓</span>}
+                <span className="flex-1 pr-1">{rightObj.text}</span>
+                {isMatched && <span className="text-emerald-600 font-extrabold shrink-0 text-xs">✓</span>}
               </button>
             );
           })}
@@ -139,10 +139,10 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
 
       {/* COMPLETION BANNER WITH RESET / TRY AGAIN */}
       {isCompleted && (
-        <div className="p-4 bg-emerald-100 text-emerald-900 rounded-2xl text-xs font-bold flex justify-between items-center px-4">
+        <div className="p-4 bg-emerald-100 text-emerald-900 rounded-2xl text-xs font-bold flex justify-between items-center px-4 flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <span>🎉 All {pairs.length} pairs matched successfully!</span>
-            {mistakes === 0 && <span className="text-[11px] bg-emerald-200 px-2 py-0.5 rounded-full font-extrabold">Flawless!</span>}
+            <span>🎉 All {pairs.length} pairs matched!</span>
+            {mistakes === 0 && <span className="text-[10px] bg-emerald-200 px-2 py-0.5 rounded-full font-extrabold">Flawless!</span>}
           </div>
           <button
             type="button"
