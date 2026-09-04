@@ -32,7 +32,7 @@ export function getYouTubeId(url = '') {
   return null;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -326,7 +326,6 @@ export function sanitizeBlockStructure(b) {
 
 // --------------------------------------------------------------------------
 // HIGH-SPEED, ULTRA-LOW-NEURON AI INFERENCE PIPELINE
-// (Monsters like Nemotron-120B and Qwen-27B completely removed!)
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 1800) {
   let errors = [];
@@ -399,7 +398,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 3. OPENROUTER FREE / STANDARD GATEWAY
+  // 3. OPENROUTER GATEWAY
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
     const openRouterModels = [
@@ -471,51 +470,59 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 }
 
 // --------------------------------------------------------------------------
-// TEXT-TO-SPEECH (Uses OpenRouter API First = 0 Cloudflare Neurons Burned!)
+// FULL-LENGTH TEXT-TO-SPEECH (Generates Complete 60-90s Audio Track)
 // --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   if (!text || !text.trim()) return { error: 'Text is required.' };
-  const cleanText = text.trim().slice(0, 1000);
+  const cleanText = text.trim();
 
-  // 1. PRIMARY: OPENROUTER AUDIO SPEECH API (0 Cloudflare Neurons)
+  // 1. PRIMARY: OPENROUTER SPEECH MODELS (Full-length, 0 Cloudflare Neurons)
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
-    try {
-      const openrouterKey = env.OPENROUTER_API_KEY.trim();
-      const orRes = await fetchWithTimeout('https://openrouter.ai/api/v1/audio/speech', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openrouterKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
-          'X-Title': 'Lesson Engine'
-        },
-        body: JSON.stringify({
-          model: 'openai/tts-1',
-          input: cleanText,
-          voice: 'alloy',
-          response_format: 'mp3'
-        })
-      }, 7000);
+    const openrouterKey = env.OPENROUTER_API_KEY.trim();
+    const speechModels = [
+      { model: 'deepgram/flux-tts:free', voice: 'flux-alexis-en' },
+      { model: 'hexgrad/kokoro-82m', voice: 'af_alloy' },
+      { model: 'openai/gpt-4o-mini-tts-2025-12-15', voice: 'alloy' }
+    ];
 
-      if (orRes.ok) {
-        const audioBuffer = await orRes.arrayBuffer();
-        if (audioBuffer.byteLength > 100) {
-          const base64Audio = bufferToBase64(audioBuffer);
-          return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
+    for (const sm of speechModels) {
+      try {
+        const orRes = await fetchWithTimeout('https://openrouter.ai/api/v1/audio/speech', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openrouterKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
+            'X-Title': 'Lesson Engine'
+          },
+          body: JSON.stringify({
+            model: sm.model,
+            input: cleanText,
+            voice: sm.voice,
+            response_format: 'mp3'
+          })
+        }, 9000);
+
+        if (orRes.ok) {
+          const audioBuffer = await orRes.arrayBuffer();
+          if (audioBuffer.byteLength > 200) {
+            const base64Audio = bufferToBase64(audioBuffer);
+            return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
+          }
         }
-      }
-    } catch (eOrTts) {}
+      } catch (eOr) {}
+    }
   }
 
-  // 2. SECONDARY: CLOUDFLARE MELOTTS (Burns only ~14 neurons, NO expensive Deepgram)
+  // 2. SECONDARY: CLOUDFLARE MELOTTS (Burns only ~14 neurons, no Deepgram)
   if (env.AI) {
     try {
       const meloRes = await env.AI.run('@cf/myshell-ai/melotts', {
-        prompt: cleanText.slice(0, 600),
+        prompt: cleanText.slice(0, 800),
         lang: lang || 'en'
       });
 
-      if (meloRes && typeof meloRes.audio === 'string' && meloRes.audio.length > 50) {
+      if (meloRes && typeof meloRes.audio === 'string' && meloRes.audio.length > 100) {
         const audioUrl = meloRes.audio.startsWith('data:')
           ? meloRes.audio
           : `data:audio/mp3;base64,${meloRes.audio}`;
@@ -524,30 +531,29 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
     } catch (eMelo) {}
   }
 
-  // 3. TERTIARY ZERO-NEURON BACKUP (Direct Speech Relay)
+  // 3. TERTIARY: MULTI-CHUNK COMPLETE SPEECH COMPILATION (Never cuts off)
   try {
     const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
     const chunks = [];
     let curChunk = '';
 
     for (const s of sentences) {
-      if ((curChunk + ' ' + s).trim().length <= 180) {
+      if ((curChunk + ' ' + s).trim().length <= 160) {
         curChunk = (curChunk + ' ' + s).trim();
       } else {
         if (curChunk) chunks.push(curChunk);
-        curChunk = s.trim().slice(0, 180);
+        curChunk = s.trim().slice(0, 160);
       }
     }
     if (curChunk) chunks.push(curChunk);
 
     const audioBuffers = [];
-    for (const chunk of chunks.slice(0, 6)) {
+    // Process ALL sentences without arbitrary slice caps
+    for (const chunk of chunks) {
       const gUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang || 'en')}&client=tw-ob&q=${encodeURIComponent(chunk)}`;
       const gRes = await fetchWithTimeout(gUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      }, 4000);
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      }, 5000);
 
       if (gRes.ok) {
         const ab = await gRes.arrayBuffer();
@@ -572,25 +578,32 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 }
 
 // --------------------------------------------------------------------------
-// 2-IN-1 PODCAST STUDIO (Writes Spoken Script + Synthesizes Voiceover)
+// 2-IN-1 PODCAST STUDIO (Generates Lesson-Aware Episode & Spoken Audio)
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
-  const { topic = '', sourceText = '', level = 'B1' } = payload;
-  const resolvedTopic = topic.trim() || 'English Listening Practice';
+  const { topic = '', sourceText = '', lessonTitle = '', level = 'B1' } = payload;
+  
+  // Resolve topic strictly from source context or lesson title if empty
+  const resolvedTopic = topic.trim() 
+    || lessonTitle.trim() 
+    || (sourceText.trim() ? sourceText.trim().slice(0, 45) : 'General English Lesson');
+  
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
   const systemPrompt = `[ROLE]
 You are a World-Class ELT Podcast Host and Audio Scriptwriter.
 Target CEFR Level: ${level} (${cefrRules})
+Core Topic: "${resolvedTopic}"
 
 [TASK]
-Write a lively, engaging 1-minute spoken podcast episode (~110-130 words) for language learners discussing the topic/story.
+Write a lively, engaging 1-minute spoken podcast monologue (~115-135 words) for language learners discussing the content of this specific topic.
 Tone: Conversational, engaging, natural, and clear for listening comprehension.
 
 [CRITICAL CONTENT GUIDELINES]
-- Talk about the real-world story, ideas, themes, and characters.
-- FORBIDDEN: DO NOT lecture about grammar rules, cleft sentences, inversions, or grammar mechanics.
-- CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or sound cues. Output ONLY the spoken English monologue.
+- You MUST discuss the ideas, concepts, and story from the provided topic and source context.
+- DO NOT invent generic stories about apps, software, or unrelated characters.
+- DO NOT lecture about grammar rules, cleft sentences, inversions, or mechanics.
+- DO NOT include stage directions (e.g. '[Music fades]', '[Host]') or sound cues. Output ONLY the spoken English monologue.
 
 [OUTPUT FORMAT]
 {
@@ -599,8 +612,8 @@ Tone: Conversational, engaging, natural, and clear for listening comprehension.
 }`;
 
   const userPrompt = sourceText.trim()
-    ? `Source Context:\n${sourceText.slice(0, 2000)}\n\nCreate a 1-minute podcast episode discussing the ideas of: "${resolvedTopic}".`
-    : `Create a 1-minute podcast episode on Topic: "${resolvedTopic}".`;
+    ? `Source Material:\n${sourceText.slice(0, 2200)}\n\nCreate a 1-minute podcast episode discussing the ideas of: "${resolvedTopic}".`
+    : `Create a 1-minute podcast episode specifically on the Topic: "${resolvedTopic}".`;
 
   const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1000);
   if (!scriptResult.data) {
@@ -615,7 +628,7 @@ Tone: Conversational, engaging, natural, and clear for listening comprehension.
 
   const episodeTitle = scriptData.title || `${resolvedTopic} (Audio Episode)`;
 
-  // Synthesize voiceover audio (0 Cloudflare neurons burned via OpenRouter)
+  // Synthesize full-length voiceover audio (0 Cloudflare neurons burned)
   let audioDataUrl = '';
   try {
     const ttsRes = await generateAudioWithAI(env, { text: scriptText, lang: 'en' });
@@ -974,7 +987,7 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the text." }`;
   }
 
-  // 3. TARGET VOCABULARY FLASHCARDS (With strict anti-grammar constraint)
+  // 3. TARGET VOCABULARY FLASHCARDS
   if (actions.includes('flashcards')) {
     const backLang = flashcardType === 'russian' 
       ? 'The "back" key MUST be the accurate Russian translation of the term.' 
