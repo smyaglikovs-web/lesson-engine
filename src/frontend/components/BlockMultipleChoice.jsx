@@ -19,16 +19,20 @@ export const BlockMultipleChoice = ({ block = {}, value = {}, onChange }) => {
     onChange({ selected: Number(selected), submitted: true });
   };
 
+  const handleReset = () => {
+    onChange({ selected: null, submitted: false });
+  };
+
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4">
+    <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4 w-full min-w-0 overflow-hidden">
       {/* CATEGORY BADGE & QUESTION */}
       <div>
-        <div className="mb-2.5">
+        <div className="mb-2">
           <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] uppercase tracking-wider">
             Multiple Choice
           </span>
         </div>
-        <h4 className="font-extrabold text-base sm:text-lg text-slate-900 border-l-4 border-indigo-600 pl-3 leading-snug">
+        <h4 className="font-extrabold text-base sm:text-lg text-slate-900 border-l-4 border-indigo-600 pl-3 leading-snug break-words">
           {block.question}
         </h4>
       </div>
@@ -42,7 +46,7 @@ export const BlockMultipleChoice = ({ block = {}, value = {}, onChange }) => {
             ? (option.text || option.statement || option.option || JSON.stringify(option))
             : String(option);
 
-          let btnStyle = "w-full text-left p-4 rounded-2xl border font-bold transition text-sm flex items-center justify-between cursor-pointer ";
+          let btnStyle = "w-full text-left p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer break-words leading-snug ";
           if (submitted) {
             if (isTargetCorrect) btnStyle += "bg-emerald-50 border-emerald-500 text-emerald-900 font-extrabold";
             else if (isSelected) btnStyle += "bg-rose-50 border-rose-500 text-rose-900 font-extrabold";
@@ -56,12 +60,13 @@ export const BlockMultipleChoice = ({ block = {}, value = {}, onChange }) => {
           return (
             <button
               key={`${block.id || 'mc'}-opt-${idx}`}
+              type="button"
               disabled={submitted}
               onClick={() => handleSelect(idx)}
               className={btnStyle}
             >
-              <span>{optionText}</span>
-              {isSelected && !submitted && <span className="text-indigo-600 font-bold">✓</span>}
+              <span className="flex-1 pr-2">{optionText}</span>
+              {isSelected && !submitted && <span className="text-indigo-600 font-bold shrink-0">✓</span>}
             </button>
           );
         })}
@@ -69,16 +74,32 @@ export const BlockMultipleChoice = ({ block = {}, value = {}, onChange }) => {
 
       {!submitted ? (
         <button
+          type="button"
           disabled={selected === null}
           onClick={handleSubmit}
-          className="px-6 py-2.5 bg-indigo-600 text-white font-extrabold rounded-2xl disabled:opacity-40 hover:bg-indigo-700 transition text-xs shadow-md cursor-pointer"
+          className="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 text-white font-extrabold rounded-2xl disabled:opacity-40 hover:bg-indigo-700 transition text-xs shadow-md cursor-pointer"
         >
           Check Answer
         </button>
       ) : (
-        <div className={`p-4 rounded-2xl text-xs font-bold ${isCorrect ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'}`}>
-          <p className="font-extrabold mb-1">{isCorrect ? 'Correct! 🎉' : 'Incorrect ❌'}</p>
-          {block.explanation && <p className="text-xs font-normal leading-relaxed">{block.explanation}</p>}
+        <div className={`p-4 rounded-2xl text-xs font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+          isCorrect ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'
+        }`}>
+          <div>
+            <p className="font-extrabold mb-1">{isCorrect ? 'Correct! 🎉' : 'Incorrect ❌'}</p>
+            {block.explanation && (
+              <p className="text-xs font-normal leading-relaxed text-slate-800">
+                {block.explanation}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="self-start sm:self-center px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-800 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs shrink-0"
+          >
+            Try Again 🔄
+          </button>
         </div>
       )}
     </div>
