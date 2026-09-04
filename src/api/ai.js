@@ -32,7 +32,7 @@ export function getYouTubeId(url = '') {
   return null;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 6500) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -314,100 +314,22 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// HIGH-SPEED MULTI-PROVIDER AI INFERENCE PIPELINE
+// MULTI-PROVIDER AI INFERENCE PIPELINE (CF Flash -> OpenRouter -> Groq -> Gemini)
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
   let errors = [];
 
-  // 1. OPENROUTER FREE MODELS (Primary: 2 Fastest Models, 6.5s Sub-Timeout)
-  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
-    const openrouterKey = env.OPENROUTER_API_KEY.trim();
-    const fastOpenRouterModels = [
-      'openrouter/free',
-      'google/gemma-4-31b-it:free'
-    ];
-
-    for (const model of fastOpenRouterModels) {
-      try {
-        const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openrouterKey}`,
-            'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
-            'X-Title': 'Lesson Engine'
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
-              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
-            ],
-            temperature: 0.2,
-            response_format: { type: 'json_object' }
-          })
-        }, 6500);
-
-        if (res.ok) {
-          const data = await res.json();
-          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
-          if (parsed) return { data: parsed, isFallback: false };
-        } else {
-          const errText = await res.text();
-          console.error(`OpenRouter Error (${model}) [${res.status}]:`, errText);
-          errors.push(`OpenRouter (${model}) [${res.status}]: ${errText}`);
-        }
-      } catch (eOr) {
-        console.error(`OpenRouter Timeout/Exception (${model}):`, eOr?.message || eOr);
-        errors.push(`OpenRouter (${model}) [Timeout/Fail]`);
-      }
-    }
-  }
-
-  // 2. GROQ API (Secondary: Fastest 70B, 6.5s Sub-Timeout)
-  if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
-    const groqKey = env.GROQ_API_KEY.trim();
-    for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
-      try {
-        const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${groqKey}`
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
-              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
-            ],
-            temperature: 0.2,
-            response_format: { type: 'json_object' }
-          })
-        }, 6500);
-
-        if (res.ok) {
-          const data = await res.json();
-          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
-          if (parsed) return { data: parsed, isFallback: false };
-        } else {
-          const errText = await res.text();
-          console.error(`Groq Error (${model}) [${res.status}]:`, errText);
-          errors.push(`Groq (${model}) [${res.status}]: ${errText}`);
-        }
-      } catch (eGroq) {
-        console.error(`Groq Timeout/Exception (${model}):`, eGroq?.message || eGroq);
-        errors.push(`Groq (${model}) [Timeout/Fail]`);
-      }
-    }
-  }
-
-  // 3. CLOUDFLARE WORKERS AI NATIVE BINDING (Tertiary: Flash 8B Model)
+  // 1. CLOUDFLARE WORKERS AI NATIVE (Fastest, Local, Zero-Network Hops, Low-Neuron)
   if (env.AI) {
     const cfModels = [
       '@cf/deepseek-ai/deepseek-v4-flash-0731',
+      'deepseek-v4-flash-0731',
+      '@cf/zai/glm-5.3-flash',
+      'glm-5.3-flash',
+      '@cf/qwen/qwen3.8-27b',
       '@cf/meta/llama-3.1-8b-instruct-fast'
     ];
+
     for (const cfModel of cfModels) {
       try {
         const resCf = await env.AI.run(cfModel, {
@@ -430,13 +352,151 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           }
         }
       } catch (eCf) {
-        console.error(`Workers AI Exception (${cfModel}):`, eCf?.message || eCf);
-        errors.push(`Workers AI (${cfModel}) [Quota/Fail]`);
+        errors.push(`Workers AI (${cfModel}): ${eCf?.message || eCf}`);
+      }
+    }
+  }
+
+  // 2. OPENROUTER FREE MODELS (Secondary Gateway)
+  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
+    const openrouterKey = env.OPENROUTER_API_KEY.trim();
+    const openRouterModels = [
+      'openrouter/free',
+      'google/gemma-4-31b-it:free',
+      'z-ai/glm-5.2:free'
+    ];
+
+    for (const model of openRouterModels) {
+      try {
+        const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openrouterKey}`,
+            'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
+            'X-Title': 'Lesson Engine'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
+              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
+            ],
+            temperature: 0.2,
+            response_format: { type: 'json_object' }
+          })
+        }, 8000);
+
+        if (res.ok) {
+          const data = await res.json();
+          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+          if (parsed) return { data: parsed, isFallback: false };
+        } else {
+          const errText = await res.text();
+          errors.push(`OpenRouter (${model}) [${res.status}]: ${errText}`);
+        }
+      } catch (eOr) {
+        errors.push(`OpenRouter (${model}) [Timeout]`);
+      }
+    }
+  }
+
+  // 3. GROQ API (Tertiary Fallback)
+  if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
+    const groqKey = env.GROQ_API_KEY.trim();
+    for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
+      try {
+        const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${groqKey}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
+              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
+            ],
+            temperature: 0.2,
+            response_format: { type: 'json_object' }
+          })
+        }, 8000);
+
+        if (res.ok) {
+          const data = await res.json();
+          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+          if (parsed) return { data: parsed, isFallback: false };
+        } else {
+          const errText = await res.text();
+          errors.push(`Groq (${model}) [${res.status}]: ${errText}`);
+        }
+      } catch (eGroq) {
+        errors.push(`Groq (${model}) [Timeout]`);
+      }
+    }
+  }
+
+  // 4. GEMINI API
+  if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
+    const apiKey = env.GEMINI_API_KEY.trim();
+    for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
+      try {
+        const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${apiKey}`;
+        const gRes = await fetchWithTimeout(gUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: `${systemPrompt}\nOutput valid JSON only.` }] },
+            contents: [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+          })
+        }, 8000);
+
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const parsed = cleanAndParseJson(gData?.candidates?.[0]?.content?.parts?.[0]?.text);
+          if (parsed) return { data: parsed, isFallback: false };
+        } else {
+          const gErrText = await gRes.text();
+          errors.push(`Gemini (${gModel}) [${gRes.status}]: ${gErrText}`);
+        }
+      } catch (eG) {
+        errors.push(`Gemini (${gModel}) Exception: ${eG?.message || eG}`);
       }
     }
   }
 
   return { data: null, error: errors.join('; ') || 'All AI providers failed or timed out.', isFallback: true };
+}
+
+// --------------------------------------------------------------------------
+// FREE CLOUDFLARE-HOSTED TEXT-TO-SPEECH (MeloTTS)
+// --------------------------------------------------------------------------
+export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
+  if (!env.AI || !text.trim()) return { error: 'Text and AI binding are required.' };
+  
+  try {
+    const res = await env.AI.run('@cf/myshell/melotts', {
+      prompt: text.trim().slice(0, 1000),
+      lang: lang
+    });
+
+    if (res instanceof Response) {
+      const buffer = await res.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64Audio = btoa(binary);
+      return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
+    }
+
+    return { success: false, error: 'Unexpected TTS response format' };
+  } catch (err) {
+    return { success: false, error: `TTS Generation failed: ${err.message}` };
+  }
 }
 
 export async function fetchYouTubeTranscriptNative(videoUrl) {
@@ -539,7 +599,7 @@ Return ONLY valid JSON.
 }
 
 // --------------------------------------------------------------------------
-// 3-STAGE CHAINED AI LESSON GENERATION PIPELINE (Zero Fake Fallbacks)
+// 1-PROMPT ANCHOR + ROADMAP ARCHITECTURE (Sub-3s Generation, Zero Fallbacks)
 // --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
@@ -548,136 +608,104 @@ export async function generateFullLessonWithAI(env, payload) {
     topic = 'General English Practice',
     context = '',
     format = 'live',
-    targetKeywords = [],
-    selectedTasks = ['multiple_choice', 'gap_fill_bank', 'matching', 'sentence_reorder'],
     includeGrammar = false,
     finalTask = 'speaking'
   } = payload;
 
   const resolvedTopic = topic.trim() || 'General English Lesson';
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
-  const audienceContext = context ? `Target Student Context: "${context}"` : 'General Adult ESL Learners';
+  const audienceContext = context ? `Target Context: "${context}"` : 'General Adult ESL Learners';
 
-  // STAGE 1: Lexical Profiler
-  const stage1SystemPrompt = `[ROLE]
-You are a CELTA/DELTA Master Methodologist.
+  const systemPrompt = `[ROLE]
+You are a World-Class CELTA/DELTA Master Methodologist.
 Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
+${audienceContext}
 
-Profile 6-8 target vocabulary words/phrases, 3 lead-in discussion questions, and the target grammar rule.
-Every vocabulary item MUST have a UNIQUE, natural example sentence (10-14 words long).
+[TASK]
+Generate a complete, high-quality Page 1 Master Anchor and Pedagogical Roadmaps for the upcoming stages.
+You must return a single valid JSON object.
 
-[OUTPUT FORMAT]
-{
-  "warmupQuestions": ["Warm-up question 1?", "Warm-up question 2?", "Warm-up question 3?"],
-  "targetWords": [
-    { "front": "word/phrase", "back": "Russian translation or definition", "example": "Natural 10-14 word context sentence." }
-  ],
-  "grammarTitle": "Target Grammar Rule",
-  "grammarFormula": "Subject + Verb Structure",
-  "grammarExplanation": "Short clear rule explanation"
-}`;
-
-  const userContextPrompt = text.trim()
-    ? `Source Material / Transcript:\n${text.slice(0, 3200)}`
-    : `Generate high-yield materials for Topic: "${resolvedTopic}". Context: ${audienceContext}`;
-
-  const stage1Result = await runAiPipeline(env, stage1SystemPrompt, userContextPrompt, 1400);
-  if (!stage1Result.data) {
-    return { error: `Stage 1 (Lexical Profiler) failed: ${stage1Result.error}` };
-  }
-  const profile = stage1Result.data;
-
-  // STAGE 2: Story Synthesizer
-  const wordsToWeave = (profile.targetWords || []).map(w => w.front).join(', ');
-  const stage2SystemPrompt = `[ROLE]
-You are an award-winning ELT graded reader writer.
-Target CEFR Level: ${level} (${cefrRules})
-Topic: "${resolvedTopic}"
-Target vocabulary to weave in naturally: ${wordsToWeave}
-
-Write an engaging, rich 250-320 word educational story/reading passage for this lesson strictly adapted to CEFR ${level}.
-CRITICAL JSON FORMAT RULE: Inside the "storyText" string, NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy', 'Blurryface') for titles, albums, character names, or dialogue.
+[CRITICAL REQUIREMENTS]
+1. "storyText": A rich, natural 240-300 word educational reading story strictly adapted to CEFR ${level}.
+   CRITICAL: Never use unescaped double quotes inside storyText. Use single quotes ('Trench', 'Clancy') for titles or names.
+2. "targetWords": Exactly 6 high-yield vocabulary words/phrases with:
+   - "front": English term
+   - "back": Russian translation or clear definition
+   - "example": Authentic 10-14 word context sentence
+3. "warmupQuestions": Exactly 3 engaging lead-in discussion questions.
+4. "referenceLink": Real canonical encyclopedia or reference link for background reading:
+   - "title": e.g. "Wikipedia: ${resolvedTopic}"
+   - "url": Direct canonical URL, e.g. "https://en.wikipedia.org/wiki/${encodeURIComponent(resolvedTopic.replace(/\s+/g, '_'))}"
+   - "description": Contextual note guiding the student.
+5. "grammarFocus": The primary grammar rule relevant to this level/topic:
+   - "title": Rule title
+   - "formula": Structural formula (e.g. Subject + had + V3)
+   - "explanation": Methodological explanation
+   - "ccqs": 2 Concept Checking Questions for the teacher to verify understanding.
+6. "practiceAims": Methodological guidance for controlled practice (which exercises to use).
 
 [OUTPUT FORMAT]
 {
   "title": "${resolvedTopic}",
-  "storyText": "Complete 250-320 word reading passage here..."
+  "storyText": "Full 240-300 word reading story here...",
+  "warmupQuestions": ["Question 1?", "Question 2?", "Question 3?"],
+  "targetWords": [
+    { "front": "term", "back": "translation", "example": "Context sentence." }
+  ],
+  "referenceLink": {
+    "title": "Wikipedia: ${resolvedTopic}",
+    "url": "https://en.wikipedia.org/wiki/${encodeURIComponent(resolvedTopic.replace(/\s+/g, '_'))}",
+    "description": "Background reference material. Click to open in the preview window."
+  },
+  "grammarFocus": {
+    "title": "Target Grammar Rule",
+    "formula": "Subject + Verb Structure",
+    "explanation": "Explanation of the rule.",
+    "ccqs": ["Concept checking question 1?", "Concept checking question 2?"]
+  },
+  "practiceAims": "Recommended: Use Matching for vocabulary consolidation and Gap Fill or Inline Select for grammar drilling."
 }`;
 
-  const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${resolvedTopic}\nContext: ${audienceContext}\nNotes: ${text.substring(0, 400)}`, 1600);
-  if (!stage2Result.data) {
-    return { error: `Stage 2 (Story Synthesizer) failed: ${stage2Result.error}` };
+  const userPrompt = text.trim() 
+    ? `Source Notes / Content:\n${text.slice(0, 2500)}\n\nCreate the lesson on Topic: "${resolvedTopic}".`
+    : `Create the master lesson anchor and roadmaps for Topic: "${resolvedTopic}". Format: ${format}.`;
+
+  const result = await runAiPipeline(env, systemPrompt, userPrompt, 2200);
+  if (!result.data) {
+    return { error: `AI generation failed: ${result.error || 'All AI models failed or timed out.'}` };
   }
 
-  let storyText = stage2Result.data?.storyText 
-    || stage2Result.data?.text 
-    || stage2Result.data?.story 
-    || stage2Result.data?.passage 
-    || stage2Result.data?.content;
-
-  if (typeof stage2Result.data === 'string' && stage2Result.data.length > 50) {
-    storyText = stage2Result.data;
+  const data = result.data;
+  const storyText = data.storyText || data.text || data.story || data.passage;
+  if (!storyText || storyText.length < 50) {
+    return { error: `AI generation failed: No valid reading text could be parsed from the response.` };
   }
 
-  if (!storyText) {
-    return { error: `Stage 2 failed: No valid story text could be parsed from AI response.` };
-  }
+  const targetWords = Array.isArray(data.targetWords) && data.targetWords.length > 0
+    ? data.targetWords
+    : [
+        { front: 'Key Concept', back: 'Основное понятие', example: `Understanding this concept is essential for ${resolvedTopic}.` }
+      ];
 
-  // STAGE 3: Parallel Task Synthesis
-  const tasksToGenerate = Array.isArray(selectedTasks) && selectedTasks.length > 0 
-    ? selectedTasks 
-    : ['multiple_choice', 'gap_fill_bank', 'matching', 'sentence_reorder'];
+  const warmupQuestions = Array.isArray(data.warmupQuestions) && data.warmupQuestions.length > 0
+    ? data.warmupQuestions
+    : [`What comes to mind when you think about ${resolvedTopic}?`];
 
-  const stage3SystemPrompt = `[ROLE]
-You are an ELT Materials Task Creator.
-Target Level: ${level}
-Story context: "${storyText.substring(0, 300)}..."
-Target vocabulary: ${JSON.stringify(profile.targetWords)}
+  const refLink = data.referenceLink || {
+    title: `Wikipedia: ${resolvedTopic}`,
+    url: `https://en.wikipedia.org/wiki/${encodeURIComponent(resolvedTopic.replace(/\s+/g, '_'))}`,
+    description: 'Background reference material. Click to preview without leaving class.'
+  };
 
-Generate exercise blocks matching the requested types: ${JSON.stringify(tasksToGenerate)}.
+  const grammar = data.grammarFocus || {
+    title: 'Target Grammar Structure',
+    formula: 'Subject + Verb',
+    explanation: 'Grammar rule explanation.',
+    ccqs: ['Does this describe a real or hypothetical event?']
+  };
 
-CRITICAL TASK SCHEMAS:
-- "matching": { "type": "matching", "instruction": "Match the words with their definitions / translations:", "pairs": [ { "left": "term", "right": "unique definition or Russian translation" } ] }
-- "gap_fill_bank": { "type": "gap_fill_bank", "instruction": "Fill the gaps using words from the bank:", "text": "Paragraph with [word1] and [word2]...", "distractors": ["distractor1", "distractor2"] }
-- "gap_fill": { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. She [went]...\\n2. They [saw]...", "answers": ["went", "saw"] }
-- "multiple_choice": { "type": "multiple_choice", "question": "Question text?", "options": ["Correct", "Wrong 1", "Wrong 2"], "correct": 0, "explanation": "Why correct." }
-- "sentence_reorder": { "type": "sentence_reorder", "instruction": "Put words in order:", "sentences": ["Sentence one (8-14 words).", "Sentence two (8-14 words)."] }
-- "inline_select": { "type": "inline_select", "instruction": "Choose correct word:", "text": "1. She [chose* | refused] the offer.\\n2. They [agreed* | denied]." }
-- "categorization": { "type": "categorization", "instruction": "Sort words:", "categories": ["Cat 1", "Cat 2"], "items": [ { "id": "it-1", "text": "Item 1", "categoryIndex": 0 } ] }
-
-[OUTPUT FORMAT]
-{
-  "blocks": [ ... ]
-}`;
-
-  const stage3Result = await runAiPipeline(env, stage3SystemPrompt, `Generate exercises for: ${JSON.stringify(tasksToGenerate)}`, 2400);
-  if (!stage3Result.data) {
-    return { error: `Stage 3 (Task Synthesizer) failed: ${stage3Result.error}` };
-  }
-
-  let synthesizedBlocks = stage3Result.data?.blocks || [];
-  if (!Array.isArray(synthesizedBlocks) && typeof stage3Result.data === 'object' && stage3Result.data !== null) {
-    const anyArray = Object.values(stage3Result.data).find(val => Array.isArray(val));
-    if (anyArray) {
-      synthesizedBlocks = anyArray;
-    } else {
-      synthesizedBlocks = [stage3Result.data];
-    }
-  }
-
-  let cleanTaskBlocks = [];
-  synthesizedBlocks.forEach(b => {
-    const res = sanitizeBlockStructure(b);
-    if (Array.isArray(res)) cleanTaskBlocks.push(...res);
-    else if (res && typeof res === 'object') cleanTaskBlocks.push(res);
-  });
-
-  if (cleanTaskBlocks.length === 0) {
-    return { error: `Stage 3 failed: No valid exercise blocks could be parsed from AI response.` };
-  }
-
-  // STAGE 4: Assemble Complete Lesson Structure
+  // ASSEMBLE THE 4-PAGE LESSON
   const assembledLesson = {
     id: 'lesson_' + Date.now(),
     title: resolvedTopic,
@@ -685,6 +713,7 @@ CRITICAL TASK SCHEMAS:
     topic: resolvedTopic,
     description: `Interactive ${level} lesson on ${resolvedTopic}. ${audienceContext}`,
     pages: [
+      // PAGE 1: MASTER ANCHOR (Warmup + Vocab + Reading + Auto-Generated Link)
       {
         id: 'p1',
         title: 'Part 1: Warm-up, Vocab & Reading',
@@ -693,96 +722,109 @@ CRITICAL TASK SCHEMAS:
           { 
             id: `b_warm_${Date.now()}`, 
             type: 'open_input', 
-            prompt: `💬 Warm-up & Lead-in Discussion:\n${profile.warmupQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}` 
+            prompt: `💬 Warm-up & Lead-in Discussion:\n${warmupQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}` 
           },
           { 
             id: `b_fc_${Date.now()}`, 
             type: 'flashcards', 
             title: 'Key Target Vocabulary', 
-            cards: profile.targetWords 
+            cards: targetWords 
           },
           { 
             id: `b_txt_${Date.now()}`, 
             type: 'text', 
             text: storyText 
+          },
+          {
+            id: `b_link_${Date.now()}`,
+            type: 'link',
+            title: refLink.title,
+            url: refLink.url,
+            description: refLink.description,
+            displayMode: 'modal'
+          }
+        ]
+      },
+
+      // PAGE 2: GRAMMAR ROADMAP (Aims, CCQs, and Pre-configured Rule Card)
+      {
+        id: 'p2',
+        title: 'Part 2: Grammar Focus',
+        blocks: [
+          { id: `b_gh_${Date.now()}`, type: 'heading', level: 2, text: 'Grammar Presentation' },
+          {
+            id: `b_gnotes_${Date.now()}`,
+            type: 'teacher_notes',
+            aim: `To clarify meaning, form, and pronunciation of ${grammar.title}.`,
+            speech: `Ask students Concept Checking Questions (CCQs):\n${(grammar.ccqs || []).map((c, i) => `${i + 1}. ${c}`).join('\n')}`
+          },
+          {
+            id: `b_gcard_${Date.now()}`,
+            type: 'grammar_card',
+            title: grammar.title,
+            formula: grammar.formula,
+            explanation: grammar.explanation,
+            examples: [`Example: Consistent practice yields mastery over ${resolvedTopic}.`]
+          }
+        ]
+      },
+
+      // PAGE 3: CONTROLLED PRACTICE ROADMAP
+      {
+        id: 'p3',
+        title: 'Part 3: Practice & Tasks',
+        blocks: [
+          { id: `b_ph_${Date.now()}`, type: 'heading', level: 2, text: 'Interactive Practice' },
+          {
+            id: `b_pnotes_${Date.now()}`,
+            type: 'teacher_notes',
+            aim: 'To provide controlled practice of target vocabulary and grammar.',
+            speech: `${data.practiceAims || 'Click "Generate / Fill with AI" on any exercise from the left palette to drill the text.'}`
+          }
+        ]
+      },
+
+      // PAGE 4: PRODUCTION & WRAP-UP ROADMAP
+      {
+        id: 'p4',
+        title: `Part 4: Production & Wrap-up`,
+        blocks: [
+          { id: `b_prodh_${Date.now()}`, type: 'heading', level: 2, text: finalTask === 'writing' ? 'Writing Submission' : 'Speaking Wrap-up' },
+          {
+            id: `b_prodnotes_${Date.now()}`,
+            type: 'teacher_notes',
+            aim: 'To develop communicative fluency and allow students to personalize the language.',
+            speech: 'Encourage students to speak freely using the newly acquired vocabulary and grammar.'
+          },
+          finalTask === 'writing' ? {
+            id: `b_write_${Date.now()}`,
+            type: 'open_input',
+            prompt: `📝 Final Writing Task:\nWrite a short paragraph (70-100 words) summarizing your perspective on "${resolvedTopic}". In your answer, use at least 3 target vocabulary words from Page 1.`
+          } : {
+            id: `b_wheel_${Date.now()}`,
+            type: 'spinning_wheel',
+            title: '🎡 Speaking Discussion Roulette',
+            instruction: 'Spin the wheel and answer the question!',
+            items: warmupQuestions.concat([
+              `How will you apply this in your own life?`,
+              `Summarize the key takeaway in 2 sentences.`
+            ]),
+            eliminateMode: true
           }
         ]
       }
     ]
   };
 
-  if (includeGrammar) {
-    assembledLesson.pages.push({
-      id: 'p_grammar',
-      title: 'Part 2: Grammar Focus',
-      blocks: [
-        { id: `b_gh_${Date.now()}`, type: 'heading', level: 2, text: 'Grammar Presentation' },
-        { 
-          id: `b_gcard_${Date.now()}`, 
-          type: 'grammar_card', 
-          title: profile.grammarTitle, 
-          formula: profile.grammarFormula, 
-          explanation: profile.grammarExplanation, 
-          examples: [`Example: ${profile.targetWords[0]?.example || 'Consistent practice yields great results.'}`] 
-        }
-      ]
-    });
-  }
-
-  if (cleanTaskBlocks.length > 0) {
-    assembledLesson.pages.push({
-      id: 'p_practice',
-      title: `Part ${assembledLesson.pages.length + 1}: Practice & Application`,
-      blocks: [
-        { id: `b_ph_${Date.now()}`, type: 'heading', level: 2, text: 'Interactive Exercises' },
-        ...cleanTaskBlocks
-      ]
-    });
-  }
-
-  if (finalTask === 'writing') {
-    assembledLesson.pages.push({
-      id: 'p_production',
-      title: `Part ${assembledLesson.pages.length + 1}: Production & Writing`,
-      blocks: [
-        { id: `b_prodh_${Date.now()}`, type: 'heading', level: 2, text: 'Writing Submission' },
-        {
-          id: `b_write_${Date.now()}`,
-          type: 'open_input',
-          prompt: `📝 Final Writing Task:\nWrite a short paragraph (70-100 words) summarizing your thoughts on "${resolvedTopic}". In your answer, use at least 3 target vocabulary words and the key structures from this lesson.`
-        }
-      ]
-    });
-  } else if (finalTask === 'speaking') {
-    assembledLesson.pages.push({
-      id: 'p_production',
-      title: `Part ${assembledLesson.pages.length + 1}: Production & Wrap-up`,
-      blocks: [
-        { id: `b_prodh_${Date.now()}`, type: 'heading', level: 2, text: 'Speaking & Wrap-up' },
-        {
-          id: `b_wheel_${Date.now()}`,
-          type: 'spinning_wheel',
-          title: '🎡 Speaking Discussion Roulette',
-          instruction: 'Spin the wheel and answer the question!',
-          items: profile.warmupQuestions.concat([
-            `How will you use this vocabulary in your own life?`,
-            "Summarize the main idea in 3 sentences."
-          ]),
-          eliminateMode: true
-        }
-      ]
-    });
-  }
-
   return {
     success: true,
-    isFallback: stage1Result.isFallback || stage2Result.isFallback,
+    isFallback: false,
     jsonText: JSON.stringify(assembledLesson, null, 2)
   };
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Raw Error Reporting & Zero Faked Content)
+// 1-CLICK BLOCK AI ASSISTANT (Universal Task Handlers)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
