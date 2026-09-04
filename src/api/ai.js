@@ -32,7 +32,7 @@ export function getYouTubeId(url = '') {
   return null;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 6500) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -67,11 +67,9 @@ export function cleanAndParseJson(rawText) {
     if (lastBracket > firstBracket) clean = clean.substring(firstBracket, lastBracket + 1);
   }
 
-  // 1. Standard JSON Parse
   try {
     return JSON.parse(clean);
   } catch (e1) {
-    // 2. Escape literal newlines/tabs inside quotes
     try {
       let fixed = '';
       let inString = false;
@@ -90,7 +88,6 @@ export function cleanAndParseJson(rawText) {
       }
       return JSON.parse(fixed);
     } catch (e2) {
-      // 3. Regex Fallback for storyText objects with internal quotes
       const titleMatch = rawText.match(/"title":\s*"([^"]+)"/i);
       const storyMatch = rawText.match(/"(?:storyText|text|story|passage|content)":\s*"([\s\S]*?)"\s*\}/i);
       if (storyMatch && storyMatch[1].length > 40) {
@@ -112,7 +109,6 @@ export function sanitizeBlockStructure(b) {
 
   let type = String(b.type || '').toLowerCase().trim();
 
-  // Smart property-based type inference
   if (!type) {
     if (b.options || b.choices || b.questions || b.statement || b.question) type = 'multiple_choice';
     else if (b.cards || b.flashcards) type = 'flashcards';
@@ -129,7 +125,6 @@ export function sanitizeBlockStructure(b) {
     else return [];
   }
 
-  // Type normalization
   if (type === 'header' || type === 'title' || type === 'h1' || type === 'h2' || type === 'h3') type = 'heading';
   if (type === 'paragraph' || type === 'reading' || type === 'article' || type === 'story' || type === 'reading_comprehension') type = 'text';
   if (type === 'quiz' || type === 'question' || type === 'true_false' || type === 'true-false' || type === 'true/false' || type === 'mc' || type === 'multiple-choice') type = 'multiple_choice';
@@ -197,7 +192,7 @@ export function sanitizeBlockStructure(b) {
     const matches = [...(b.text || '').matchAll(/\[(.*?)\]/g)]
       .map(m => m[1].trim())
       .filter(w => !/^[-_.\s]+$/.test(w));
-    b.answers = matches.length > 0 ? matches : (Array.isArray(b.answers) ? b.answers : ['answer']);
+    b.answers = matches.length > 0 ? matches : ['answer'];
     b.instruction = b.instruction || 'Fill the missing words in the blanks:';
   }
 
@@ -319,23 +314,20 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// MULTI-PROVIDER AI INFERENCE PIPELINE (With Error Capture & Logs)
+// HIGH-SPEED MULTI-PROVIDER AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
   let errors = [];
 
-  // 1. OPENROUTER FREE MODELS (Primary Gateway)
+  // 1. OPENROUTER FREE MODELS (Primary: 2 Fastest Models, 6.5s Sub-Timeout)
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
-    const openRouterModels = [
+    const fastOpenRouterModels = [
       'openrouter/free',
-      'google/gemma-4-31b-it:free',
-      'z-ai/glm-5.2:free',
-      'nvidia/nemotron-3-ultra-550b-a55b:free',
-      'liquid/lfm-2.5-2.6b:free'
+      'google/gemma-4-31b-it:free'
     ];
 
-    for (const model of openRouterModels) {
+    for (const model of fastOpenRouterModels) {
       try {
         const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
@@ -348,13 +340,13 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           body: JSON.stringify({
             model: model,
             messages: [
-              { role: 'system', content: `${systemPrompt}\nYou must output your response in valid JSON format.` },
-              { role: 'user', content: `${userContent}\nPlease respond in JSON format.` }
+              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
+              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
             ],
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 12000);
+        }, 6500);
 
         if (res.ok) {
           const data = await res.json();
@@ -366,13 +358,13 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           errors.push(`OpenRouter (${model}) [${res.status}]: ${errText}`);
         }
       } catch (eOr) {
-        console.error(`OpenRouter Exception (${model}):`, eOr?.message || eOr);
-        errors.push(`OpenRouter (${model}) Exception: ${eOr?.message || eOr}`);
+        console.error(`OpenRouter Timeout/Exception (${model}):`, eOr?.message || eOr);
+        errors.push(`OpenRouter (${model}) [Timeout/Fail]`);
       }
     }
   }
 
-  // 2. GROQ API (Secondary Fallback)
+  // 2. GROQ API (Secondary: Fastest 70B, 6.5s Sub-Timeout)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
@@ -392,7 +384,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 12000);
+        }, 6500);
 
         if (res.ok) {
           const data = await res.json();
@@ -400,49 +392,17 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           if (parsed) return { data: parsed, isFallback: false };
         } else {
           const errText = await res.text();
-          console.error(`Groq API Error (${model}) [${res.status}]:`, errText);
+          console.error(`Groq Error (${model}) [${res.status}]:`, errText);
           errors.push(`Groq (${model}) [${res.status}]: ${errText}`);
         }
       } catch (eGroq) {
-        console.error(`Groq Exception (${model}):`, eGroq?.message || eGroq);
-        errors.push(`Groq (${model}) Exception: ${eGroq?.message || eGroq}`);
+        console.error(`Groq Timeout/Exception (${model}):`, eGroq?.message || eGroq);
+        errors.push(`Groq (${model}) [Timeout/Fail]`);
       }
     }
   }
 
-  // 3. GEMINI API (Tertiary Fallback)
-  if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
-    const apiKey = env.GEMINI_API_KEY.trim();
-    for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
-      try {
-        const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${apiKey}`;
-        const gRes = await fetchWithTimeout(gUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: `${systemPrompt}\nOutput valid JSON only.` }] },
-            contents: [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-          })
-        }, 12000);
-
-        if (gRes.ok) {
-          const gData = await gRes.json();
-          const parsed = cleanAndParseJson(gData?.candidates?.[0]?.content?.parts?.[0]?.text);
-          if (parsed) return { data: parsed, isFallback: false };
-        } else {
-          const gErrText = await gRes.text();
-          console.error(`Gemini API Error (${gModel}) [${gRes.status}]:`, gErrText);
-          errors.push(`Gemini (${gModel}) [${gRes.status}]: ${gErrText}`);
-        }
-      } catch (eG) {
-        console.error(`Gemini Exception (${gModel}):`, eG?.message || eG);
-        errors.push(`Gemini (${gModel}) Exception: ${eG?.message || eG}`);
-      }
-    }
-  }
-
-  // 4. Cloudflare Workers AI Native Binding
+  // 3. CLOUDFLARE WORKERS AI NATIVE BINDING (Tertiary: Flash 8B Model)
   if (env.AI) {
     const cfModels = [
       '@cf/deepseek-ai/deepseek-v4-flash-0731',
@@ -471,12 +431,12 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
         }
       } catch (eCf) {
         console.error(`Workers AI Exception (${cfModel}):`, eCf?.message || eCf);
-        errors.push(`Workers AI (${cfModel}) Exception: ${eCf?.message || eCf}`);
+        errors.push(`Workers AI (${cfModel}) [Quota/Fail]`);
       }
     }
   }
 
-  return { data: null, error: errors.join('; ') || 'All providers failed.', isFallback: true };
+  return { data: null, error: errors.join('; ') || 'All AI providers failed or timed out.', isFallback: true };
 }
 
 export async function fetchYouTubeTranscriptNative(videoUrl) {
@@ -579,7 +539,7 @@ Return ONLY valid JSON.
 }
 
 // --------------------------------------------------------------------------
-// 3-STAGE CHAINED AI LESSON GENERATION PIPELINE
+// 3-STAGE CHAINED AI LESSON GENERATION PIPELINE (Zero Fake Fallbacks)
 // --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
@@ -624,7 +584,7 @@ Every vocabulary item MUST have a UNIQUE, natural example sentence (10-14 words 
 
   const stage1Result = await runAiPipeline(env, stage1SystemPrompt, userContextPrompt, 1400);
   if (!stage1Result.data) {
-    return { error: `Stage 1 (Lexical Profiler) failed: ${stage1Result.error || 'All models failed.'}` };
+    return { error: `Stage 1 (Lexical Profiler) failed: ${stage1Result.error}` };
   }
   const profile = stage1Result.data;
 
@@ -647,7 +607,7 @@ CRITICAL JSON FORMAT RULE: Inside the "storyText" string, NEVER use raw double q
 
   const stage2Result = await runAiPipeline(env, stage2SystemPrompt, `Topic: ${resolvedTopic}\nContext: ${audienceContext}\nNotes: ${text.substring(0, 400)}`, 1600);
   if (!stage2Result.data) {
-    return { error: `Stage 2 (Story Synthesizer) failed: ${stage2Result.error || 'All models failed.'}` };
+    return { error: `Stage 2 (Story Synthesizer) failed: ${stage2Result.error}` };
   }
 
   let storyText = stage2Result.data?.storyText 
@@ -693,7 +653,7 @@ CRITICAL TASK SCHEMAS:
 
   const stage3Result = await runAiPipeline(env, stage3SystemPrompt, `Generate exercises for: ${JSON.stringify(tasksToGenerate)}`, 2400);
   if (!stage3Result.data) {
-    return { error: `Stage 3 (Task Synthesizer) failed: ${stage3Result.error || 'All models failed.'}` };
+    return { error: `Stage 3 (Task Synthesizer) failed: ${stage3Result.error}` };
   }
 
   let synthesizedBlocks = stage3Result.data?.blocks || [];
@@ -714,7 +674,7 @@ CRITICAL TASK SCHEMAS:
   });
 
   if (cleanTaskBlocks.length === 0) {
-    return { error: `Stage 3 failed: No valid exercise blocks could be parsed from response.` };
+    return { error: `Stage 3 failed: No valid exercise blocks could be parsed from AI response.` };
   }
 
   // STAGE 4: Assemble Complete Lesson Structure
@@ -780,7 +740,6 @@ CRITICAL TASK SCHEMAS:
     });
   }
 
-  // ACCURATE WRAP-UP TASK SELECTION
   if (finalTask === 'writing') {
     assembledLesson.pages.push({
       id: 'p_production',
@@ -823,7 +782,7 @@ CRITICAL TASK SCHEMAS:
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Raw Error Reporting)
+// 1-CLICK BLOCK AI ASSISTANT (Raw Error Reporting & Zero Faked Content)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -861,34 +820,38 @@ export async function transformBlockWithAI(env, payload) {
 
   let tasksInstructions = '';
 
-  // 1. GRAMMAR MULTIPLE CHOICE DRILL
-  if (actions.includes('grammar_quiz')) {
-    tasksInstructions += `
-- GENERATE 3 distinct "multiple_choice" blocks testing the grammar structure from context.
-  Schema: { "type": "multiple_choice", "question": "Sentence gap or grammar question?", "options": ["Correct answer", "Common error 1", "Common error 2"], "correct": 0, "explanation": "Rule breakdown." }`;
-  }
-
-  // 2. VIDEO / AUDIO / TEXT COMPREHENSION QUESTIONS
+  // 1. COMPREHENSION MULTIPLE CHOICE
   if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key arguments and concepts in the material.
-  Each question MUST be grounded strictly in the facts and statements of the provided content.
   Schema: { "type": "multiple_choice", "question": "Question testing a specific teaching from the context?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
   }
 
-  // 3. TRUE / FALSE QUESTIONS
+  // 2. TRUE / FALSE QUESTIONS
   if (actions.includes('true_false')) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the content claims.
   Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the lecture." }`;
   }
 
-  // 4. SENTENCE TRANSFORMATIONS / GAP FILL
-  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
+  // 3. TARGET VOCABULARY FLASHCARDS
+  if (actions.includes('flashcards')) {
+    const backLang = flashcardType === 'russian' 
+      ? 'The "back" key MUST be the accurate Russian translation of the term.' 
+      : 'The "back" key MUST be a clear, concise English definition.';
+
     tasksInstructions += `
-- GENERATE 1 "gap_fill" block with 4 sentences based on the context.
-  Put target words inside brackets like [word]. Never use [---].
-  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. The church aims to restore the [noetic] faculty.\\n2. Hesychastic prayer requires quiet [illumination].", "answers": ["noetic", "illumination"] }`;
+- GENERATE 1 "flashcards" block with 6 high-yield terms found in the material.
+  CRITICAL: ${backLang}
+  CRITICAL: Each card MUST have an authentic 10-14 word example sentence illustrating its meaning in context.
+  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "term", "back": "translation or definition", "example": "Context sentence." } ] }`;
+  }
+
+  // 4. GRAMMAR MULTIPLE CHOICE DRILL
+  if (actions.includes('grammar_quiz')) {
+    tasksInstructions += `
+- GENERATE 3 distinct "multiple_choice" blocks testing the grammar structure from context.
+  Schema: { "type": "multiple_choice", "question": "Sentence gap or grammar question?", "options": ["Correct answer", "Common error 1", "Common error 2"], "correct": 0, "explanation": "Rule breakdown." }`;
   }
 
   // 5. PAIR MATCHING
@@ -920,46 +883,41 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "matching", "instruction": "Match the terms with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
   }
 
-  // 6. FLASHCARDS
-  if (actions.includes('flashcards')) {
-    const backLang = flashcardType === 'russian' 
-      ? 'The "back" key MUST be the accurate Russian translation of the term.' 
-      : 'The "back" key MUST be a clear, concise English definition.';
-
+  // 6. GAP FILL & TRANSFORMATIONS
+  if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
     tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 high-yield terms found in the material.
-  CRITICAL: ${backLang}
-  CRITICAL: Each card MUST have an authentic 10-14 word example sentence illustrating its meaning in context.
-  Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "term", "back": "translation or definition", "example": "Context sentence." } ] }`;
+- GENERATE 1 "gap_fill" block with 4 sentences based on the context.
+  Put target words inside brackets like [word]. Never use [---].
+  Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. The church aims to restore the [noetic] faculty.\\n2. Hesychastic prayer requires quiet [illumination].", "answers": ["noetic", "illumination"] }`;
   }
 
-  // 7. INLINE SELECT
-  if (actions.includes('inline_select')) {
-    tasksInstructions += `
-- GENERATE 1 "inline_select" block with 4 sentences based on the context.
-  Inside each sentence, put dropdown choices in brackets separated by | with asterisk (*) on the correct option.
-  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. Orthodoxy is interpreted as a therapeutic [science* | speculation].\\n2. The noetic faculty allows true [knowledge* | confusion] of God." }`;
-  }
-
-  // 8. GAP FILL BANK
+  // 7. GAP FILL BANK
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 distractors.
   Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "Orthodoxy views theology as spiritual [therapy] designed to heal the [soul] through [prayer].", "distractors": ["philosophy", "scholasticism", "distraction"] }`;
   }
 
-  // 9. SENTENCE REORDER
+  // 8. SENTENCE REORDER
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
 - GENERATE 1 "sentence_reorder" block with 4 to 5 distinct sentences based on context (each 8 to 14 words).
   Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Orthodox psychotherapy focuses on restoring the noetic faculty of man.", "True theology requires constant engagement with God through prayer."] }`;
   }
 
-  // 10. DISCUSSION / OPEN INPUT
+  // 9. DISCUSSION / OPEN INPUT
   if (actions.includes('discussion')) {
     tasksInstructions += `
 - GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts based on the context.
   Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. What distinguishes theology as therapy from academic philosophy?\\n2. How does ascetic practice impact the soul and the body?" }`;
+  }
+
+  // 10. INLINE SELECT
+  if (actions.includes('inline_select')) {
+    tasksInstructions += `
+- GENERATE 1 "inline_select" block with 4 sentences based on the context.
+  Inside each sentence, put dropdown choices in brackets separated by | with asterisk (*) on the correct option.
+  Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. Orthodoxy is interpreted as a therapeutic [science* | speculation].\\n2. The noetic faculty allows true [knowledge* | confusion] of God." }`;
   }
 
   // 11. SPEAKING WHEEL
