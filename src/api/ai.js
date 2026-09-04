@@ -67,11 +67,9 @@ export function cleanAndParseJson(rawText) {
     if (lastBracket > firstBracket) clean = clean.substring(firstBracket, lastBracket + 1);
   }
 
-  // 1. Standard JSON Parse
   try {
     return JSON.parse(clean);
   } catch (e1) {
-    // 2. Escape literal newlines/tabs inside quotes
     try {
       let fixed = '';
       let inString = false;
@@ -90,14 +88,12 @@ export function cleanAndParseJson(rawText) {
       }
       return JSON.parse(fixed);
     } catch (e2) {
-      // 3. Regex Fallback for text/script fields
       const titleMatch = rawText.match(/"title":\s*"([^"]+)"/i);
-      const storyMatch = rawText.match(/"(?:storyText|script|text|story|passage|content)":\s*"([\s\S]*?)"\s*\}/i);
-      if (storyMatch && storyMatch[1].length > 30) {
+      const storyMatch = rawText.match(/"(?:storyText|text|story|passage|content)":\s*"([\s\S]*?)"\s*\}/i);
+      if (storyMatch && storyMatch[1].length > 40) {
         return {
-          title: titleMatch ? titleMatch[1] : 'Audio Script',
-          storyText: storyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim(),
-          script: storyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim()
+          title: titleMatch ? titleMatch[1] : 'Reading Story',
+          storyText: storyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim()
         };
       }
       return null;
@@ -318,19 +314,18 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// 4-TIER MULTI-PROVIDER AI INFERENCE PIPELINE
+// 4-TIER MULTI-PROVIDER AI INFERENCE PIPELINE (Cloudflare Flash Models First)
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
   let errors = [];
 
-  // 1. CLOUDFLARE WORKERS AI NATIVE (Primary: Sub-Second, Low-Neuron)
+  // 1. CLOUDFLARE WORKERS AI NATIVE (Primary: Sub-Second, Low-Neuron Flash Models)
   if (env.AI) {
     const cfModels = [
-      '@cf/deepseek-ai/deepseek-v4-flash-0731',
-      'deepseek-v4-flash-0731',
-      '@cf/zai/glm-5.3-flash',
+      '@cf/zai-org/glm-4.7-flash',
+      '@cf/openai/gpt-oss-20b',
       '@cf/qwen/qwen3.8-27b',
-      '@cf/meta/llama-3.1-8b-instruct-fast'
+      '@cf/nvidia/nemotron-3-120b-a12b'
     ];
 
     for (const cfModel of cfModels) {
@@ -360,7 +355,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. OPENROUTER FREE GATEWAY (Secondary: When CF Neurons Exceeded)
+  // 2. OPENROUTER FREE GATEWAY (Secondary)
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
     const openRouterModels = [
@@ -404,7 +399,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 3. GROQ API (Tertiary Fallback)
+  // 3. GROQ API (Tertiary)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
@@ -440,7 +435,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 4. GEMINI DIRECT (Quaternary Fallback)
+  // 4. GEMINI DIRECT (Quaternary)
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -474,36 +469,38 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 }
 
 // --------------------------------------------------------------------------
-// FREE CLOUDFLARE-HOSTED TEXT-TO-SPEECH (MeloTTS)
+// REALISTIC CLOUDFLARE TEXT-TO-SPEECH (Deepgram Aura-2)
 // --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   if (!env.AI || !text.trim()) return { error: 'Text and AI binding are required.' };
   
-  try {
-    const res = await env.AI.run('@cf/myshell/melotts', {
-      prompt: text.trim().slice(0, 1000),
-      lang: lang
-    });
+  const ttsModels = ['@cf/deepgram/aura-2-en', '@cf/deepgram/aura-1-en', '@cf/myshell/melotts'];
 
-    if (res instanceof Response) {
-      const buffer = await res.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
+  for (const model of ttsModels) {
+    try {
+      const res = await env.AI.run(model, {
+        prompt: text.trim().slice(0, 1000),
+        lang: lang
+      });
+
+      if (res instanceof Response) {
+        const buffer = await res.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64Audio = btoa(binary);
+        return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
       }
-      const base64Audio = btoa(binary);
-      return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
-    }
-
-    return { success: false, error: 'Unexpected TTS response format' };
-  } catch (err) {
-    return { success: false, error: `TTS Generation failed: ${err.message}` };
+    } catch (e) {}
   }
+
+  return { success: false, error: 'All TTS models failed or unavailable on account.' };
 }
 
 // --------------------------------------------------------------------------
-// 2-IN-1 PODCAST STUDIO (Writes ~130w Spoken Script + Synthesizes MeloTTS)
+// 2-IN-1 PODCAST STUDIO (Writes Spoken Script + Deepgram Aura-2 Voiceover)
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', level = 'B1' } = payload;
@@ -522,7 +519,7 @@ CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or so
 [OUTPUT FORMAT]
 {
   "title": "${resolvedTopic} (Audio Episode)",
-  "script": "Natural spoken 120-140 word script here..."
+  "script": "The spoken podcast text here..."
 }`;
 
   const userPrompt = sourceText.trim()
@@ -542,7 +539,7 @@ CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or so
 
   const episodeTitle = scriptData.title || `${resolvedTopic} (Podcast)`;
 
-  // Synthesize voiceover audio via Cloudflare MeloTTS
+  // Synthesize voiceover audio via Deepgram Aura-2 / MeloTTS
   let audioDataUrl = '';
   try {
     const ttsRes = await generateAudioWithAI(env, { text: scriptText, lang: 'en' });
@@ -749,7 +746,7 @@ Return a SINGLE valid JSON object.
 
   const grammar = data.grammarFocus || {
     title: 'Target Grammar Structure',
-    formula: 'Subject + Verb',
+    formula: 'Subject + Verb Structure',
     explanation: 'Grammar rule explanation.',
     ccqs: ['Does this describe a real or hypothetical event?']
   };
@@ -999,7 +996,7 @@ export async function transformBlockWithAI(env, payload) {
   if (actions.includes('categorization')) {
     tasksInstructions += `
 - GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 to 8 items to sort based on context.
-  Schema: { "type": "categorization", "instruction": "Sort the words into the correct boxes:", "categories": ["Therapeutic Practice", "Metaphysical Philosophy"], "items": [ { "id": "it-1", "text": "Hesychasm", "categoryIndex": 0 }, { "id": "it-2", "text": "Scholasticism", "categoryIndex": 1 } ] }`;
+  Schema: { "type": "categorization", "instruction": "Sort the items into the correct boxes:", "categories": ["Therapeutic Practice", "Metaphysical Philosophy"], "items": [ { "id": "it-1", "text": "Hesychasm", "categoryIndex": 0 }, { "id": "it-2", "text": "Scholasticism", "categoryIndex": 1 } ] }`;
   }
 
   // 13. GRAMMAR RULE CARD
