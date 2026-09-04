@@ -153,7 +153,7 @@ export function sanitizeBlockStructure(b) {
 
   b.type = type;
 
-  // 1. MULTIPLE CHOICE & TRUE/FALSE UNROLLING
+  // 1. MULTIPLE CHOICE UNROLLING
   if (b.type === 'multiple_choice') {
     if (Array.isArray(b.questions) && b.questions.length > 0) {
       return b.questions.map((q, qIdx) => {
@@ -325,12 +325,13 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// HIGH-SPEED MULTI-PROVIDER AI INFERENCE PIPELINE
+// HIGH-SPEED, ULTRA-LOW-NEURON AI INFERENCE PIPELINE
+// (Monsters like Nemotron-120B and Qwen-27B completely removed!)
 // --------------------------------------------------------------------------
-export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2000) {
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 1800) {
   let errors = [];
 
-  // 1. GROQ API FIRST (Fastest inference: 250-300 tps, completes in ~1.5s)
+  // 1. GROQ API (If key is available: 300 tps, sub-second latency, 0 CF Neurons)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
@@ -350,29 +351,25 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 5000);
+        }, 4500);
 
         if (res.ok) {
           const data = await res.json();
           const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
           if (parsed) return { data: parsed, isFallback: false };
-        } else {
-          const errText = await res.text();
-          errors.push(`Groq (${model}) [${res.status}]: ${errText.slice(0, 100)}`);
         }
       } catch (eGroq) {
-        errors.push(`Groq (${model}) [Timeout/Fail]`);
+        errors.push(`Groq (${model})`);
       }
     }
   }
 
-  // 2. CLOUDFLARE WORKERS AI (Using ONLY ultra-fast models to protect neuron limits)
+  // 2. CLOUDFLARE WORKERS AI (Using ONLY ~40-100 neuron lightweight/fast models)
   if (env.AI) {
     const cfModels = [
       '@cf/meta/llama-3.1-8b-instruct-fast',
       '@cf/zai-org/glm-4.7-flash',
-      '@cf/meta/llama-3.1-8b-instruct',
-      '@cf/qwen/qwen3.8-27b'
+      '@cf/meta/llama-3.1-8b-instruct'
     ];
 
     for (const cfModel of cfModels) {
@@ -402,7 +399,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 3. OPENROUTER FREE GATEWAY
+  // 3. OPENROUTER FREE / STANDARD GATEWAY
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
     const openRouterModels = [
@@ -430,23 +427,20 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 5500);
+        }, 5000);
 
         if (res.ok) {
           const data = await res.json();
           const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
           if (parsed) return { data: parsed, isFallback: false };
-        } else {
-          const errText = await res.text();
-          errors.push(`OpenRouter (${model}) [${res.status}]: ${errText.slice(0, 100)}`);
         }
       } catch (eOr) {
-        errors.push(`OpenRouter (${model}) [Timeout]`);
+        errors.push(`OpenRouter (${model})`);
       }
     }
   }
 
-  // 4. GEMINI DIRECT
+  // 4. GEMINI DIRECT FALLBACK
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -460,18 +454,15 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             contents: [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }],
             generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
           })
-        }, 6000);
+        }, 5000);
 
         if (gRes.ok) {
           const gData = await gRes.json();
           const parsed = cleanAndParseJson(gData?.candidates?.[0]?.content?.parts?.[0]?.text);
           if (parsed) return { data: parsed, isFallback: false };
-        } else {
-          const gErrText = await gRes.text();
-          errors.push(`Gemini (${gModel}) [${gRes.status}]: ${gErrText.slice(0, 100)}`);
         }
       } catch (eG) {
-        errors.push(`Gemini (${gModel}) Exception: ${eG?.message || eG}`);
+        errors.push(`Gemini (${gModel})`);
       }
     }
   }
@@ -480,63 +471,60 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 }
 
 // --------------------------------------------------------------------------
-// MULTI-TIER TEXT-TO-SPEECH (MeloTTS + Deepgram + Seamless Google TTS Fallback)
+// TEXT-TO-SPEECH (Uses OpenRouter API First = 0 Cloudflare Neurons Burned!)
 // --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
-  if (!text.trim()) return { error: 'Text is required.' };
+  if (!text || !text.trim()) return { error: 'Text is required.' };
   const cleanText = text.trim().slice(0, 1000);
 
-  // 1. CLOUDFLARE WORKERS AI NATIVE TTS
+  // 1. PRIMARY: OPENROUTER AUDIO SPEECH API (0 Cloudflare Neurons)
+  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
+    try {
+      const openrouterKey = env.OPENROUTER_API_KEY.trim();
+      const orRes = await fetchWithTimeout('https://openrouter.ai/api/v1/audio/speech', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openrouterKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
+          'X-Title': 'Lesson Engine'
+        },
+        body: JSON.stringify({
+          model: 'openai/tts-1',
+          input: cleanText,
+          voice: 'alloy',
+          response_format: 'mp3'
+        })
+      }, 7000);
+
+      if (orRes.ok) {
+        const audioBuffer = await orRes.arrayBuffer();
+        if (audioBuffer.byteLength > 100) {
+          const base64Audio = bufferToBase64(audioBuffer);
+          return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
+        }
+      }
+    } catch (eOrTts) {}
+  }
+
+  // 2. SECONDARY: CLOUDFLARE MELOTTS (Burns only ~14 neurons, NO expensive Deepgram)
   if (env.AI) {
-    // 1A. MeloTTS (Returns { audio: "base64..." })
     try {
       const meloRes = await env.AI.run('@cf/myshell-ai/melotts', {
-        prompt: cleanText.slice(0, 700),
+        prompt: cleanText.slice(0, 600),
         lang: lang || 'en'
       });
 
       if (meloRes && typeof meloRes.audio === 'string' && meloRes.audio.length > 50) {
-        const audioUrl = meloRes.audio.startsWith('data:') 
-          ? meloRes.audio 
+        const audioUrl = meloRes.audio.startsWith('data:')
+          ? meloRes.audio
           : `data:audio/mp3;base64,${meloRes.audio}`;
         return { success: true, audioUrl };
       }
     } catch (eMelo) {}
-
-    // 1B. Deepgram Aura models
-    const deepgramModels = [
-      '@cf/deepgram/aura-1',
-      '@cf/deepgram/aura-2-en',
-      '@cf/deepgram/aura-asteria-en'
-    ];
-
-    for (const model of deepgramModels) {
-      try {
-        const res = await env.AI.run(model, { text: cleanText }, { returnRawResponse: true });
-        if (res) {
-          let buffer = null;
-          if (res instanceof Response) {
-            buffer = await res.arrayBuffer();
-          } else if (res instanceof ReadableStream) {
-            const tempRes = new Response(res);
-            buffer = await tempRes.arrayBuffer();
-          } else if (res.audio) {
-            return { success: true, audioUrl: `data:audio/mp3;base64,${res.audio}` };
-          } else if (res instanceof ArrayBuffer) {
-            buffer = res;
-          }
-
-          if (buffer && buffer.byteLength > 100) {
-            const base64Audio = bufferToBase64(buffer);
-            return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
-          }
-        }
-      } catch (eDg) {}
-    }
   }
 
-  // 2. ULTRA-RELIABLE TTS FALLBACK (Google TTS Audio Synthesizer)
-  // Guarantees audio is never broken even without Cloudflare credits or on 3043 errors
+  // 3. TERTIARY ZERO-NEURON BACKUP (Direct Speech Relay)
   try {
     const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
     const chunks = [];
@@ -600,7 +588,7 @@ Write a lively, engaging 1-minute spoken podcast episode (~110-130 words) for la
 Tone: Conversational, engaging, natural, and clear for listening comprehension.
 
 [CRITICAL CONTENT GUIDELINES]
-- Talk about the real-world story, ideas, and characters.
+- Talk about the real-world story, ideas, themes, and characters.
 - FORBIDDEN: DO NOT lecture about grammar rules, cleft sentences, inversions, or grammar mechanics.
 - CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or sound cues. Output ONLY the spoken English monologue.
 
@@ -627,7 +615,7 @@ Tone: Conversational, engaging, natural, and clear for listening comprehension.
 
   const episodeTitle = scriptData.title || `${resolvedTopic} (Audio Episode)`;
 
-  // Synthesize voiceover audio
+  // Synthesize voiceover audio (0 Cloudflare neurons burned via OpenRouter)
   let audioDataUrl = '';
   try {
     const ttsRes = await generateAudioWithAI(env, { text: scriptText, lang: 'en' });
