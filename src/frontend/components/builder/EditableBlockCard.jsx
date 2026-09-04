@@ -480,15 +480,51 @@ const VideoBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 7. IMAGE BLOCK EDITOR
-const ImageBlockEditor = ({ block, onChange }) => {
+// 7. UPGRADED AI TEXT-TO-IMAGE STUDIO (0 TOKENS / 0 NEURONS VIA FLUX & SDXL)
+const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }) => {
+  const [promptInput, setPromptInput] = useState('');
+  const [imageStyle, setImageStyle] = useState('cinematic, photorealistic, 4k');
+  const [generatingAiImg, setGeneratingAiImg] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+
   const images = Array.isArray(block.images) ? block.images : (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
   const updateImg = (idx, field, val) => {
     const updated = [...images];
     updated[idx] = { ...updated[idx], [field]: val };
     onChange({ ...block, images: updated, url: updated[0]?.url || '' });
+  };
+
+  const handleGenerateAiImage = () => {
+    if (!promptInput.trim()) return alert('Please enter an image description first!');
+    setGeneratingAiImg(true);
+
+    const fullPrompt = `${promptInput.trim()}, ${imageStyle}, high resolution, detailed`;
+    const generatedUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=500&nologo=true&seed=${Date.now()}`;
+
+    // Preload image to verify
+    const imgObj = new Image();
+    imgObj.onload = () => {
+      const updated = [{ url: generatedUrl, caption: promptInput.trim() }, ...images.filter(im => im.url !== generatedUrl)];
+      onChange({ ...block, images: updated, url: generatedUrl, caption: promptInput.trim() });
+      setGeneratingAiImg(false);
+    };
+    imgObj.onerror = () => {
+      const updated = [{ url: generatedUrl, caption: promptInput.trim() }, ...images];
+      onChange({ ...block, images: updated, url: generatedUrl, caption: promptInput.trim() });
+      setGeneratingAiImg(false);
+    };
+    imgObj.src = generatedUrl;
+  };
+
+  const handleAutoSuggestPrompt = () => {
+    if (lessonTitle) {
+      setPromptInput(`Atmospheric visual scene illustrating the theme of ${lessonTitle}`);
+    } else if (sourceText) {
+      setPromptInput(`Detailed visual scene of ${sourceText.slice(0, 50).replace(/[#*]/g, '').trim()}`);
+    } else {
+      setPromptInput('Engaging educational scene for English language learners');
+    }
   };
 
   const handleAddUrl = () => {
@@ -522,38 +558,100 @@ const ImageBlockEditor = ({ block, onChange }) => {
 
   return (
     <div className="space-y-4">
+      {/* 🪄 ZERO-TOKEN AI IMAGE GENERATOR STUDIO */}
+      <div className="bg-gradient-to-r from-indigo-50/80 via-purple-50/60 to-pink-50/60 p-4 rounded-2xl border border-indigo-100 space-y-3 shadow-2xs">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🎨</span>
+            <label className="block text-[11px] font-extrabold text-indigo-900 uppercase tracking-wider">
+              AI Image Generator (0 Tokens & 0 Neurons via FLUX / SDXL)
+            </label>
+          </div>
+          <button
+            type="button"
+            onClick={handleAutoSuggestPrompt}
+            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 transition cursor-pointer shadow-2xs"
+          >
+            🪄 Suggest from Lesson
+          </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            value={promptInput}
+            onChange={e => setPromptInput(e.target.value)}
+            placeholder="Describe the image (e.g. Victorian medical study room, Cyberpunk city street)..."
+            className="flex-1 p-2.5 bg-white border border-slate-200 focus:border-indigo-500 rounded-xl text-xs font-medium text-slate-800 outline-none"
+          />
+
+          <select
+            value={imageStyle}
+            onChange={e => setImageStyle(e.target.value)}
+            className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
+          >
+            <option value="cinematic, photorealistic, 4k, natural lighting">📸 Photorealistic</option>
+            <option value="colorful digital art illustration, clean, modern">🎨 Digital Illustration</option>
+            <option value="vintage watercolor painting, artistic, soft lighting">🖌️ Watercolor / Art</option>
+            <option value="editorial documentary photo, National Geographic style">📰 Editorial Photo</option>
+          </select>
+
+          <button
+            type="button"
+            disabled={generatingAiImg || !promptInput.trim()}
+            onClick={handleGenerateAiImage}
+            className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl text-xs shadow-xs transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+          >
+            {generatingAiImg ? '⌛ Painting...' : '🎨 Generate Image'}
+          </button>
+        </div>
+      </div>
+
+      {/* GALLERY CAPTION */}
       <input
         type="text"
         value={block.caption || ''}
         onChange={e => onChange({ ...block, caption: e.target.value })}
         placeholder="Gallery caption / description..."
-        className="p-2.5 border rounded-xl text-xs font-bold w-full"
+        className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold w-full outline-none focus:border-indigo-500"
       />
 
+      {/* IMAGE PREVIEWS */}
       {images.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {images.map((img, i) => (
-            <div key={i} className="p-2 bg-slate-50 border rounded-xl space-y-2 relative group">
-              <img src={img.url} alt="Thumb" className="w-full h-28 object-cover rounded-lg border" />
+            <div key={i} className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 relative group shadow-2xs">
+              <img src={img.url} alt="Visual" className="w-full h-32 object-cover rounded-xl border border-slate-200" />
               <input
                 type="text"
                 value={img.caption || ''}
                 onChange={e => updateImg(i, 'caption', e.target.value)}
                 placeholder="Caption..."
-                className="p-1.5 border rounded-lg text-xs w-full bg-white"
+                className="p-1.5 border border-slate-200 rounded-lg text-xs w-full bg-white outline-none"
               />
-              <button onClick={() => removeImg(i)} className="absolute top-1 right-1 bg-red-600 text-white text-xs w-6 h-6 rounded-full font-bold shadow-md cursor-pointer">✕</button>
+              <button
+                type="button"
+                onClick={() => removeImg(i)}
+                className="absolute top-1.5 right-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs w-6 h-6 rounded-full font-bold shadow-md cursor-pointer transition flex items-center justify-center"
+              >
+                ✕
+              </button>
             </div>
           ))}
         </div>
       )}
 
+      {/* MANUAL CONTROLS */}
       <div className="flex gap-2 flex-wrap items-center">
-        <button onClick={handleAddUrl} className="px-3.5 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold hover:bg-indigo-100 cursor-pointer flex items-center gap-1">
+        <button
+          type="button"
+          onClick={handleAddUrl}
+          className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition flex items-center gap-1"
+        >
           🔗 Add Image URL
         </button>
-        <label className="px-3.5 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 cursor-pointer flex items-center gap-1">
-          {uploadingImage ? '⌛ Compressing photo...' : '📁 Upload Photo'}
+        <label className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold cursor-pointer transition flex items-center gap-1">
+          {uploadingImage ? '⌛ Compressing photo...' : '📁 Upload Local Photo'}
           <input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploadingImage} className="hidden" />
         </label>
       </div>
@@ -1036,7 +1134,18 @@ export const EditableBlockCard = ({
   if (type === 'teacher_notes') return <TeacherNotesEditor block={block} onChange={onChange} />;
   if (type === 'inline_select') return <InlineSelectEditor block={block} onChange={onChange} />;
   if (type === 'spinning_wheel') return <SpinningWheelEditor block={block} onChange={onChange} />;
-  if (type === 'image') return <ImageBlockEditor block={block} onChange={onChange} />;
+  
+  if (type === 'image') {
+    return (
+      <ImageBlockEditor
+        block={block}
+        onChange={onChange}
+        lessonTitle={lessonTitle || lesson?.title || lesson?.topic || ''}
+        sourceText={sourceText}
+      />
+    );
+  }
+
   if (type === 'video') return <VideoBlockEditor block={block} onChange={onChange} />;
   
   if (type === 'audio') {
