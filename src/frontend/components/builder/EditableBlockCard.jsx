@@ -483,7 +483,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
 // 7. UPGRADED AI TEXT-TO-IMAGE STUDIO (0 TOKENS / 0 NEURONS VIA FLUX & SDXL)
 const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }) => {
   const [promptInput, setPromptInput] = useState('');
-  const [imageStyle, setImageStyle] = useState('cinematic, photorealistic, 4k');
+  const [imageStyle, setImageStyle] = useState('cinematic, photorealistic, 4k, natural lighting');
   const [generatingAiImg, setGeneratingAiImg] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
@@ -502,7 +502,7 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
     const fullPrompt = `${promptInput.trim()}, ${imageStyle}, high resolution, detailed`;
     const generatedUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=500&nologo=true&seed=${Date.now()}`;
 
-    // Preload image to verify
+    // Preload image to verify before setting
     const imgObj = new Image();
     imgObj.onload = () => {
       const updated = [{ url: generatedUrl, caption: promptInput.trim() }, ...images.filter(im => im.url !== generatedUrl)];
@@ -581,7 +581,7 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
             type="text"
             value={promptInput}
             onChange={e => setPromptInput(e.target.value)}
-            placeholder="Describe the image (e.g. Victorian medical study room, Cyberpunk city street)..."
+            placeholder="Describe the image (e.g. Band members on stage in Trench, Victorian study)..."
             className="flex-1 p-2.5 bg-white border border-slate-200 focus:border-indigo-500 rounded-xl text-xs font-medium text-slate-800 outline-none"
           />
 
