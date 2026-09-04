@@ -23,7 +23,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [notepadText, setNotepadText] = useState('');
   const [showNotepad, setShowNotepad] = useState(false);
   const [xpAward, setXpAward] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Collapsed on mobile by default
 
   // Network Sync Debounce Ref
   const debounceTimersRef = useRef({});
@@ -157,7 +157,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return () => clearInterval(interval);
   }, [roomId, isTeacher, isHomeworkMode]);
 
-  // Broadcast Slide Position to All Students (JWT Authorized)
+  // Broadcast Slide Position to All Students
   const handleBringEveryoneHere = async (targetIdx = safeSlideIdx) => {
     if (!isTeacher || !roomId) return;
     setBroadcastSlideIdx(targetIdx);
@@ -275,8 +275,129 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }
   };
 
+  // Reusable Sidebar Content (Used in both Desktop & Mobile Drawer)
+  const renderSidebarContent = () => (
+    <>
+      <div className="space-y-5">
+        <button
+          type="button"
+          onClick={() => handleBringEveryoneHere(safeSlideIdx)}
+          className={`w-full py-3 px-4 rounded-2xl font-extrabold text-xs transition flex items-center justify-center gap-2 shadow-xs cursor-pointer ${
+            isSyncNeeded 
+              ? 'bg-amber-500 hover:bg-amber-600 text-white animate-pulse' 
+              : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+          }`}
+          title="Синхронизировать всех учеников на текущий слайд"
+        >
+          <span>🚀</span>
+          <span>{isSyncNeeded ? `Всех на Слайд #${safeSlideIdx + 1}` : 'Все на этом слайде ✓'}</span>
+        </button>
+
+        <div className="space-y-2">
+          <div className="flex justify-between items-center text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+            <span>Слайды ({totalSlides})</span>
+            <span>Слайд {safeSlideIdx + 1}</span>
+          </div>
+
+          <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+            {slides.map((s, idx) => {
+              const isTeacherViewing = safeSlideIdx === idx;
+              const isBroadcast = broadcastSlideIdx === idx;
+
+              let btnStyle = "w-full text-left p-2.5 rounded-xl text-xs font-bold transition flex items-center justify-between cursor-pointer ";
+              if (isTeacherViewing) {
+                btnStyle += "bg-indigo-50 border border-indigo-200 text-indigo-900 shadow-2xs";
+              } else {
+                btnStyle += "bg-slate-50 border border-transparent text-slate-600 hover:bg-slate-100";
+              }
+
+              return (
+                <button
+                  key={s.id || idx}
+                  type="button"
+                  onClick={() => {
+                    setCurrentSlideIdx(idx);
+                    setSidebarOpen(false);
+                  }}
+                  className={btnStyle}
+                >
+                  <span className="truncate max-w-[170px]">#{idx + 1} {s.title}</span>
+                  {isBroadcast && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" title="Ученики видят этот слайд"></span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-2.5 pt-2 border-t border-slate-100">
+          <div className="flex justify-between items-center text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+            <span>Ученики в классе ({onlineCount})</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCopyStudentLink}
+            className="w-full py-2 px-3 bg-slate-50 hover:bg-indigo-50 border border-slate-200 text-indigo-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            🔗 Скопировать ссылку
+          </button>
+
+          <div className="max-h-28 overflow-y-auto space-y-1">
+            {Object.keys(participants).length === 0 ? (
+              <p className="text-[11px] text-slate-400 italic">Ожидание подключения...</p>
+            ) : (
+              Object.values(participants).map(p => (
+                <div key={p.id} className="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 rounded-lg">
+                  <span className="font-bold text-slate-700 truncate max-w-[120px]">{p.name}</span>
+                  <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${p.isOnline ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'}`}>
+                    {p.isOnline ? 'Онлайн' : 'Офлайн'}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {liveResponses.length > 0 && (
+          <div className="space-y-1.5 pt-2 border-t border-slate-100">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Ответы в реальном времени</span>
+            <div className="space-y-1 max-h-24 overflow-y-auto text-[11px]">
+              {liveResponses.map((r, i) => (
+                <div key={i} className="bg-indigo-50/50 p-1.5 rounded-lg border border-indigo-100 text-slate-700">
+                  <strong>{r.student}</strong> ответил на задание
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="pt-4 border-t border-slate-100 flex gap-2">
+        <button
+          type="button"
+          onClick={() => { setShowNotepad(!showNotepad); setSidebarOpen(false); }}
+          className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+        >
+          📝 Блокнот
+        </button>
+        <button
+          type="button"
+          onClick={handleResetRoom}
+          className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold cursor-pointer"
+          title="Сбросить все ответы"
+        >
+          🔄
+        </button>
+      </div>
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans -m-4 sm:-m-8">
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans w-full max-w-full overflow-x-hidden">
+      
       {/* ONBOARDING MODAL FOR STUDENT */}
       {!hasStarted && !isTeacher && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -307,6 +428,29 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         </div>
       )}
 
+      {/* MOBILE TEACHER SLIDE-OUT DRAWER */}
+      {isTeacher && sidebarOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden">
+          <div 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" 
+            onClick={() => setSidebarOpen(false)} 
+          />
+          <aside className="relative w-4/5 max-w-xs bg-white h-full p-5 flex flex-col justify-between shadow-2xl overflow-y-auto space-y-6 z-10">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <span className="font-extrabold text-sm text-slate-900">👨‍🏫 Панель Учителя</span>
+              <button 
+                type="button" 
+                onClick={() => setSidebarOpen(false)}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            {renderSidebarContent()}
+          </aside>
+        </div>
+      )}
+
       {/* COMPLETED CELEBRATION */}
       {isCompleted ? (
         <div className="max-w-lg mx-auto my-auto p-10 bg-white rounded-3xl border text-center shadow-xl space-y-4">
@@ -322,173 +466,72 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           </button>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col md:flex-row min-h-screen">
+        <div className="flex-1 flex flex-col md:flex-row min-h-screen w-full min-w-0">
           
-          {/* LEFT SIDEBAR: TEACHER COCKPIT & SLIDE JUMP-LIST */}
+          {/* DESKTOP SIDEBAR (HIDDEN ON MOBILE) */}
           {isTeacher && (
-            <aside className={`w-full md:w-72 bg-white border-r border-slate-200 p-5 flex flex-col justify-between shrink-0 space-y-6 ${sidebarOpen ? 'block' : 'hidden md:block'}`}>
-              <div className="space-y-5">
-                {/* BROADCAST CONTROL */}
-                <button
-                  type="button"
-                  onClick={() => handleBringEveryoneHere(safeSlideIdx)}
-                  className={`w-full py-3 px-4 rounded-2xl font-extrabold text-xs transition flex items-center justify-center gap-2 shadow-sm cursor-pointer ${
-                    isSyncNeeded 
-                      ? 'bg-amber-500 hover:bg-amber-600 text-white animate-pulse' 
-                      : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                  }`}
-                  title="Синхронизировать всех учеников на текущий слайд"
-                >
-                  <span>🚀</span>
-                  <span>{isSyncNeeded ? `Привести всех на Слайд #${safeSlideIdx + 1}` : 'Все на этом слайде ✓'}</span>
-                </button>
-
-                {/* SLIDES JUMP LIST */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                    <span>Слайды ({totalSlides})</span>
-                    <span>Слайд {safeSlideIdx + 1}</span>
-                  </div>
-
-                  <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
-                    {slides.map((s, idx) => {
-                      const isTeacherViewing = safeSlideIdx === idx;
-                      const isBroadcast = broadcastSlideIdx === idx;
-
-                      let btnStyle = "w-full text-left p-2.5 rounded-xl text-xs font-bold transition flex items-center justify-between cursor-pointer ";
-                      if (isTeacherViewing) {
-                        btnStyle += "bg-indigo-50 border border-indigo-200 text-indigo-900 shadow-2xs";
-                      } else {
-                        btnStyle += "bg-slate-50 border border-transparent text-slate-600 hover:bg-slate-100";
-                      }
-
-                      return (
-                        <button
-                          key={s.id || idx}
-                          type="button"
-                          onClick={() => setCurrentSlideIdx(idx)}
-                          className={btnStyle}
-                        >
-                          <span className="truncate max-w-[170px]">#{idx + 1} {s.title}</span>
-                          {isBroadcast && (
-                            <span className="w-2 h-2 rounded-full bg-emerald-500" title="Ученики видят этот слайд"></span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* CONNECTED ROSTER */}
-                <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                  <div className="flex justify-between items-center text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                    <span>Ученики в классе ({onlineCount})</span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleCopyStudentLink}
-                    className="w-full py-2 px-3 bg-slate-50 hover:bg-indigo-50 border border-slate-200 text-indigo-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    🔗 Скопировать ссылку
-                  </button>
-
-                  <div className="max-h-28 overflow-y-auto space-y-1">
-                    {Object.keys(participants).length === 0 ? (
-                      <p className="text-[11px] text-slate-400 italic">Ожидание подключения...</p>
-                    ) : (
-                      Object.values(participants).map(p => (
-                        <div key={p.id} className="flex items-center justify-between text-xs py-1 px-2 bg-slate-50 rounded-lg">
-                          <span className="font-bold text-slate-700">{p.name}</span>
-                          <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${p.isOnline ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'}`}>
-                            {p.isOnline ? 'Онлайн' : 'Офлайн'}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* LIVE RESPONSES FEED */}
-                {liveResponses.length > 0 && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Ответы в реальном времени</span>
-                    <div className="space-y-1 max-h-24 overflow-y-auto text-[11px]">
-                      {liveResponses.map((r, i) => (
-                        <div key={i} className="bg-indigo-50/50 p-1.5 rounded-lg border border-indigo-100 text-slate-700">
-                          <strong>{r.student}</strong> ответил на задание
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ACTION FOOTER */}
-              <div className="pt-4 border-t border-slate-100 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowNotepad(!showNotepad)}
-                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
-                >
-                  📝 Блокнот
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetRoom}
-                  className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold cursor-pointer"
-                  title="Сбросить все ответы"
-                >
-                  🔄
-                </button>
-              </div>
+            <aside className="hidden md:flex w-72 bg-white border-r border-slate-200 p-5 flex-col justify-between shrink-0 space-y-6">
+              {renderSidebarContent()}
             </aside>
           )}
 
           {/* MAIN WORKSPACE CANVAS */}
-          <main className="flex-1 flex flex-col justify-between p-4 sm:p-8 max-w-4xl mx-auto w-full">
-            <div className="space-y-6">
+          <main className="flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 max-w-4xl mx-auto w-full min-w-0">
+            <div className="space-y-4 sm:space-y-6 min-w-0">
               
               {/* TOP STATUS BAR */}
-              <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <div>
-                  <h2 className="text-xl font-extrabold text-slate-900 leading-snug">{activeLesson.title}</h2>
-                  <p className="text-xs text-slate-400 font-medium">
-                    {isTeacher ? '👨‍🏫 Режим преподавателя' : `🧑‍🎓 Ученик: ${studentName || 'Гость'}`} &bull; Слайд {safeSlideIdx + 1} из {totalSlides}
+              <div className="flex justify-between items-center bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    {isTeacher && (
+                      <button
+                        type="button"
+                        onClick={() => setSidebarOpen(true)}
+                        className="md:hidden px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs rounded-xl flex items-center gap-1 cursor-pointer shrink-0"
+                        title="Открыть меню слайдов"
+                      >
+                        <span>☰ Слайды</span>
+                      </button>
+                    )}
+                    <h2 className="text-base sm:text-xl font-extrabold text-slate-900 leading-snug truncate">
+                      {activeLesson.title}
+                    </h2>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-400 font-medium truncate mt-0.5">
+                    {isTeacher ? '👨‍🏫 Преподаватель' : `🧑‍🎓 ${studentName || 'Гость'}`} &bull; Слайд {safeSlideIdx + 1} из {totalSlides}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={onExitRoom}
-                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                    className="px-3 sm:px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
                   >
                     ✕ Выйти
                   </button>
                 </div>
               </div>
 
-              {/* TEACHER LIVE SCRATCHPAD / NOTEPAD */}
+              {/* TEACHER LIVE NOTEPAD */}
               {isTeacher && showNotepad && (
                 <div className="bg-amber-50/90 border border-amber-200 p-4 rounded-2xl space-y-2 shadow-xs animate-fade-in">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-extrabold text-amber-950 uppercase tracking-wider">📝 Доска заметок и разбора ошибок (Live Scratchpad)</span>
+                    <span className="text-xs font-extrabold text-amber-950 uppercase tracking-wider">📝 Доска заметок</span>
                     <button type="button" onClick={handleSaveNotepad} className="px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-bold cursor-pointer">Сохранить</button>
                   </div>
                   <textarea
                     rows="3"
                     value={notepadText}
                     onChange={e => setNotepadText(e.target.value)}
-                    placeholder="Записывайте сюда новые фразы, исправления ошибок ученика..."
+                    placeholder="Записывайте новые фразы, исправления ошибок..."
                     className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-xs font-mono text-slate-800 outline-none"
                   ></textarea>
                 </div>
               )}
 
               {/* ACTIVE SLIDE BLOCKS */}
-              <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 min-h-[400px]">
+              <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 min-h-[350px] w-full min-w-0 overflow-x-hidden">
                 {activeSlide.blocks.length === 0 ? (
                   <div className="text-center py-20 text-slate-400">
                     <span className="text-4xl block mb-2">📄</span>
@@ -510,24 +553,24 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 )}
               </div>
 
-              {/* IN-LESSON GAMIFICATION (TEACHER AWARD XP WIDGET) */}
+              {/* IN-LESSON GAMIFICATION (TEACHER XP WIDGET) */}
               {isTeacher && (
-                <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100 flex items-center justify-between">
+                <div className="bg-indigo-50/70 p-3.5 sm:p-4 rounded-2xl border border-indigo-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">⭐</span>
-                    <span className="text-xs font-bold text-indigo-950">Наградить баллами XP за ответ на этом слайде:</span>
+                    <span className="text-xs font-bold text-indigo-950">Наградить баллами XP:</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setXpAward(Math.max(0, xpAward - 1))} className="w-8 h-8 bg-white border rounded-lg font-bold cursor-pointer">-</button>
-                    <span className="font-extrabold text-sm px-2 text-indigo-700">{xpAward} XP</span>
-                    <button type="button" onClick={() => setXpAward(xpAward + 1)} className="w-8 h-8 bg-white border rounded-lg font-bold cursor-pointer">+</button>
+                    <button type="button" onClick={() => setXpAward(Math.max(0, xpAward - 1))} className="w-7 h-7 bg-white border rounded-lg font-bold cursor-pointer">-</button>
+                    <span className="font-extrabold text-sm px-1.5 text-indigo-700">{xpAward} XP</span>
+                    <button type="button" onClick={() => setXpAward(xpAward + 1)} className="w-7 h-7 bg-white border rounded-lg font-bold cursor-pointer">+</button>
                   </div>
                 </div>
               )}
             </div>
 
             {/* BOTTOM SLIDE NAVIGATION CONTROLS */}
-            <div className="flex justify-between items-center pt-6">
+            <div className="flex justify-between items-center pt-6 pb-2">
               <button
                 type="button"
                 disabled={safeSlideIdx === 0}
@@ -536,7 +579,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                   setCurrentSlideIdx(prev);
                   if (isTeacher) handleBringEveryoneHere(prev);
                 }}
-                className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-extrabold rounded-2xl text-xs transition disabled:opacity-30 cursor-pointer shadow-2xs"
+                className="px-5 sm:px-6 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-extrabold rounded-2xl text-xs transition disabled:opacity-30 cursor-pointer shadow-2xs"
               >
                 ← Назад
               </button>
@@ -549,7 +592,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                     setCurrentSlideIdx(next);
                     if (isTeacher) handleBringEveryoneHere(next);
                   }}
-                  className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs transition shadow-md cursor-pointer"
+                  className="px-6 sm:px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs transition shadow-md cursor-pointer"
                 >
                   Далее →
                 </button>
@@ -557,7 +600,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 <button
                   type="button"
                   onClick={handleFinish}
-                  className="px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl text-xs transition shadow-md cursor-pointer"
+                  className="px-6 sm:px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl text-xs transition shadow-md cursor-pointer"
                 >
                   {isTeacher ? 'Завершить урок 🎉' : 'Сдать работу 🎉'}
                 </button>
