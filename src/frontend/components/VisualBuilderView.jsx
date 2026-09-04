@@ -350,7 +350,6 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         const isSingleFill = actionsToRun.includes('fill_this_block') || actionsToRun.includes('expand_text') || actionsToRun.includes('shorten_text') || actionsToRun.includes('refine_level');
 
         if (isSingleFill && blocksWithIds.length > 0) {
-          // Fill target block with first result item
           const filledBlock = {
             ...blocksWithIds[0],
             id: aiModalTarget.block.id,
@@ -358,7 +357,6 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
           };
           currentBlocks[aiModalTarget.blockIdx] = filledBlock;
 
-          // If multiple items generated (e.g. 3 questions), insert remaining ones directly below
           if (blocksWithIds.length > 1) {
             currentBlocks.splice(aiModalTarget.blockIdx + 1, 0, ...blocksWithIds.slice(1));
           }
@@ -380,8 +378,8 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+    <div className="space-y-6 w-full min-w-0">
+      <div className="bg-white p-4 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <span className="text-2xl">🧩</span>
@@ -454,7 +452,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <BuilderPalette onAddBlock={handleAddBlock} />
 
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-3 space-y-4 min-w-0">
           {(activePage.blocks || []).length === 0 ? (
             <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center space-y-3">
               <span className="text-4xl block">🧩</span>
@@ -469,11 +467,11 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
                 onDragStart={() => handleDragStart(idx)}
                 onDragOver={e => e.preventDefault()}
                 onDrop={() => handleDropOnBlock(idx)}
-                className={`bg-white p-6 rounded-3xl border transition-all duration-200 shadow-xs hover:shadow-md relative group ${
+                className={`bg-white p-4 sm:p-6 rounded-3xl border transition-all duration-200 shadow-xs hover:shadow-md relative group ${
                   draggedBlockIdx === idx ? 'opacity-40 border-dashed border-indigo-500 scale-98' : 'border-slate-200/90 hover:border-indigo-300'
                 }`}
               >
-                <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-100">
+                <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-100 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <span className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-600 font-bold px-1 text-base select-none" title="Drag to reorder block">⣿</span>
                     <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">#{idx + 1}</span>
@@ -496,7 +494,18 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
                   </div>
                 </div>
 
-                <EditableBlockCard block={block} onChange={updated => handleUpdateBlock(idx, updated)} />
+                {/* PASS LESSON AND SOURCE TEXT TO BLOCK CARDS */}
+                <EditableBlockCard
+                  block={block}
+                  onChange={updated => handleUpdateBlock(idx, updated)}
+                  lesson={lesson}
+                  pages={lesson.pages || []}
+                  availableSourceBlocks={availableSourceBlocks}
+                  extractLessonContext={extractLessonContext}
+                  sourceText={extractLessonContext()}
+                  lessonTitle={lesson.title || lesson.topic || ''}
+                  level={lesson.level || 'B1'}
+                />
               </div>
             ))
           )}
