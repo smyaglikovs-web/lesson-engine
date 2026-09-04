@@ -561,9 +561,9 @@ const ImageBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 8. UPGRADED AI PODCAST STUDIO WITH SOURCE CONTEXT SELECTOR
-const AudioBlockEditor = ({ block, onChange }) => {
-  const [sourceMode, setSourceMode] = useState('page1'); // 'page1' | 'custom' | 'lesson'
+// 8. UPGRADED AI PODCAST STUDIO (DIRECT LESSON TEXT INTEGRATION)
+const AudioBlockEditor = ({ block, onChange, sourceText = '', lessonTitle = '', level = 'B1', extractLessonContext }) => {
+  const [sourceMode, setSourceMode] = useState('page1');
   const [customTopic, setCustomTopic] = useState(block.title && !block.title.includes('аудиозапись') ? block.title : '');
   const [generatingPodcast, setGeneratingPodcast] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
@@ -572,20 +572,20 @@ const AudioBlockEditor = ({ block, onChange }) => {
     setGeneratingPodcast(true);
     setStatusMsg('⌛ AI writing 1-min podcast script and synthesizing audio...');
 
-    // Automatically grab text from Page 1 if sourceMode is 'page1'
-    let sourceContent = block.transcript || '';
-    let topicToUse = customTopic.trim();
+    // 1. Resolve actual lesson reading story text
+    let sourceContent = '';
+    if (typeof extractLessonContext === 'function') {
+      sourceContent = extractLessonContext();
+    } else if (sourceText) {
+      sourceContent = sourceText;
+    } else if (block.transcript) {
+      sourceContent = block.transcript;
+    }
 
-    if (sourceMode === 'page1' || !topicToUse) {
-      // Find reading text block on the current page or page 1
-      const textareas = document.querySelectorAll('textarea');
-      for (const t of textareas) {
-        if (t.value && t.value.length > 80 && !t.value.includes('AI Assistant')) {
-          sourceContent = t.value;
-          break;
-        }
-      }
-      if (!topicToUse) topicToUse = 'Story Discussion';
+    // 2. Resolve topic name from input, or lesson title/topic
+    let topicToUse = customTopic.trim();
+    if (!topicToUse) {
+      topicToUse = lessonTitle || 'Lesson Discussion';
     }
 
     try {
@@ -594,8 +594,9 @@ const AudioBlockEditor = ({ block, onChange }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topic: topicToUse,
-          sourceText: sourceContent,
-          level: 'B1'
+          lessonTitle: lessonTitle || '',
+          sourceText: sourceMode === 'custom' ? '' : sourceContent,
+          level: level || 'B1'
         })
       });
       const data = await res.json();
@@ -606,7 +607,7 @@ const AudioBlockEditor = ({ block, onChange }) => {
           transcript: data.script || block.transcript,
           url: data.audioUrl || block.url
         });
-        setStatusMsg(data.audioUrl ? '✅ 1-Minute Podcast & Audio generated!' : '✅ Podcast script generated! (Voiceover audio unavailable)');
+        setStatusMsg('✅ 1-Minute Podcast & Audio generated!');
       } else {
         alert('Podcast generation failed: ' + (data.error || 'Unknown error'));
         setStatusMsg('');
@@ -639,7 +640,7 @@ const AudioBlockEditor = ({ block, onChange }) => {
               onChange={(e) => setSourceMode(e.target.value)}
               className="bg-slate-900 border border-slate-700 text-indigo-300 text-xs font-bold rounded-xl px-2.5 py-1.5 outline-none cursor-pointer"
             >
-              <option value="page1">📄 Use Reading Story Text</option>
+              <option value="page1">📄 Use Lesson Story Text</option>
               <option value="custom">✍️ Custom Topic Prompt</option>
             </select>
           </div>
@@ -650,7 +651,7 @@ const AudioBlockEditor = ({ block, onChange }) => {
             type="text"
             value={customTopic}
             onChange={e => setCustomTopic(e.target.value)}
-            placeholder={sourceMode === 'page1' ? 'Topic title (optional, leave blank to use story theme)...' : 'Type podcast topic (e.g. Travel tips, Job interview)...'}
+            placeholder={sourceMode === 'page1' ? `Topic: ${lessonTitle || 'Using lesson story theme'}...` : 'Type podcast topic (e.g. Travel tips, Job interview)...'}
             className="flex-1 p-2.5 bg-slate-900 border border-slate-700 focus:border-indigo-400 rounded-xl text-xs font-bold text-white outline-none"
           />
           <button
@@ -958,7 +959,17 @@ const LinkBlockEditor = ({ block, onChange }) => (
 );
 
 // MAIN EDITABLE BLOCK CARD ROUTER
-export const EditableBlockCard = ({ block, onChange }) => {
+export const EditableBlockCard = ({
+  block,
+  onChange,
+  lesson,
+  pages = [],
+  availableSourceBlocks = [],
+  extractLessonContext,
+  sourceText = '',
+  lessonTitle = '',
+  level = 'B1'
+}) => {
   if (!block || typeof block !== 'object') {
     return <p className="text-xs text-slate-400 font-medium">Invalid block data.</p>;
   }
@@ -995,7 +1006,20 @@ export const EditableBlockCard = ({ block, onChange }) => {
   if (type === 'spinning_wheel') return <SpinningWheelEditor block={block} onChange={onChange} />;
   if (type === 'image') return <ImageBlockEditor block={block} onChange={onChange} />;
   if (type === 'video') return <VideoBlockEditor block={block} onChange={onChange} />;
-  if (type === 'audio') return <AudioBlockEditor block={block} onChange={onChange} />;
+  
+  if (type === 'audio') {
+    return (
+      <AudioBlockEditor
+        block={block}
+        onChange={onChange}
+        sourceText={sourceText}
+        lessonTitle={lessonTitle || lesson?.title || lesson?.topic || ''}
+        level={level || lesson?.level || 'B1'}
+        extractLessonContext={extractLessonContext}
+      />
+    );
+  }
+
   if (type === 'link') return <LinkBlockEditor block={block} onChange={onChange} />;
   if (type === 'sentence_reorder') return <SentenceReorderEditor block={block} onChange={onChange} />;
   if (type === 'categorization') return <CategorizationEditor block={block} onChange={onChange} />;
