@@ -480,7 +480,7 @@ const VideoBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 7. UPGRADED AI TEXT-TO-IMAGE STUDIO (0 TOKENS / 0 NEURONS VIA FLUX & SDXL)
+// 7. UPGRADED AI TEXT-TO-IMAGE STUDIO (WITH REFERRER PROTECTION)
 const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }) => {
   const [promptInput, setPromptInput] = useState('');
   const [imageStyle, setImageStyle] = useState('cinematic, photorealistic, 4k, natural lighting');
@@ -499,22 +499,17 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
     if (!promptInput.trim()) return alert('Please enter an image description first!');
     setGeneratingAiImg(true);
 
-    const fullPrompt = `${promptInput.trim()}, ${imageStyle}, high resolution, detailed`;
-    const generatedUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=500&nologo=true&seed=${Date.now()}`;
+    const cleanInput = promptInput.trim().slice(0, 160);
+    const fullPrompt = `${cleanInput}, ${imageStyle}`;
+    const randomSeed = Math.floor(Math.random() * 1000000);
+    const generatedUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=500&nologo=true&seed=${randomSeed}`;
 
-    // Preload image to verify before setting
-    const imgObj = new Image();
-    imgObj.onload = () => {
-      const updated = [{ url: generatedUrl, caption: promptInput.trim() }, ...images.filter(im => im.url !== generatedUrl)];
-      onChange({ ...block, images: updated, url: generatedUrl, caption: promptInput.trim() });
+    const updated = [{ url: generatedUrl, caption: cleanInput }, ...images.filter(im => im.url !== generatedUrl)];
+    onChange({ ...block, images: updated, url: generatedUrl, caption: cleanInput });
+
+    setTimeout(() => {
       setGeneratingAiImg(false);
-    };
-    imgObj.onerror = () => {
-      const updated = [{ url: generatedUrl, caption: promptInput.trim() }, ...images];
-      onChange({ ...block, images: updated, url: generatedUrl, caption: promptInput.trim() });
-      setGeneratingAiImg(false);
-    };
-    imgObj.src = generatedUrl;
+    }, 3000);
   };
 
   const handleAutoSuggestPrompt = () => {
@@ -581,7 +576,7 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
             type="text"
             value={promptInput}
             onChange={e => setPromptInput(e.target.value)}
-            placeholder="Describe the image (e.g. Band members on stage in Trench, Victorian study)..."
+            placeholder="Describe image (e.g. Band members in Trench, Victorian library)..."
             className="flex-1 p-2.5 bg-white border border-slate-200 focus:border-indigo-500 rounded-xl text-xs font-medium text-slate-800 outline-none"
           />
 
@@ -616,12 +611,21 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
         className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold w-full outline-none focus:border-indigo-500"
       />
 
-      {/* IMAGE PREVIEWS */}
+      {/* IMAGE PREVIEWS (WITH REFERRER PROTECTION) */}
       {images.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {images.map((img, i) => (
             <div key={i} className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 relative group shadow-2xs">
-              <img src={img.url} alt="Visual" className="w-full h-32 object-cover rounded-xl border border-slate-200" />
+              <div className="w-full h-32 relative bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center border border-slate-200">
+                <img
+                  src={img.url}
+                  alt="Visual"
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                />
+              </div>
               <input
                 type="text"
                 value={img.caption || ''}
