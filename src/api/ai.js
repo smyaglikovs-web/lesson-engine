@@ -90,13 +90,14 @@ export function cleanAndParseJson(rawText) {
       }
       return JSON.parse(fixed);
     } catch (e2) {
-      // 3. Regex Fallback for storyText objects with internal quotes
+      // 3. Regex Fallback for text/script fields
       const titleMatch = rawText.match(/"title":\s*"([^"]+)"/i);
-      const storyMatch = rawText.match(/"(?:storyText|text|story|passage|content)":\s*"([\s\S]*?)"\s*\}/i);
-      if (storyMatch && storyMatch[1].length > 40) {
+      const storyMatch = rawText.match(/"(?:storyText|script|text|story|passage|content)":\s*"([\s\S]*?)"\s*\}/i);
+      if (storyMatch && storyMatch[1].length > 30) {
         return {
-          title: titleMatch ? titleMatch[1] : 'Reading Story',
-          storyText: storyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim()
+          title: titleMatch ? titleMatch[1] : 'Audio Script',
+          storyText: storyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim(),
+          script: storyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim()
         };
       }
       return null;
@@ -112,7 +113,6 @@ export function sanitizeBlockStructure(b) {
 
   let type = String(b.type || '').toLowerCase().trim();
 
-  // Smart property-based type inference
   if (!type) {
     if (b.options || b.choices || b.questions || b.statement || b.question) type = 'multiple_choice';
     else if (b.cards || b.flashcards) type = 'flashcards';
@@ -129,7 +129,6 @@ export function sanitizeBlockStructure(b) {
     else return [];
   }
 
-  // Type normalization
   if (type === 'header' || type === 'title' || type === 'h1' || type === 'h2' || type === 'h3') type = 'heading';
   if (type === 'paragraph' || type === 'reading' || type === 'article' || type === 'story' || type === 'reading_comprehension') type = 'text';
   if (type === 'quiz' || type === 'question' || type === 'true_false' || type === 'true-false' || type === 'true/false' || type === 'mc' || type === 'multiple-choice') type = 'multiple_choice';
@@ -324,13 +323,12 @@ export function sanitizeBlockStructure(b) {
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
   let errors = [];
 
-  // 1. CLOUDFLARE WORKERS AI NATIVE (Primary: Local, Sub-Second, Low-Neuron)
+  // 1. CLOUDFLARE WORKERS AI NATIVE (Primary: Sub-Second, Low-Neuron)
   if (env.AI) {
     const cfModels = [
       '@cf/deepseek-ai/deepseek-v4-flash-0731',
       'deepseek-v4-flash-0731',
       '@cf/zai/glm-5.3-flash',
-      'glm-5.3-flash',
       '@cf/qwen/qwen3.8-27b',
       '@cf/meta/llama-3.1-8b-instruct-fast'
     ];
@@ -502,6 +500,63 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   } catch (err) {
     return { success: false, error: `TTS Generation failed: ${err.message}` };
   }
+}
+
+// --------------------------------------------------------------------------
+// 2-IN-1 PODCAST STUDIO (Writes ~130w Spoken Script + Synthesizes MeloTTS)
+// --------------------------------------------------------------------------
+export async function generatePodcastAudioWithAI(env, payload) {
+  const { topic = '', sourceText = '', level = 'B1' } = payload;
+  const resolvedTopic = topic.trim() || 'English Listening Practice';
+  const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
+
+  const systemPrompt = `[ROLE]
+You are a World-Class ELT Podcast Host and Audio Scriptwriter.
+Target CEFR Level: ${level} (${cefrRules})
+
+[TASK]
+Write a lively, engaging 1-minute spoken podcast episode (~120-140 words) for language learners based on the topic/source material.
+Tone: Conversational, engaging, natural, and clear for listening comprehension.
+CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or sound cues. Output ONLY the spoken English monologue.
+
+[OUTPUT FORMAT]
+{
+  "title": "${resolvedTopic} (Audio Episode)",
+  "script": "Natural spoken 120-140 word script here..."
+}`;
+
+  const userPrompt = sourceText.trim()
+    ? `Source Context:\n${sourceText.slice(0, 2000)}\n\nCreate a 1-minute podcast script on: "${resolvedTopic}".`
+    : `Create a 1-minute podcast script on Topic: "${resolvedTopic}".`;
+
+  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1200);
+  if (!scriptResult.data) {
+    return { error: `Failed to write podcast script: ${scriptResult.error}` };
+  }
+
+  const scriptData = scriptResult.data;
+  const scriptText = scriptData.script || scriptData.storyText || scriptData.text;
+  if (!scriptText || scriptText.length < 30) {
+    return { error: 'Failed to parse generated podcast script.' };
+  }
+
+  const episodeTitle = scriptData.title || `${resolvedTopic} (Podcast)`;
+
+  // Synthesize voiceover audio via Cloudflare MeloTTS
+  let audioDataUrl = '';
+  try {
+    const ttsRes = await generateAudioWithAI(env, { text: scriptText, lang: 'en' });
+    if (ttsRes.success && ttsRes.audioUrl) {
+      audioDataUrl = ttsRes.audioUrl;
+    }
+  } catch (e) {}
+
+  return {
+    success: true,
+    title: episodeTitle,
+    script: scriptText,
+    audioUrl: audioDataUrl
+  };
 }
 
 export async function fetchYouTubeTranscriptNative(videoUrl) {
@@ -694,7 +749,7 @@ Return a SINGLE valid JSON object.
 
   const grammar = data.grammarFocus || {
     title: 'Target Grammar Structure',
-    formula: 'Subject + Verb Structure',
+    formula: 'Subject + Verb',
     explanation: 'Grammar rule explanation.',
     ccqs: ['Does this describe a real or hypothetical event?']
   };
@@ -795,7 +850,7 @@ Return a SINGLE valid JSON object.
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Raw Error Reporting)
+// 1-CLICK BLOCK AI ASSISTANT (Universal Task Handlers)
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', targetLength = '250', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
