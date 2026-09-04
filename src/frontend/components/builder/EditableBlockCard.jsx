@@ -241,7 +241,7 @@ const TeacherNotesEditor = ({ block, onChange }) => (
         rows="3"
         value={block.speech || ''}
         onChange={e => onChange({ ...block, speech: e.target.value })}
-        placeholder="например: Look at these sentences and choose the best option..."
+        placeholder="например: Look at these sentences and discuss what you notice..."
         className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-xs font-medium"
       ></textarea>
     </div>
@@ -561,34 +561,135 @@ const ImageBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 8. AUDIO BLOCK EDITOR
-const AudioBlockEditor = ({ block, onChange }) => (
-  <div className="space-y-3">
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <input
-        type="text"
-        value={block.title || ''}
-        onChange={e => onChange({ ...block, title: e.target.value })}
-        placeholder="Audio Title..."
-        className="p-2.5 border rounded-xl text-xs font-semibold"
-      />
-      <input
-        type="text"
-        value={block.url || ''}
-        onChange={e => onChange({ ...block, url: e.target.value })}
-        placeholder="Direct MP3 / Audio URL..."
-        className="p-2.5 border rounded-xl text-xs font-mono"
-      />
+// 8. UPGRADED AI PODCAST & AUDIO STUDIO EDITOR
+const AudioBlockEditor = ({ block, onChange }) => {
+  const [podcastTopic, setPodcastTopic] = useState(block.title || '');
+  const [generatingPodcast, setGeneratingPodcast] = useState(false);
+  const [statusMsg, setStatusMsg] = useState('');
+
+  const handleGeneratePodcast = async () => {
+    if (!podcastTopic.trim() && !block.transcript?.trim()) {
+      return alert('Please enter a podcast topic or transcript context first!');
+    }
+    setGeneratingPodcast(true);
+    setStatusMsg('⌛ AI writing 1-min podcast script and synthesizing audio...');
+
+    try {
+      const res = await fetch('/api/ai/generate-podcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: podcastTopic.trim() || block.title || 'English Listening Practice',
+          sourceText: block.transcript || '',
+          level: 'B1'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        onChange({
+          ...block,
+          title: data.title || podcastTopic.trim() || block.title || 'Podcast Listening Episode',
+          transcript: data.script || block.transcript,
+          url: data.audioUrl || block.url
+        });
+        setStatusMsg(data.audioUrl ? '✅ 1-Minute Podcast & Audio generated!' : '✅ Podcast script generated! (Voiceover audio unavailable)');
+      } else {
+        alert('Podcast generation failed: ' + (data.error || 'Unknown error'));
+        setStatusMsg('');
+      }
+    } catch (e) {
+      alert('Error connecting to podcast generation service');
+      setStatusMsg('');
+    } finally {
+      setGeneratingPodcast(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 bg-slate-900 text-white p-5 rounded-3xl shadow-sm">
+      {/* AI PODCAST STUDIO HEADER */}
+      <div className="bg-slate-800/90 p-4 rounded-2xl border border-slate-700 space-y-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🎙️</span>
+          <label className="block text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider">
+            AI Podcast Studio: Auto-write 1-min listening dialogue & synthesize voiceover
+          </label>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            value={podcastTopic}
+            onChange={e => setPodcastTopic(e.target.value)}
+            placeholder="e.g. Discussing Favorite Movies, Job Interview Tips, Travel Stories..."
+            className="flex-1 p-2.5 bg-slate-900 border border-slate-700 focus:border-indigo-400 rounded-xl text-xs font-bold text-white outline-none"
+          />
+          <button
+            type="button"
+            disabled={generatingPodcast || (!podcastTopic.trim() && !block.transcript?.trim())}
+            onClick={handleGeneratePodcast}
+            className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl text-xs shadow-md transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+          >
+            {generatingPodcast ? '⌛ Creating Episode...' : '🎙️ AI Create Podcast'}
+          </button>
+        </div>
+        {statusMsg && (
+          <p className="text-xs font-semibold text-emerald-400 bg-slate-900/60 p-2 rounded-lg border border-slate-700">
+            {statusMsg}
+          </p>
+        )}
+      </div>
+
+      {/* EPISODE TITLE & AUDIO URL */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-slate-400 uppercase">Episode Title:</label>
+          <input
+            type="text"
+            value={block.title || ''}
+            onChange={e => onChange({ ...block, title: e.target.value })}
+            placeholder="Podcast Episode Title..."
+            className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white outline-none"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-slate-400 uppercase">Audio Source (MP3 URL or Generated Base64):</label>
+          <input
+            type="text"
+            value={block.url || ''}
+            onChange={e => onChange({ ...block, url: e.target.value })}
+            placeholder="Direct MP3 URL or generated voiceover..."
+            className="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono text-slate-300 outline-none"
+          />
+        </div>
+      </div>
+
+      {/* LIVE AUDIO PLAYER PREVIEW */}
+      {block.url && (
+        <div className="p-3 bg-slate-800 rounded-2xl border border-slate-700 space-y-1.5">
+          <span className="text-[10px] font-extrabold text-indigo-400 uppercase tracking-wider block">Live Audio Preview:</span>
+          <audio controls className="w-full h-10" key={block.url}>
+            <source src={block.url} type="audio/mpeg" />
+            <source src={block.url} type="audio/wav" />
+          </audio>
+        </div>
+      )}
+
+      {/* TRANSCRIPT / SCRIPT EDITOR */}
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-bold text-slate-400 uppercase block">
+          📝 Spoken Podcast Script / Transcript (Used by AI Assistant for Tasks):
+        </label>
+        <textarea
+          rows="4"
+          value={block.transcript || ''}
+          onChange={e => onChange({ ...block, transcript: e.target.value })}
+          placeholder="The spoken script text will appear here. Teachers can click '✨ Generate / Fill with AI' to build comprehension questions from this script..."
+          className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-sans text-slate-200 outline-none focus:border-indigo-400 leading-relaxed"
+        ></textarea>
+      </div>
     </div>
-    <textarea
-      rows="3"
-      value={block.transcript || ''}
-      onChange={e => onChange({ ...block, transcript: e.target.value })}
-      placeholder="Audio transcript (optional, visible to students via toggle)..."
-      className="w-full p-2.5 border rounded-xl text-xs"
-    ></textarea>
-  </div>
-);
+  );
+};
 
 // 9. MULTI-SENTENCE REORDER EDITOR
 const SentenceReorderEditor = ({ block, onChange }) => {
