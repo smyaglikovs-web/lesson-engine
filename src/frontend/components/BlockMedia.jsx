@@ -41,7 +41,7 @@ export const BlockImage = ({ block, onEditMedia }) => {
           <div
             key={idx}
             onClick={() => setLightboxUrl(img.url)}
-            className="group relative overflow-hidden rounded-2xl border border-slate-200 shadow-sm bg-slate-100 cursor-pointer hover:shadow-md transition"
+            className="group relative overflow-hidden rounded-2xl border border-slate-200 shadow-xs bg-slate-100 cursor-pointer hover:shadow-md transition"
           >
             <img
               src={img.url}
@@ -60,7 +60,7 @@ export const BlockImage = ({ block, onEditMedia }) => {
       {onEditMedia && (
         <button
           onClick={() => onEditMedia(block.id, 'url', block.url)}
-          className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition cursor-pointer"
+          className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-xl shadow-xs transition cursor-pointer"
         >
           🔗 Изменить ссылку на фото
         </button>
@@ -69,7 +69,7 @@ export const BlockImage = ({ block, onEditMedia }) => {
       {lightboxUrl && (
         <div
           onClick={() => setLightboxUrl(null)}
-          className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 cursor-pointer"
         >
           <div className="relative max-w-4xl max-h-[90vh]">
             <img src={lightboxUrl} alt="Zoomed" className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain" />
@@ -103,7 +103,7 @@ export const BlockVideo = ({ block, onEditMedia }) => {
       {onEditMedia && (
         <button
           onClick={() => onEditMedia(block.id, 'url', block.url)}
-          className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition cursor-pointer"
+          className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-xl shadow-xs transition cursor-pointer"
         >
           🔗 Изменить ссылку на видео
         </button>
@@ -112,7 +112,7 @@ export const BlockVideo = ({ block, onEditMedia }) => {
   );
 };
 
-// UPGRADED AUDIO / PODCAST PLAYER WITH SPEED CONTROL & TRANSCRIPT
+// CLEAN LIGHT-THEMED AUDIO / PODCAST PLAYER
 export const BlockAudio = ({ block = {}, onEditMedia }) => {
   const [showTranscript, setShowTranscript] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1.0);
@@ -126,18 +126,18 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
   };
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-6 sm:p-7 rounded-3xl shadow-md mb-6 space-y-4 border border-slate-800">
+    <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/90 shadow-xs mb-6 space-y-4">
       {/* HEADER */}
-      <div className="flex justify-between items-start">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-md shrink-0">
+      <div className="flex justify-between items-start gap-3">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 text-xl font-bold shadow-2xs shrink-0">
             🎙️
           </div>
           <div>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300 bg-indigo-900/60 px-2.5 py-0.5 rounded-md border border-indigo-700/50 inline-block mb-1">
+            <span className="px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[10px] uppercase tracking-wider inline-block mb-1">
               Listening Audio / Podcast
             </span>
-            <h4 className="font-extrabold text-lg sm:text-xl text-white leading-snug">
+            <h4 className="font-extrabold text-lg sm:text-xl text-slate-900 leading-snug">
               {block.title || 'Audio Episode'}
             </h4>
           </div>
@@ -147,7 +147,7 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
           <button
             type="button"
             onClick={() => onEditMedia(block.id, 'url', block.url)}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-700 cursor-pointer transition shrink-0"
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-200 cursor-pointer transition shrink-0"
           >
             🔗 Edit Audio
           </button>
@@ -156,7 +156,7 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
 
       {/* AUDIO PLAYER & SPEED CONTROLS */}
       {block.url ? (
-        <div className="space-y-3 bg-slate-800/60 p-4 rounded-2xl border border-slate-700/70">
+        <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
           <audio 
             ref={audioRef}
             controls 
@@ -170,17 +170,17 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
 
           {/* PLAYBACK SPEED BUTTONS */}
           <div className="flex justify-between items-center text-xs font-bold pt-1">
-            <span className="text-[11px] text-slate-400">Playback Speed:</span>
+            <span className="text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Speed:</span>
             <div className="flex gap-1.5">
               {[0.8, 1.0, 1.2].map((speed) => (
                 <button
                   key={speed}
                   type="button"
                   onClick={() => handleSpeedChange(speed)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
                     playbackRate === speed
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-700/70 text-slate-300 hover:bg-slate-700'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   {speed}x
@@ -190,7 +190,7 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
           </div>
         </div>
       ) : (
-        <div className="p-4 bg-slate-800/40 rounded-2xl border border-slate-700 text-xs text-slate-400 italic">
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-500 italic">
           Audio is being processed or not uploaded yet.
         </div>
       )}
@@ -201,13 +201,13 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
           <button
             type="button"
             onClick={() => setShowTranscript(!showTranscript)}
-            className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1.5 cursor-pointer select-none"
+            className="text-xs font-bold text-indigo-600 hover:text-indigo-700 transition flex items-center gap-1.5 cursor-pointer select-none"
           >
             <span>{showTranscript ? '▲ Скрыть текст записи' : '▼ Показать текст записи (Транскрипт)'}</span>
           </button>
 
           {showTranscript && (
-            <div className="mt-3 p-4 bg-slate-800/90 rounded-2xl text-xs sm:text-sm text-slate-200 whitespace-pre-line border border-slate-700/80 leading-relaxed animate-fade-in font-sans">
+            <div className="mt-3 p-4 bg-slate-50 rounded-2xl text-xs sm:text-sm text-slate-800 whitespace-pre-line border border-slate-200 leading-relaxed animate-fade-in font-sans">
               {block.transcript}
             </div>
           )}
@@ -218,7 +218,7 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
 };
 
 export const BlockGrammarCard = ({ block }) => (
-  <div className="bg-gradient-to-r from-indigo-50/90 to-blue-50/90 border border-indigo-100 p-6 rounded-2xl shadow-sm mb-6 space-y-3">
+  <div className="bg-gradient-to-r from-indigo-50/90 to-blue-50/90 border border-indigo-100 p-6 rounded-2xl shadow-xs mb-6 space-y-3">
     <div className="flex items-center gap-2">
       <span className="px-2.5 py-0.5 bg-indigo-600 text-white text-[10px] font-extrabold rounded-full uppercase tracking-wider">Правило</span>
       <h3 className="text-xl font-bold text-slate-900">{block.title}</h3>
