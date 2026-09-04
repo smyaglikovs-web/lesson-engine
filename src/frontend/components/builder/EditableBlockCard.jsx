@@ -48,7 +48,7 @@ const TextBlockEditor = ({ block, onChange }) => {
       if (res.ok && data.success && data.newBlocks?.[0]?.text) {
         onChange({ ...block, text: data.newBlocks[0].text });
       } else {
-        alert('AI text generation failed. Please try again.');
+        alert('AI text generation failed: ' + (data.error || 'Unknown error'));
       }
     } catch (e) {
       alert('Error generating reading text');
@@ -561,26 +561,40 @@ const ImageBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 8. UPGRADED AI PODCAST & AUDIO STUDIO EDITOR
+// 8. UPGRADED AI PODCAST STUDIO WITH SOURCE CONTEXT SELECTOR
 const AudioBlockEditor = ({ block, onChange }) => {
-  const [podcastTopic, setPodcastTopic] = useState(block.title || '');
+  const [sourceMode, setSourceMode] = useState('page1'); // 'page1' | 'custom' | 'lesson'
+  const [customTopic, setCustomTopic] = useState(block.title && !block.title.includes('аудиозапись') ? block.title : '');
   const [generatingPodcast, setGeneratingPodcast] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
   const handleGeneratePodcast = async () => {
-    if (!podcastTopic.trim() && !block.transcript?.trim()) {
-      return alert('Please enter a podcast topic or transcript context first!');
-    }
     setGeneratingPodcast(true);
     setStatusMsg('⌛ AI writing 1-min podcast script and synthesizing audio...');
+
+    // Automatically grab text from Page 1 if sourceMode is 'page1'
+    let sourceContent = block.transcript || '';
+    let topicToUse = customTopic.trim();
+
+    if (sourceMode === 'page1' || !topicToUse) {
+      // Find reading text block on the current page or page 1
+      const textareas = document.querySelectorAll('textarea');
+      for (const t of textareas) {
+        if (t.value && t.value.length > 80 && !t.value.includes('AI Assistant')) {
+          sourceContent = t.value;
+          break;
+        }
+      }
+      if (!topicToUse) topicToUse = 'Story Discussion';
+    }
 
     try {
       const res = await fetch('/api/ai/generate-podcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic: podcastTopic.trim() || block.title || 'English Listening Practice',
-          sourceText: block.transcript || '',
+          topic: topicToUse,
+          sourceText: sourceContent,
           level: 'B1'
         })
       });
@@ -588,7 +602,7 @@ const AudioBlockEditor = ({ block, onChange }) => {
       if (res.ok && data.success) {
         onChange({
           ...block,
-          title: data.title || podcastTopic.trim() || block.title || 'Podcast Listening Episode',
+          title: data.title || topicToUse,
           transcript: data.script || block.transcript,
           url: data.audioUrl || block.url
         });
@@ -608,30 +622,47 @@ const AudioBlockEditor = ({ block, onChange }) => {
   return (
     <div className="space-y-4 bg-slate-900 text-white p-5 rounded-3xl shadow-sm">
       {/* AI PODCAST STUDIO HEADER */}
-      <div className="bg-slate-800/90 p-4 rounded-2xl border border-slate-700 space-y-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🎙️</span>
-          <label className="block text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider">
-            AI Podcast Studio: Auto-write 1-min listening dialogue & synthesize voiceover
-          </label>
+      <div className="bg-slate-800/90 p-4 rounded-2xl border border-slate-700 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🎙️</span>
+            <label className="block text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider">
+              AI Podcast Studio: Auto-generate 1-min spoken dialogue & voiceover
+            </label>
+          </div>
+
+          {/* SOURCE CONTEXT DROPDOWN SELECTOR */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">Source:</span>
+            <select
+              value={sourceMode}
+              onChange={(e) => setSourceMode(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-indigo-300 text-xs font-bold rounded-xl px-2.5 py-1.5 outline-none cursor-pointer"
+            >
+              <option value="page1">📄 Use Reading Story Text</option>
+              <option value="custom">✍️ Custom Topic Prompt</option>
+            </select>
+          </div>
         </div>
+
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
-            value={podcastTopic}
-            onChange={e => setPodcastTopic(e.target.value)}
-            placeholder="e.g. Discussing Favorite Movies, Job Interview Tips, Travel Stories..."
+            value={customTopic}
+            onChange={e => setCustomTopic(e.target.value)}
+            placeholder={sourceMode === 'page1' ? 'Topic title (optional, leave blank to use story theme)...' : 'Type podcast topic (e.g. Travel tips, Job interview)...'}
             className="flex-1 p-2.5 bg-slate-900 border border-slate-700 focus:border-indigo-400 rounded-xl text-xs font-bold text-white outline-none"
           />
           <button
             type="button"
-            disabled={generatingPodcast || (!podcastTopic.trim() && !block.transcript?.trim())}
+            disabled={generatingPodcast}
             onClick={handleGeneratePodcast}
-            className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl text-xs shadow-md transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+            className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl text-xs shadow-md transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
           >
             {generatingPodcast ? '⌛ Creating Episode...' : '🎙️ AI Create Podcast'}
           </button>
         </div>
+
         {statusMsg && (
           <p className="text-xs font-semibold text-emerald-400 bg-slate-900/60 p-2 rounded-lg border border-slate-700">
             {statusMsg}
