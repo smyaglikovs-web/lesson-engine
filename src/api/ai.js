@@ -314,12 +314,12 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// 4-TIER MULTI-PROVIDER AI INFERENCE PIPELINE (Cloudflare Flash Models First)
+// MULTI-PROVIDER AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
   let errors = [];
 
-  // 1. CLOUDFLARE WORKERS AI NATIVE (Primary: Sub-Second, Low-Neuron Flash Models)
+  // 1. CLOUDFLARE WORKERS AI NATIVE (Primary: Sub-Second, Low-Neuron)
   if (env.AI) {
     const cfModels = [
       '@cf/zai-org/glm-4.7-flash',
@@ -469,19 +469,19 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 }
 
 // --------------------------------------------------------------------------
-// REALISTIC CLOUDFLARE TEXT-TO-SPEECH (Deepgram Aura-2)
+// CLOUDFLARE TEXT-TO-SPEECH (Deepgram Aura-2 & MeloTTS Fallback)
 // --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   if (!env.AI || !text.trim()) return { error: 'Text and AI binding are required.' };
   
-  const ttsModels = ['@cf/deepgram/aura-2-en', '@cf/deepgram/aura-1-en', '@cf/myshell/melotts'];
+  const ttsModels = ['@cf/deepgram/aura-2-en', '@cf/deepgram/aura-1-en', '@cf/myshell-ai/melotts'];
 
   for (const model of ttsModels) {
     try {
-      const res = await env.AI.run(model, {
-        prompt: text.trim().slice(0, 1000),
-        lang: lang
-      });
+      // Deepgram Aura expects { text }, MeloTTS expects { prompt, lang }
+      const payload = model.includes('deepgram') ? { text: text.trim().slice(0, 1000) } : { prompt: text.trim().slice(0, 1000), lang: lang };
+      
+      const res = await env.AI.run(model, payload);
 
       if (res instanceof Response) {
         const buffer = await res.arrayBuffer();
@@ -539,7 +539,7 @@ CRITICAL: Do NOT include stage directions (e.g. '[Music fades]', '[Host]') or so
 
   const episodeTitle = scriptData.title || `${resolvedTopic} (Podcast)`;
 
-  // Synthesize voiceover audio via Deepgram Aura-2 / MeloTTS
+  // Synthesize voiceover audio via Deepgram Aura-2
   let audioDataUrl = '';
   try {
     const ttsRes = await generateAudioWithAI(env, { text: scriptText, lang: 'en' });
