@@ -47,7 +47,6 @@ export const BlockImage = ({ block, onEditMedia }) => {
               src={img.url}
               alt={img.caption || `Visual ${idx + 1}`}
               referrerPolicy="no-referrer"
-              crossOrigin="anonymous"
               loading="lazy"
               className="w-full h-48 sm:h-56 object-cover group-hover:scale-105 transition duration-300"
             />
@@ -79,7 +78,6 @@ export const BlockImage = ({ block, onEditMedia }) => {
               src={lightboxUrl}
               alt="Zoomed"
               referrerPolicy="no-referrer"
-              crossOrigin="anonymous"
               className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain"
             />
             <button onClick={() => setLightboxUrl(null)} className="absolute top-2 right-2 bg-slate-900/80 text-white w-8 h-8 rounded-full font-bold">✕</button>
