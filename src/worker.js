@@ -9,7 +9,13 @@ import {
   deleteFolder 
 } from './api/lessons.js';
 import { authenticateTeacher, isRequestAuthorized, checkRateLimit } from './api/auth.js';
-import { generateFullLessonWithAI, transformBlockWithAI, fetchYouTubeTranscriptNative, evaluateOpenInputWithAI } from './api/ai.js';
+import { 
+  generateFullLessonWithAI, 
+  transformBlockWithAI, 
+  fetchYouTubeTranscriptNative, 
+  evaluateOpenInputWithAI,
+  generatePodcastAudioWithAI 
+} from './api/ai.js';
 import { submitHomework, getHomeworkSubmissions, getStudentsDirectory } from './api/homework.js';
 import { 
   createRoomSession, 
@@ -71,6 +77,13 @@ export default {
         if (path === '/api/ai/transform-block' && method === 'POST') {
           const payload = await request.json();
           const res = await transformBlockWithAI(env, payload);
+          return res.error ? jsonResponse({ error: res.error }, 500) : jsonResponse(res);
+        }
+
+        // NEW: 1-MINUTE PODCAST SCRIPT & TTS AUDIO GENERATOR
+        if (path === '/api/ai/generate-podcast' && method === 'POST') {
+          const payload = await request.json();
+          const res = await generatePodcastAudioWithAI(env, payload);
           return res.error ? jsonResponse({ error: res.error }, 500) : jsonResponse(res);
         }
       }
