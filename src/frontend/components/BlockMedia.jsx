@@ -22,22 +22,31 @@ export const BlockText = ({ block }) => (
 export const BlockImage = ({ block, onEditMedia }) => {
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
-  const imageList = block.images && block.images.length > 0
+  // Normalize image data from any format (arrays, strings, objects, or fallback block.url)
+  const rawImages = Array.isArray(block.images) && block.images.length > 0
     ? block.images
-    : (block.url ? [{ url: block.url, caption: block.caption }] : []);
+    : (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
 
-  if (imageList.length === 0) return null;
+  const cleanImages = rawImages
+    .map((img, i) => {
+      if (typeof img === 'string') return { url: img.trim(), caption: block.caption || `Visual ${i + 1}` };
+      if (img && typeof img === 'object' && img.url) return { url: String(img.url).trim(), caption: img.caption || block.caption || `Visual ${i + 1}` };
+      return null;
+    })
+    .filter(img => Boolean(img && img.url));
 
-  const gridCols = imageList.length === 1 ? 'grid-cols-1 max-w-xl mx-auto' :
-                   imageList.length === 2 ? 'grid-cols-1 sm:grid-cols-2' :
-                   imageList.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4';
+  if (cleanImages.length === 0) return null;
+
+  const gridCols = cleanImages.length === 1 ? 'grid-cols-1 max-w-2xl mx-auto' :
+                   cleanImages.length === 2 ? 'grid-cols-1 sm:grid-cols-2' :
+                   cleanImages.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4';
 
   return (
-    <div className="my-6 space-y-3 relative group">
-      {block.caption && <h4 className="font-bold text-slate-800 text-base">{block.caption}</h4>}
+    <div className="my-6 space-y-3 relative group w-full min-w-0">
+      {block.caption && <h4 className="font-bold text-slate-800 text-base leading-snug">{block.caption}</h4>}
 
       <div className={`grid ${gridCols} gap-4`}>
-        {imageList.map((img, idx) => (
+        {cleanImages.map((img, idx) => (
           <div
             key={idx}
             onClick={() => setLightboxUrl(img.url)}
@@ -48,10 +57,17 @@ export const BlockImage = ({ block, onEditMedia }) => {
               alt={img.caption || `Visual ${idx + 1}`}
               referrerPolicy="no-referrer"
               loading="lazy"
-              className="w-full h-48 sm:h-56 object-cover group-hover:scale-105 transition duration-300"
+              onError={(e) => {
+                // If direct image hit a temporary hiccup, retry once cleanly
+                if (!e.target.dataset.retried) {
+                  e.target.dataset.retried = 'true';
+                  e.target.src = img.url;
+                }
+              }}
+              className="w-full h-48 sm:h-64 object-cover group-hover:scale-105 transition duration-300 block"
             />
             {img.caption && (
-              <div className="p-2.5 bg-white/95 backdrop-blur-xs text-xs font-semibold text-slate-700 text-center border-t border-slate-100">
+              <div className="p-2.5 bg-white/95 backdrop-blur-xs text-xs font-semibold text-slate-700 text-center border-t border-slate-100 truncate">
                 {img.caption}
               </div>
             )}
@@ -61,8 +77,9 @@ export const BlockImage = ({ block, onEditMedia }) => {
 
       {onEditMedia && (
         <button
-          onClick={() => onEditMedia(block.id, 'url', block.url)}
-          className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-xl shadow-xs transition cursor-pointer"
+          type="button"
+          onClick={() => onEditMedia(block.id, 'url', cleanImages[0]?.url || block.url)}
+          className="mt-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-200 transition cursor-pointer"
         >
           🔗 Изменить ссылку на фото
         </button>
@@ -76,11 +93,17 @@ export const BlockImage = ({ block, onEditMedia }) => {
           <div className="relative max-w-4xl max-h-[90vh]">
             <img
               src={lightboxUrl}
-              alt="Zoomed"
+              alt="Zoomed Visual"
               referrerPolicy="no-referrer"
               className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain"
             />
-            <button onClick={() => setLightboxUrl(null)} className="absolute top-2 right-2 bg-slate-900/80 text-white w-8 h-8 rounded-full font-bold">✕</button>
+            <button
+              type="button"
+              onClick={() => setLightboxUrl(null)}
+              className="absolute top-2 right-2 bg-slate-900/80 hover:bg-slate-900 text-white w-8 h-8 rounded-full font-bold flex items-center justify-center cursor-pointer shadow-md"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}
@@ -93,7 +116,7 @@ export const BlockVideo = ({ block, onEditMedia }) => {
   const isYouTube = embedUrl && embedUrl.includes('youtube.com/embed');
 
   return (
-    <div className="my-6 relative group">
+    <div className="my-6 relative group w-full min-w-0">
       {block.title && <h4 className="font-semibold text-lg text-slate-800 mb-3">{block.title}</h4>}
       <div className="aspect-video w-full rounded-2xl overflow-hidden bg-slate-900 shadow-md">
         {isYouTube ? (
@@ -109,8 +132,9 @@ export const BlockVideo = ({ block, onEditMedia }) => {
       </div>
       {onEditMedia && (
         <button
+          type="button"
           onClick={() => onEditMedia(block.id, 'url', block.url)}
-          className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-xl shadow-xs transition cursor-pointer"
+          className="mt-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-200 transition cursor-pointer"
         >
           🔗 Изменить ссылку на видео
         </button>
@@ -133,7 +157,7 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
   };
 
   return (
-    <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/90 shadow-xs mb-6 space-y-4">
+    <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/90 shadow-xs mb-6 space-y-4 w-full min-w-0">
       {/* HEADER */}
       <div className="flex justify-between items-start gap-3">
         <div className="flex items-center gap-3.5">
@@ -225,7 +249,7 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
 };
 
 export const BlockGrammarCard = ({ block }) => (
-  <div className="bg-gradient-to-r from-indigo-50/90 to-blue-50/90 border border-indigo-100 p-6 rounded-2xl shadow-xs mb-6 space-y-3">
+  <div className="bg-gradient-to-r from-indigo-50/90 to-blue-50/90 border border-indigo-100 p-6 rounded-2xl shadow-xs mb-6 space-y-3 w-full min-w-0">
     <div className="flex items-center gap-2">
       <span className="px-2.5 py-0.5 bg-indigo-600 text-white text-[10px] font-extrabold rounded-full uppercase tracking-wider">Правило</span>
       <h3 className="text-xl font-bold text-slate-900">{block.title}</h3>
