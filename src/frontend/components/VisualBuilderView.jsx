@@ -13,7 +13,7 @@ const DEFAULT_LESSON = {
   pages: [
     {
       id: 'page-1',
-      title: 'Part 1: Introduction & Reading',
+      title: 'Часть 1: Введение',
       blocks: [
         { id: 'b-1', type: 'heading', level: 1, text: 'Welcome to the Lesson' },
         { id: 'b-2', type: 'text', text: 'Read the following story carefully and complete all interactive tasks below.' }
@@ -49,9 +49,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
       const normalized = { ...initialLesson };
       if (!normalized.pages || !Array.isArray(normalized.pages) || normalized.pages.length === 0) {
         if (normalized.blocks && Array.isArray(normalized.blocks)) {
-          normalized.pages = [{ id: 'p1', title: 'Part 1: Lesson Content', blocks: normalized.blocks }];
+          normalized.pages = [{ id: 'p1', title: 'Часть 1', blocks: normalized.blocks }];
         } else {
-          normalized.pages = [{ id: 'p1', title: 'Part 1: Lesson Content', blocks: [] }];
+          normalized.pages = [{ id: 'p1', title: 'Часть 1', blocks: [] }];
         }
       }
       setLesson(normalized);
@@ -110,7 +110,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
   };
 
   const handleAddPage = () => {
-    const newPage = { id: 'page-' + Date.now(), title: `Part ${(lesson.pages?.length || 0) + 1}`, blocks: [] };
+    const newPage = { id: 'page-' + Date.now(), title: `Часть ${(lesson.pages?.length || 0) + 1}`, blocks: [] };
     updateLessonState(prev => ({ ...prev, pages: [...(prev.pages || []), newPage] }));
     setActivePageIndex(lesson.pages?.length || 0);
   };
@@ -128,9 +128,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
-  const handleAddBlock = (rawType) => {
+  const createDefaultBlock = (rawType) => {
     const type = normalizeBlockType(rawType);
-    const newBlock = { id: 'b-' + Date.now(), type };
+    const newBlock = { id: 'b-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6), type };
 
     if (rawType === 'true_false') {
       newBlock.type = 'multiple_choice';
@@ -180,7 +180,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
       newBlock.text = '1. We should [focus on* | ignore] the main goal.\n2. By next year they [will have completed* | completed] the project.'; 
     }
     else if (type === 'spinning_wheel') { 
-      newBlock.title = '🎡 Speaking Warm-Up Wheel'; 
+      newBlock.title = 'Discussion Roulette'; 
       newBlock.instruction = 'Крутите колесо и ответьте на выпавший вопрос!'; 
       newBlock.items = [
         'What is your favorite travel memory?', 
@@ -240,12 +240,21 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
       newBlock.prompt = '💬 Вопрос для обсуждения:\n1. Что вы думаете по этой теме?\n2. Приведите пример из своего опыта.'; 
     }
 
+    return newBlock;
+  };
+
+  const handleInsertBlockAt = (targetIdx, rawType = 'text') => {
+    const newBlock = createDefaultBlock(rawType);
     const updatedPages = [...(lesson.pages || [])];
     if (!updatedPages[activePageIndex]) {
-      updatedPages[activePageIndex] = { id: 'p1', title: 'Part 1', blocks: [] };
+      updatedPages[activePageIndex] = { id: 'p1', title: 'Часть 1', blocks: [] };
     }
-    updatedPages[activePageIndex].blocks.push(newBlock);
+    updatedPages[activePageIndex].blocks.splice(targetIdx, 0, newBlock);
     updateLessonState(prev => ({ ...prev, pages: updatedPages }));
+  };
+
+  const handleAddBlock = (rawType) => {
+    handleInsertBlockAt(activePage.blocks?.length || 0, rawType);
   };
 
   const handleUpdateBlock = (blockIdx, updatedBlock) => {
@@ -378,68 +387,69 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
   };
 
   return (
-    <div className="space-y-6 w-full min-w-0">
-      <div className="bg-white p-4 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🧩</span>
-            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Visual Lego Lesson Builder</h2>
-          </div>
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex-1 sm:flex-initial px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-sm transition cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => onSaveLesson({ ...lesson, id: lesson.id || 'lesson-' + Date.now() })}
-              className="flex-1 sm:flex-initial px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl text-sm shadow-md transition cursor-pointer"
-            >
-              💾 Save Lesson
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-          <div className="md:col-span-2 space-y-1.5">
-            <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">Lesson Title</label>
+    <div className="space-y-4 w-full min-w-0">
+      
+      {/* 1. SLIM SINGLE-ROW STICKY HEADER (SAVES 100+ PX OF VERTICAL SPACE) */}
+      <div className="bg-white p-3 sm:p-4 rounded-3xl border border-slate-200/90 shadow-xs sticky top-16 z-30 transition">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
+          {/* TITLE & ICON */}
+          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+            <div className="w-9 h-9 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-center text-base shadow-2xs shrink-0">
+              🧩
+            </div>
             <input
               type="text"
               value={lesson.title || ''}
               onChange={e => updateLessonState(prev => ({ ...prev, title: e.target.value }))}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-bold text-slate-900 outline-none transition shadow-2xs"
-              placeholder="e.g. Travel Vocabulary & Past Simple"
+              placeholder="Название урока (Lesson Title)..."
+              className="w-full font-extrabold text-sm sm:text-base text-slate-900 outline-none bg-transparent hover:bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 px-2.5 py-1.5 rounded-xl transition border border-transparent focus:border-slate-200"
             />
           </div>
-          <div className="space-y-1.5">
-            <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">Level & Topic</label>
-            <div className="flex gap-2">
-              <select
-                value={lesson.level || 'B1'}
-                onChange={e => {
-                  const newLvl = e.target.value;
-                  updateLessonState(prev => ({ ...prev, level: newLvl }));
-                  setModalLevel(newLvl);
-                }}
-                className="w-28 px-3 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-bold text-slate-900 outline-none transition shadow-2xs cursor-pointer"
-              >
-                <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
-              </select>
-              <input
-                type="text"
-                value={lesson.topic || ''}
-                onChange={e => updateLessonState(prev => ({ ...prev, topic: e.target.value }))}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:border-indigo-600 focus:bg-white rounded-2xl text-sm font-medium text-slate-900 outline-none transition shadow-2xs"
-                placeholder="Topic..."
-              />
-            </div>
+
+          {/* LEVEL, TOPIC & ACTIONS IN ONE COMPACT ROW */}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
+            <select
+              value={lesson.level || 'B1'}
+              onChange={e => {
+                const newLvl = e.target.value;
+                updateLessonState(prev => ({ ...prev, level: newLvl }));
+                setModalLevel(newLvl);
+              }}
+              className="px-2.5 py-2 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl text-xs font-extrabold text-indigo-700 outline-none transition cursor-pointer"
+              title="Уровень CEFR"
+            >
+              <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
+            </select>
+
+            <input
+              type="text"
+              value={lesson.topic || ''}
+              onChange={e => updateLessonState(prev => ({ ...prev, topic: e.target.value }))}
+              placeholder="Тема / Группа..."
+              className="w-28 sm:w-36 px-2.5 py-2 bg-slate-50 border border-slate-200 focus:bg-white rounded-xl text-xs font-semibold text-slate-800 outline-none transition"
+            />
+
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+            >
+              Отмена
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onSaveLesson({ ...lesson, id: lesson.id || 'lesson-' + Date.now() })}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5"
+            >
+              <span>💾</span>
+              <span>Сохранить</span>
+            </button>
           </div>
         </div>
       </div>
 
+      {/* 2. UNIFIED SINGLE-ROW TAB BAR */}
       <BuilderPagesBar
         pages={lesson.pages || []}
         activePageIndex={activePageIndex}
@@ -449,64 +459,83 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         onUpdatePageTitle={handleUpdatePageTitle}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      {/* 3. WORKSPACE CANVAS: PALETTE + BLOCKS */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         <BuilderPalette onAddBlock={handleAddBlock} />
 
-        <div className="lg:col-span-3 space-y-4 min-w-0">
+        <div className="lg:col-span-3 space-y-3 min-w-0">
           {(activePage.blocks || []).length === 0 ? (
-            <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center space-y-3">
-              <span className="text-4xl block">🧩</span>
-              <p className="font-bold text-slate-600">This page is currently empty.</p>
-              <p className="text-slate-400 text-xs">Click any block from the left palette to add content!</p>
+            <div className="bg-white p-10 rounded-3xl border-2 border-dashed border-slate-200 text-center space-y-3">
+              <span className="text-3xl block">🧩</span>
+              <p className="font-bold text-slate-600">На этой странице пока нет блоков.</p>
+              <p className="text-slate-400 text-xs">Кликните любой блок из левой палитры Lego, чтобы добавить его!</p>
             </div>
           ) : (
             (activePage.blocks || []).map((block, idx) => (
-              <div
-                key={block.id || idx}
-                draggable
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={e => e.preventDefault()}
-                onDrop={() => handleDropOnBlock(idx)}
-                className={`bg-white p-4 sm:p-6 rounded-3xl border transition-all duration-200 shadow-xs hover:shadow-md relative group ${
-                  draggedBlockIdx === idx ? 'opacity-40 border-dashed border-indigo-500 scale-98' : 'border-slate-200/90 hover:border-indigo-300'
-                }`}
-              >
-                <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-100 flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-600 font-bold px-1 text-base select-none" title="Drag to reorder block">⣿</span>
-                    <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">#{idx + 1}</span>
-                    <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">
-                      {normalizeBlockType(block?.type).replace(/_/g, ' ')}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
+              <React.Fragment key={block.id || idx}>
+                {/* INLINE HOVER INSERTION DIVIDER */}
+                {idx > 0 && (
+                  <div className="relative group/divider py-0.5 flex items-center justify-center">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-transparent group-hover/divider:border-indigo-300 transition-all border-dashed" />
+                    </div>
                     <button
                       type="button"
-                      onClick={() => handleOpenAiModal(block, idx)}
-                      className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl shadow-xs transition text-xs flex items-center gap-1.5 cursor-pointer"
+                      onClick={() => handleInsertBlockAt(idx, 'text')}
+                      className="relative opacity-0 group-hover/divider:opacity-100 transition-all px-3 py-1 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-[10px] font-extrabold shadow-2xs flex items-center gap-1 cursor-pointer"
                     >
-                      <span>✨ Generate / Fill with AI</span>
+                      <span>+ Вставить блок сюда</span>
                     </button>
-                    <button type="button" onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▲</button>
-                    <button type="button" onClick={() => handleMoveBlock(idx, 1)} disabled={idx === (activePage.blocks?.length || 1) - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
-                    <button type="button" onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Delete block">🗑️</button>
                   </div>
-                </div>
+                )}
 
-                {/* PASS LESSON AND SOURCE TEXT TO BLOCK CARDS */}
-                <EditableBlockCard
-                  block={block}
-                  onChange={updated => handleUpdateBlock(idx, updated)}
-                  lesson={lesson}
-                  pages={lesson.pages || []}
-                  availableSourceBlocks={availableSourceBlocks}
-                  extractLessonContext={extractLessonContext}
-                  sourceText={extractLessonContext()}
-                  lessonTitle={lesson.title || lesson.topic || ''}
-                  level={lesson.level || 'B1'}
-                />
-              </div>
+                {/* LEGO BLOCK CARD */}
+                <div
+                  draggable
+                  onDragStart={() => handleDragStart(idx)}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={() => handleDropOnBlock(idx)}
+                  className={`bg-white p-4 sm:p-6 rounded-3xl border transition-all duration-200 shadow-xs hover:shadow-md relative group ${
+                    draggedBlockIdx === idx ? 'opacity-40 border-dashed border-indigo-500 scale-98' : 'border-slate-200/90 hover:border-indigo-300'
+                  }`}
+                >
+                  <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-100 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-600 font-bold px-1 text-base select-none" title="Потяните для изменения порядка">⣿</span>
+                      <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">#{idx + 1}</span>
+                      <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">
+                        {normalizeBlockType(block?.type).replace(/_/g, ' ')}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAiModal(block, idx)}
+                        className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl shadow-xs transition text-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>✨ Generate / Fill with AI</span>
+                      </button>
+                      <button type="button" onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▲</button>
+                      <button type="button" onClick={() => handleMoveBlock(idx, 1)} disabled={idx === (activePage.blocks?.length || 1) - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
+                      <button type="button" onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Удалить блок">🗑️</button>
+                    </div>
+                  </div>
+
+                  {/* BLOCK EDITOR ROUTER */}
+                  <EditableBlockCard
+                    block={block}
+                    onChange={updated => handleUpdateBlock(idx, updated)}
+                    lesson={lesson}
+                    pages={lesson.pages || []}
+                    availableSourceBlocks={availableSourceBlocks}
+                    extractLessonContext={extractLessonContext}
+                    sourceText={extractLessonContext()}
+                    lessonTitle={lesson.title || lesson.topic || ''}
+                    level={lesson.level || 'B1'}
+                  />
+                </div>
+              </React.Fragment>
             ))
           )}
         </div>
