@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { BlockRenderer } from './BlockRenderer.jsx';
-import { triggerConfetti, playVictorySound } from '../utils/sounds.js';
+import { triggerConfetti, playVictorySound, playReactionSound } from '../utils/sounds.js';
+import { FloatingWhiteboard } from './FloatingWhiteboard.jsx';
 
 export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   // Navigation Indices
@@ -23,7 +24,21 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [notepadText, setNotepadText] = useState('');
   const [showNotepad, setShowNotepad] = useState(false);
   const [xpAward, setXpAward] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Collapsed on mobile by default
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Live Teacher Feedback & Floating Reactions
+  const [floatingReactions, setFloatingReactions] = useState([]);
+  const lastReactionIdRef = useRef(0);
+
+  // Synchronized Floating Whiteboard
+  const [showWhiteboard, setShowWhiteboard] = useState(false);
+  const [whiteboardState, setWhiteboardState] = useState({
+    isOpen: false,
+    mode: 'draw',
+    drawing: '',
+    text: '',
+    color: '#0f172a'
+  });
 
   // Network Sync Debounce Ref
   const debounceTimersRef = useRef({});
@@ -111,7 +126,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return () => clearInterval(interval);
   }, [roomId, studentId, studentName, isTeacher, hasStarted]);
 
-  // Telemetry Polling (Room state & live responses)
+  // Telemetry Polling (Room state, live responses, reactions & whiteboard)
   useEffect(() => {
     if (!roomId || isHomeworkMode) return;
 
@@ -125,6 +140,37 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         setParticipants(data.participants || {});
         setBroadcastSlideIdx(data.broadcastPage ?? 0);
         if (data.notepad !== undefined) setNotepadText(data.notepad);
+
+        // Sync Whiteboard state
+        if (data.whiteboard) {
+          setWhiteboardState(data.whiteboard);
+          if (!isTeacher && data.whiteboard.isOpen) {
+            setShowWhiteboard(true);
+          }
+        }
+
+        // Live Reaction Receiver: trigger floating rising particles & chime
+        if (data.reaction && data.reaction.id && data.reaction.id !== lastReactionIdRef.current) {
+          lastReactionIdRef.current = data.reaction.id;
+          const emoji = data.reaction.emoji;
+          if (emoji) {
+            playReactionSound(emoji);
+
+            const newParticles = Array.from({ length: 5 }).map((_, i) => ({
+              id: `${data.reaction.id}-${i}-${Math.random()}`,
+              emoji: emoji,
+              left: 50 + (Math.random() * 26 - 13),
+              delay: i * 0.12,
+              scale: 0.85 + Math.random() * 0.4
+            }));
+
+            setFloatingReactions(prev => [...prev, ...newParticles]);
+
+            setTimeout(() => {
+              setFloatingReactions(prev => prev.filter(p => !p.id.startsWith(String(data.reaction.id))));
+            }, 3200);
+          }
+        }
 
         // Synchronize student view when teacher broadcasts
         if (!isTeacher && !isHomeworkMode && typeof data.broadcastPage === 'number') {
@@ -172,6 +218,60 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         })
       });
     } catch (e) {}
+  };
+
+  // Send Silent Teacher Reaction (👍 ❤️ ❓ ❌)
+  const handleSendReaction = async (emoji) => {
+    if (!isTeacher || !roomId) return;
+    playReactionSound(emoji);
+
+    const reactionPayload = {
+      emoji,
+      id: Date.now(),
+      timestamp: Date.now()
+    };
+
+    // Trigger on teacher screen too
+    const newParticles = Array.from({ length: 4 }).map((_, i) => ({
+      id: `${reactionPayload.id}-${i}-${Math.random()}`,
+      emoji: emoji,
+      left: 50 + (Math.random() * 20 - 10),
+      delay: i * 0.12,
+      scale: 0.9 + Math.random() * 0.3
+    }));
+    setFloatingReactions(prev => [...prev, ...newParticles]);
+    setTimeout(() => {
+      setFloatingReactions(prev => prev.filter(p => !p.id.startsWith(String(reactionPayload.id))));
+    }, 3200);
+
+    try {
+      await fetch(`/api/rooms/${roomId}/broadcast`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ reaction: reactionPayload })
+      });
+    } catch (e) {}
+  };
+
+  // Sync Whiteboard drawing & notes to room
+  const handleUpdateWhiteboard = async (updated) => {
+    setWhiteboardState(updated);
+    if (!isTeacher || !roomId) return;
+    try {
+      await fetch(`/api/rooms/${roomId}/broadcast`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ whiteboard: updated })
+      });
+    } catch (e) {}
+  };
+
+  const handleToggleWhiteboard = () => {
+    const nextState = !showWhiteboard;
+    setShowWhiteboard(nextState);
+    if (isTeacher) {
+      handleUpdateWhiteboard({ ...whiteboardState, isOpen: nextState });
+    }
   };
 
   // Debounced Network Answer Sync
@@ -275,7 +375,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }
   };
 
-  // Reusable Sidebar Content (Used in both Desktop & Mobile Drawer)
+  // Reusable Sidebar Content
   const renderSidebarContent = () => (
     <>
       <div className="space-y-5">
@@ -396,8 +496,44 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans w-full max-w-full overflow-x-hidden">
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans w-full max-w-full overflow-x-hidden relative">
       
+      {/* RISING REACTION ANIMATION KEYFRAMES */}
+      <style>{`
+        @keyframes floatUp {
+          0% { transform: translateY(0) scale(0.6); opacity: 0; }
+          15% { opacity: 1; transform: translateY(-40px) scale(1.15); }
+          80% { opacity: 0.9; }
+          100% { transform: translateY(-380px) scale(1.3); opacity: 0; }
+        }
+      `}</style>
+
+      {/* RISING FLOATING REACTION BUBBLES */}
+      {floatingReactions.map(p => (
+        <div
+          key={p.id}
+          style={{
+            left: `${p.left}%`,
+            animation: 'floatUp 2.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+            animationDelay: `${p.delay}s`,
+            transform: `scale(${p.scale})`
+          }}
+          className="fixed bottom-16 pointer-events-none z-50 text-4xl sm:text-5xl select-none drop-shadow-md"
+        >
+          {p.emoji}
+        </div>
+      ))}
+
+      {/* DRAGGABLE SYNCHRONIZED FLOATING WHITEBOARD */}
+      {showWhiteboard && (
+        <FloatingWhiteboard
+          isTeacher={isTeacher}
+          whiteboardState={whiteboardState}
+          onUpdate={handleUpdateWhiteboard}
+          onClose={handleToggleWhiteboard}
+        />
+      )}
+
       {/* ONBOARDING MODAL FOR STUDENT */}
       {!hasStarted && !isTeacher && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -468,7 +604,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
       ) : (
         <div className="flex-1 flex flex-col md:flex-row min-h-screen w-full min-w-0">
           
-          {/* DESKTOP SIDEBAR (HIDDEN ON MOBILE) */}
+          {/* DESKTOP SIDEBAR */}
           {isTeacher && (
             <aside className="hidden md:flex w-72 bg-white border-r border-slate-200 p-5 flex-col justify-between shrink-0 space-y-6">
               {renderSidebarContent()}
@@ -476,7 +612,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           )}
 
           {/* MAIN WORKSPACE CANVAS */}
-          <main className="flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 max-w-4xl mx-auto w-full min-w-0">
+          <main className="flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 max-w-4xl mx-auto w-full min-w-0 pb-20 sm:pb-24">
             <div className="space-y-4 sm:space-y-6 min-w-0">
               
               {/* TOP STATUS BAR */}
@@ -607,6 +743,64 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
               )}
             </div>
           </main>
+        </div>
+      )}
+
+      {/* SILENT TEACHER FEEDBACK HUD & FLOATING WHITEBOARD TOGGLE */}
+      {isTeacher && hasStarted && (
+        <div className="fixed bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-200/90 shadow-2xl flex items-center gap-1.5 select-none animate-fade-in">
+          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider px-1.5 hidden sm:inline">
+            Реакция:
+          </span>
+
+          <button
+            type="button"
+            onClick={() => handleSendReaction('👍')}
+            className="w-9 h-9 rounded-full bg-slate-50 hover:bg-indigo-50 hover:scale-115 active:scale-95 transition text-lg flex items-center justify-center cursor-pointer shadow-2xs border border-slate-200/70"
+            title="Похвалить (👍)"
+          >
+            👍
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSendReaction('❤️')}
+            className="w-9 h-9 rounded-full bg-slate-50 hover:bg-rose-50 hover:scale-115 active:scale-95 transition text-lg flex items-center justify-center cursor-pointer shadow-2xs border border-slate-200/70"
+            title="Отличная речь / Ответ (❤️)"
+          >
+            ❤️
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSendReaction('❓')}
+            className="w-9 h-9 rounded-full bg-slate-50 hover:bg-amber-50 hover:scale-115 active:scale-95 transition text-lg flex items-center justify-center cursor-pointer shadow-2xs border border-slate-200/70"
+            title="Развернуть мысль / Пояснить (❓)"
+          >
+            ❓
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSendReaction('❌')}
+            className="w-9 h-9 rounded-full bg-slate-50 hover:bg-rose-50 hover:scale-115 active:scale-95 transition text-lg flex items-center justify-center cursor-pointer shadow-2xs border border-slate-200/70"
+            title="Мягкое исправление грамматики (❌)"
+          >
+            ❌
+          </button>
+
+          <div className="w-px h-5 bg-slate-200 mx-1" />
+
+          <button
+            type="button"
+            onClick={handleToggleWhiteboard}
+            className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
+              showWhiteboard
+                ? 'bg-amber-400 text-amber-950 shadow-xs border border-amber-300'
+                : 'bg-slate-100 hover:bg-amber-100 text-slate-700'
+            }`}
+            title="Открыть плавающую доску заметок и маркеров"
+          >
+            <span>📌</span>
+            <span className="hidden sm:inline">Доска</span>
+          </button>
         </div>
       )}
     </div>
