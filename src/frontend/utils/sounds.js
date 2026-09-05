@@ -1,7 +1,16 @@
 // Web Audio API Synthesized Sound Effects (No MP3 downloads needed!)
+let audioCtxInstance = null;
+
 const getAudioContext = () => {
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  return AudioCtx ? new AudioCtx() : null;
+  if (typeof window === 'undefined') return null;
+  if (!audioCtxInstance) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) audioCtxInstance = new AudioCtx();
+  }
+  if (audioCtxInstance && audioCtxInstance.state === 'suspended') {
+    audioCtxInstance.resume().catch(() => {});
+  }
+  return audioCtxInstance;
 };
 
 export const playCorrectSound = () => {
@@ -66,6 +75,53 @@ export const playVictorySound = () => {
       osc.start(startTime);
       osc.stop(startTime + 0.35);
     });
+  } catch(e) {}
+};
+
+// Gentle, non-intrusive live teacher feedback chimes
+export const playReactionSound = (emoji = '👍') => {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    if (emoji === '❤️' || emoji === '👍') {
+      // Warm uplifting chime (praise)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(659.25, now); // E5
+      osc.frequency.exponentialRampToValueAtTime(880.00, now + 0.12); // A5
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    } else if (emoji === '❓') {
+      // Soft questioning prompt chime
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440.00, now); // A4
+      osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.15); // D5
+      gain.gain.setValueAtTime(0.09, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } else {
+      // Subtle soft tap (gentle reminder, not a harsh buzzer)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(329.63, now); // E4
+      osc.frequency.exponentialRampToValueAtTime(261.63, now + 0.12); // C4
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.25);
+    }
   } catch(e) {}
 };
 
