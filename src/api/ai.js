@@ -287,13 +287,18 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Fill the missing words in the blanks:';
   }
 
-  // 5. GAP FILL BANK NORMALIZATION
+  // 5. GAP FILL BANK (WORD BANK) - PURGES NUMBERS & LIST PREFIXES
   if (b.type === 'gap_fill_bank') {
     let rawText = String(b.text || b.paragraph || b.content || b.passage || '').trim();
     b.text = rawText.replace(/\[[-_.\s]{2,}\]/g, '[practice]');
     let distractors = Array.isArray(b.distractors) ? b.distractors : [];
-    distractors = distractors.map(d => String(d).trim()).filter(d => Boolean(d) && !/^[-_.\s]+$/.test(d));
-    b.distractors = distractors.length > 0 ? distractors : ['barrier', 'hesitation', 'distraction'];
+    
+    // Purge stray numbers, indices like "1.", "2)" or pure standalone digits
+    distractors = distractors
+      .map(d => String(d).replace(/^\d+[\s.)-]+/, '').trim())
+      .filter(d => Boolean(d) && !/^\d+$/.test(d) && !/^[-_.\s]+$/.test(d));
+
+    b.distractors = distractors.length > 0 ? distractors : ['hesitation', 'distraction', 'barrier'];
     b.instruction = b.instruction || 'Fill the gaps using the correct words from the bank:';
   }
 
@@ -375,13 +380,16 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Sort the items into the correct categories:';
   }
 
-  // 12. SPINNING WHEEL NORMALIZATION
+  // 12. DISCUSSION ROULETTE / QUESTION DECK (CLEANS DUPLICATE EMOJIS)
   if (b.type === 'spinning_wheel') {
     let items = Array.isArray(b.items) ? b.items : [];
     items = items.map(it => String(it).trim()).filter(Boolean);
     b.items = items.length > 0 ? items : ['What was the key insight today?', 'How will you apply this in real life?'];
-    b.title = b.title || '🎡 Speaking & Discussion Roulette';
-    b.instruction = b.instruction || 'Spin the wheel and answer the selected question!';
+    
+    // Purge leading emojis to avoid double-display with UI icons
+    let cleanTitle = String(b.title || 'Discussion Roulette').replace(/^[🎡🎲🎯\s]+/gu, '').trim();
+    b.title = cleanTitle || 'Discussion Roulette';
+    b.instruction = b.instruction || 'Shuffle the questions and answer the drawn card!';
     b.eliminateMode = b.eliminateMode !== undefined ? b.eliminateMode : true;
   }
 
@@ -407,7 +415,7 @@ export function sanitizeBlockStructure(b) {
 // --------------------------------------------------------------------------
 // HIGH-SPEED, ULTRA-LOW-NEURON AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
-export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 1800) {
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2200) {
   let errors = [];
 
   // 1. GROQ API (If key is available: 300 tps, sub-second latency, 0 CF Neurons)
@@ -430,7 +438,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 4500);
+        }, 5000);
 
         if (res.ok) {
           const data = await res.json();
@@ -822,7 +830,7 @@ Return ONLY valid JSON.
 }
 
 // --------------------------------------------------------------------------
-// 1-PROMPT ANCHOR + ROADMAP ENGINE (Sub-3s, Real Top Web Search Resolver)
+// 1-PROMPT ANCHOR + ROADMAP ENGINE (Strict 280-340w Story Blueprint + Live Search)
 // --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
@@ -846,6 +854,14 @@ ${audienceContext}
 [CEFR LEVEL GUIDELINE FOR READING PASSAGE]
 ${cefrRules}
 
+[STRICT 3-PARAGRAPH STORY BLUEPRINT - MANDATORY 280-340 WORDS]
+- "storyText" MUST be a comprehensive, engaging 280 to 340-word reading passage divided into THREE full paragraphs separated by double line breaks ("\\n\\n").
+- Paragraph 1 (Origins & Core Background): ~90-100 words introducing the historical roots, background, or foundational premise.
+- Paragraph 2 (Deep Cultural & Narrative Exploration): ~110-120 words detailing specific events, conflicts, cultural significance, or nuanced examples.
+- Paragraph 3 (Modern Impact & Ongoing Legacy): ~80-100 words summarizing contemporary relevance, evolution, or reflection.
+- FORBIDDEN: NEVER write a short 1-paragraph summary (do NOT stop at 100 words!). You must write all 3 distinct, full paragraphs.
+- Inside "storyText", NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy') for titles or speech.
+
 [CRITICAL VOCABULARY INSTRUCTIONS - STRICT!]
 - "targetWords" MUST contain exactly 6 high-yield TOPICAL English words, collocations, or idioms that appear directly in your "storyText".
 - NEVER include grammar rules, linguistic terms, or meta-concepts in "targetWords" (FORBIDDEN: "inversion", "cleft sentence", "participle clause", "modal verb", "passive voice", "relative clause", "tense", "aspect", "verb", "noun").
@@ -853,15 +869,10 @@ ${cefrRules}
 - "back" MUST be an accurate Russian translation of the word.
 - "example" MUST be an authentic 10-14 word context sentence.
 
-[STRICT STORY REQUIREMENTS]
-- "storyText" MUST be an engaging 220 to 280-word reading passage divided into 3 paragraphs.
-- Adapt language complexity to CEFR ${level}.
-- CRITICAL JSON RULE: Inside the "storyText" string, NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy') for titles or speech.
-
 [OUTPUT FORMAT]
 {
   "title": "${resolvedTopic}",
-  "storyText": "Complete 3-paragraph (220-280 words) reading story here...",
+  "storyText": "Paragraph 1 (Origins & Context)...\\n\\nParagraph 2 (Deep Narrative & Exploration)...\\n\\nParagraph 3 (Modern Impact & Reflection)...",
   "warmupQuestions": ["Warm-up question 1?", "Warm-up question 2?", "Warm-up question 3?"],
   "targetWords": [
     { "front": "topical word 1", "back": "Russian translation", "example": "Context sentence 1." },
@@ -881,12 +892,12 @@ ${cefrRules}
 }`;
 
   const userPrompt = text.trim() 
-    ? `Source Material:\n${text.slice(0, 2200)}\n\nCreate a complete lesson on Topic: "${resolvedTopic}".`
-    : `Create a comprehensive lesson anchor and roadmaps for Topic: "${resolvedTopic}". Format: ${format}.`;
+    ? `Source Material:\n${text.slice(0, 2200)}\n\nCreate a complete, detailed 280-340 word 3-paragraph lesson on Topic: "${resolvedTopic}".`
+    : `Create a comprehensive 280-340 word 3-paragraph lesson anchor on Topic: "${resolvedTopic}". Format: ${format}.`;
 
   // Run AI Text Generation and Real Live Web Search IN PARALLEL (0ms added delay!)
   const [result, liveRef] = await Promise.all([
-    runAiPipeline(env, systemPrompt, userPrompt, 1800),
+    runAiPipeline(env, systemPrompt, userPrompt, 2200),
     fetchLiveWebSearch(resolvedTopic)
   ]);
 
@@ -910,6 +921,7 @@ ${cefrRules}
     ? data.warmupQuestions
     : [`What comes to mind when you think about ${resolvedTopic}?`];
 
+  // Guaranteed real, verified top search link (No fake 404 URLs!)
   const refLink = liveRef || {
     title: `Resource: ${resolvedTopic}`,
     url: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(resolvedTopic)}`,
@@ -1055,8 +1067,8 @@ export async function transformBlockWithAI(env, payload) {
   if (actions.includes('generate_image') || actions.includes('image')) {
     tasksInstructions += `
 - GENERATE 1 "image" block illustrating the main scene or concept from the context.
-  Describe an atmospheric, photorealistic visual scene and provide a concise caption.
-  Schema: { "type": "image", "caption": "Descriptive visual caption of the scene", "prompt": "Detailed cinematic 4k scene description illustrating the story without text or logos" }`;
+  Describe an atmospheric visual scene and provide a concise caption.
+  Schema: { "type": "image", "caption": "Descriptive visual caption of the scene", "prompt": "Detailed cinematic scene description illustrating the story without text or logos" }`;
   }
 
   // 2. COMPREHENSION MULTIPLE CHOICE
@@ -1132,10 +1144,11 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. Sentence with [word].\\n2. Another sentence with [word].", "answers": ["word1", "word2"] }`;
   }
 
-  // 8. GAP FILL BANK
+  // 8. GAP FILL BANK (STRICTLY FORBIDS NUMERICAL DISTRACTORS)
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
-- GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 distractors.
+- GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 vocabulary distractors.
+  CRITICAL: "distractors" MUST be real vocabulary words (e.g. ["hesitation", "distraction", "comfort"]). NEVER output numbers like "1", "2", "3" or list indices!
   Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "The atmosphere was [bleak] due to widespread [surveillance] by the regime.", "distractors": ["hesitation", "distraction", "comfort"] }`;
   }
 
@@ -1161,11 +1174,12 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. The report was [accurate* | misleading] in its description.\\n2. Citizens expressed their [dissent* | agreement] peacefully." }`;
   }
 
-  // 12. SPEAKING WHEEL
+  // 12. DISCUSSION ROULETTE (CLEAN TOPICAL QUESTIONS)
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
 - GENERATE 1 "spinning_wheel" block with 6 communicative discussion questions based on context.
-  Schema: { "type": "spinning_wheel", "title": "🎡 Discussion Roulette", "instruction": "Spin the wheel and answer the question!", "items": ["What was the most surprising revelation?", "How does this relate to contemporary events?", "What alternative solution would you propose?"], "eliminateMode": true }`;
+  CRITICAL: Do NOT put emoji in the "title" string.
+  Schema: { "type": "spinning_wheel", "title": "Discussion Roulette", "instruction": "Shuffle the questions and answer the drawn card!", "items": ["What was the most surprising revelation?", "How does this relate to contemporary events?", "What alternative solution would you propose?"], "eliminateMode": true }`;
   }
 
   // 13. CATEGORIZATION
@@ -1221,7 +1235,7 @@ ${tasksInstructions}
 }`;
 
   try {
-    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 1800);
+    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 2000);
     if (!result.data) {
       return { error: `AI generation failed: ${result.error || 'All API providers failed or timed out.'}` };
     }
