@@ -293,7 +293,7 @@ export function sanitizeBlockStructure(b) {
     b.text = rawText.replace(/\[[-_.\s]{2,}\]/g, '[practice]');
     let distractors = Array.isArray(b.distractors) ? b.distractors : [];
     
-    // Purge stray numbers, indices like "1.", "2)" or pure standalone digits
+    // Purge numbers, list indices ("1.", "2)") or standalone digits
     distractors = distractors
       .map(d => String(d).replace(/^\d+[\s.)-]+/, '').trim())
       .filter(d => Boolean(d) && !/^\d+$/.test(d) && !/^[-_.\s]+$/.test(d));
@@ -310,7 +310,7 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Choose the correct word in context:';
   }
 
-  // 7. MULTI-SENTENCE REORDER NORMALIZATION
+  // 7. MULTI-SENTENCE REORDER (ENFORCES SHORT, BITE-SIZED 7-11 WORD SENTENCES)
   if (b.type === 'sentence_reorder') {
     let sentencesList = [];
     if (Array.isArray(b.sentences) && b.sentences.length > 0) {
@@ -320,7 +320,13 @@ export function sanitizeBlockStructure(b) {
     } else if (b.text && typeof b.text === 'string') {
       sentencesList = b.text.split('\n').map(s => s.trim()).filter(Boolean);
     }
-    b.sentences = sentencesList.length > 0 ? sentencesList : ['Consistent daily practice builds conversational fluency.'];
+
+    // Filter out long compound run-ons (>13 words) for smooth mobile unscramble
+    const biteSized = sentencesList.filter(s => s.split(/\s+/).length <= 13);
+    b.sentences = (biteSized.length >= 2 ? biteSized : sentencesList).slice(0, 4);
+    if (b.sentences.length === 0) {
+      b.sentences = ['Consistent daily practice builds conversational fluency.'];
+    }
     b.sentence = b.sentences[0];
     b.instruction = b.instruction || 'Put the words in order to form correct sentences:';
   }
@@ -380,16 +386,16 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Sort the items into the correct categories:';
   }
 
-  // 12. DISCUSSION ROULETTE / QUESTION DECK (CLEANS DUPLICATE EMOJIS)
+  // 12. DISCUSSION ROULETTE (AUTONOMOUS STANDALONE QUESTIONS, NO EMOJI CLUTTER)
   if (b.type === 'spinning_wheel') {
     let items = Array.isArray(b.items) ? b.items : [];
     items = items.map(it => String(it).trim()).filter(Boolean);
-    b.items = items.length > 0 ? items : ['What was the key insight today?', 'How will you apply this in real life?'];
+    b.items = items.length > 0 ? items : ['What was the most surprising insight?', 'How will you apply this concept in your life?'];
     
     // Purge leading emojis to avoid double-display with UI icons
     let cleanTitle = String(b.title || 'Discussion Roulette').replace(/^[🎡🎲🎯\s]+/gu, '').trim();
     b.title = cleanTitle || 'Discussion Roulette';
-    b.instruction = b.instruction || 'Shuffle the questions and answer the drawn card!';
+    b.instruction = b.instruction || 'Spin the wheel and answer the selected question!';
     b.eliminateMode = b.eliminateMode !== undefined ? b.eliminateMode : true;
   }
 
@@ -415,7 +421,7 @@ export function sanitizeBlockStructure(b) {
 // --------------------------------------------------------------------------
 // HIGH-SPEED, ULTRA-LOW-NEURON AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
-export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2200) {
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 1900) {
   let errors = [];
 
   // 1. GROQ API (If key is available: 300 tps, sub-second latency, 0 CF Neurons)
@@ -438,7 +444,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 5000);
+        }, 4500);
 
         if (res.ok) {
           const data = await res.json();
@@ -830,7 +836,7 @@ Return ONLY valid JSON.
 }
 
 // --------------------------------------------------------------------------
-// 1-PROMPT ANCHOR + ROADMAP ENGINE (Strict 280-340w Story Blueprint + Live Search)
+// 1-PROMPT ANCHOR + ROADMAP ENGINE (Balanced 220-250w Story + Real Web Search)
 // --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
@@ -854,25 +860,25 @@ ${audienceContext}
 [CEFR LEVEL GUIDELINE FOR READING PASSAGE]
 ${cefrRules}
 
-[STRICT 3-PARAGRAPH STORY BLUEPRINT - MANDATORY 280-340 WORDS]
-- "storyText" MUST be a comprehensive, engaging 280 to 340-word reading passage divided into THREE full paragraphs separated by double line breaks ("\\n\\n").
-- Paragraph 1 (Origins & Core Background): ~90-100 words introducing the historical roots, background, or foundational premise.
-- Paragraph 2 (Deep Cultural & Narrative Exploration): ~110-120 words detailing specific events, conflicts, cultural significance, or nuanced examples.
-- Paragraph 3 (Modern Impact & Ongoing Legacy): ~80-100 words summarizing contemporary relevance, evolution, or reflection.
-- FORBIDDEN: NEVER write a short 1-paragraph summary (do NOT stop at 100 words!). You must write all 3 distinct, full paragraphs.
+[STRICT 3-PARAGRAPH STORY BLUEPRINT - BALANCED 220 TO 250 WORDS TOTAL]
+- "storyText" MUST be an engaging reading passage of EXACTLY 220 to 250 words total.
+- It MUST be structured into exactly THREE distinct paragraphs separated by double line breaks ("\\n\\n"):
+  * Paragraph 1 (Introduction & Origins/Context): ~70-80 words.
+  * Paragraph 2 (Deep Exploration & Specific Examples): ~80-90 words.
+  * Paragraph 3 (Modern Impact & Reflection): ~70-80 words.
+- FORBIDDEN: NEVER write more than 3 paragraphs. Do NOT write 4, 5, or 6 paragraphs.
 - Inside "storyText", NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy') for titles or speech.
 
 [CRITICAL VOCABULARY INSTRUCTIONS - STRICT!]
 - "targetWords" MUST contain exactly 6 high-yield TOPICAL English words, collocations, or idioms that appear directly in your "storyText".
 - NEVER include grammar rules, linguistic terms, or meta-concepts in "targetWords" (FORBIDDEN: "inversion", "cleft sentence", "participle clause", "modal verb", "passive voice", "relative clause", "tense", "aspect", "verb", "noun").
-- Example good words for a dystopian story: "surveillance", "authoritarian", "propaganda", "rebellion", "conformity", "bleak".
 - "back" MUST be an accurate Russian translation of the word.
 - "example" MUST be an authentic 10-14 word context sentence.
 
 [OUTPUT FORMAT]
 {
   "title": "${resolvedTopic}",
-  "storyText": "Paragraph 1 (Origins & Context)...\\n\\nParagraph 2 (Deep Narrative & Exploration)...\\n\\nParagraph 3 (Modern Impact & Reflection)...",
+  "storyText": "Paragraph 1 (Introduction & Origins)...\\n\\nParagraph 2 (Deep Exploration)...\\n\\nParagraph 3 (Modern Impact & Reflection)...",
   "warmupQuestions": ["Warm-up question 1?", "Warm-up question 2?", "Warm-up question 3?"],
   "targetWords": [
     { "front": "topical word 1", "back": "Russian translation", "example": "Context sentence 1." },
@@ -892,12 +898,12 @@ ${cefrRules}
 }`;
 
   const userPrompt = text.trim() 
-    ? `Source Material:\n${text.slice(0, 2200)}\n\nCreate a complete, detailed 280-340 word 3-paragraph lesson on Topic: "${resolvedTopic}".`
-    : `Create a comprehensive 280-340 word 3-paragraph lesson anchor on Topic: "${resolvedTopic}". Format: ${format}.`;
+    ? `Source Material:\n${text.slice(0, 2200)}\n\nCreate a complete 220-250 word 3-paragraph lesson on Topic: "${resolvedTopic}".`
+    : `Create a comprehensive 220-250 word 3-paragraph lesson anchor on Topic: "${resolvedTopic}". Format: ${format}.`;
 
   // Run AI Text Generation and Real Live Web Search IN PARALLEL (0ms added delay!)
   const [result, liveRef] = await Promise.all([
-    runAiPipeline(env, systemPrompt, userPrompt, 2200),
+    runAiPipeline(env, systemPrompt, userPrompt, 1800),
     fetchLiveWebSearch(resolvedTopic)
   ]);
 
@@ -921,7 +927,6 @@ ${cefrRules}
     ? data.warmupQuestions
     : [`What comes to mind when you think about ${resolvedTopic}?`];
 
-  // Guaranteed real, verified top search link (No fake 404 URLs!)
   const refLink = liveRef || {
     title: `Resource: ${resolvedTopic}`,
     url: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(resolvedTopic)}`,
@@ -1144,7 +1149,7 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. Sentence with [word].\\n2. Another sentence with [word].", "answers": ["word1", "word2"] }`;
   }
 
-  // 8. GAP FILL BANK (STRICTLY FORBIDS NUMERICAL DISTRACTORS)
+  // 8. GAP FILL BANK (STRICTLY VOCABULARY DISTRACTORS - NEVER NUMBERS)
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 vocabulary distractors.
@@ -1152,11 +1157,12 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "The atmosphere was [bleak] due to widespread [surveillance] by the regime.", "distractors": ["hesitation", "distraction", "comfort"] }`;
   }
 
-  // 9. SENTENCE REORDER
+  // 9. SENTENCE REORDER (STRICTLY 1 BLOCK, 7-11 WORDS PER SENTENCE)
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
-- GENERATE 1 "sentence_reorder" block with 3 to 4 distinct sentences based on context (each 8 to 12 words).
-  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Consistent practice is necessary for mastering new vocabulary.", "The characters struggled to adapt to their harsh new reality."] }`;
+- GENERATE strictly ONE (1) "sentence_reorder" block with 3 or 4 short, natural sentences (each STRICTLY 7 to 11 words maximum).
+  CRITICAL: Never output sentences longer than 12 words! Sentences must be bite-sized for mobile unscrambling.
+  Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Bite-sized sentence one.", "Short clear sentence two.", "Third natural sentence here."] }`;
   }
 
   // 10. DISCUSSION / OPEN INPUT
@@ -1174,12 +1180,14 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. The report was [accurate* | misleading] in its description.\\n2. Citizens expressed their [dissent* | agreement] peacefully." }`;
   }
 
-  // 12. DISCUSSION ROULETTE (CLEAN TOPICAL QUESTIONS)
+  // 12. DISCUSSION ROULETTE (100% AUTONOMOUS STANDALONE QUESTIONS)
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
-- GENERATE 1 "spinning_wheel" block with 6 communicative discussion questions based on context.
-  CRITICAL: Do NOT put emoji in the "title" string.
-  Schema: { "type": "spinning_wheel", "title": "Discussion Roulette", "instruction": "Shuffle the questions and answer the drawn card!", "items": ["What was the most surprising revelation?", "How does this relate to contemporary events?", "What alternative solution would you propose?"], "eliminateMode": true }`;
+- GENERATE 1 "spinning_wheel" block with 6 to 8 engaging communicative questions specifically about the topic.
+  CRITICAL: Every question MUST be 100% standalone and autonomous (makes complete sense on its own when drawn randomly).
+  CRITICAL: FORBIDDEN to use generic interview templates like 'What was the most surprising revelation?' or 'What alternative solution would you propose?'.
+  CRITICAL: Every question must explicitly engage with specific concepts of the material.
+  Schema: { "type": "spinning_wheel", "title": "Discussion Roulette", "instruction": "Spin the wheel and answer the selected question!", "items": ["Standalone topic question 1?", "Standalone topic question 2?", "Standalone topic question 3?"] }`;
   }
 
   // 13. CATEGORIZATION
@@ -1199,13 +1207,13 @@ export async function transformBlockWithAI(env, payload) {
   // 15. TEXT PASSAGE TOOLS
   if (actions.includes('generate_text_passage') || actions.includes('expand_text')) {
     tasksInstructions += `
-- GENERATE 1 "text" block with an expanded reading passage (approximately 300-350 words) based on the context, adapted to CEFR ${level}.
-  Schema: { "type": "text", "text": "Expanded reading story text here..." }`;
+- GENERATE 1 "text" block with a balanced reading passage (approximately 220-250 words across 3 paragraphs) based on context, adapted to CEFR ${level}.
+  Schema: { "type": "text", "text": "Balanced 220-250w reading story here..." }`;
   }
 
   if (actions.includes('shorten_text')) {
     tasksInstructions += `
-- GENERATE 1 "text" block with a concise, shortened version (approximately 120-150 words) preserving key facts, adapted to CEFR ${level}.
+- GENERATE 1 "text" block with a concise summary (approximately 120-140 words) preserving key facts, adapted to CEFR ${level}.
   Schema: { "type": "text", "text": "Shortened summary reading passage here..." }`;
   }
 
@@ -1235,7 +1243,7 @@ ${tasksInstructions}
 }`;
 
   try {
-    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 2000);
+    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 1900);
     if (!result.data) {
       return { error: `AI generation failed: ${result.error || 'All API providers failed or timed out.'}` };
     }
@@ -1265,6 +1273,29 @@ ${tasksInstructions}
       if (Array.isArray(res)) cleanBlocks.push(...res);
       else if (res && typeof res === 'object') cleanBlocks.push(res);
     });
+
+    // Safeguard: Merge multiple duplicate sentence_reorder blocks into 1 single block
+    const reorderBlocks = cleanBlocks.filter(b => b.type === 'sentence_reorder');
+    if (reorderBlocks.length > 1) {
+      const mergedSentences = [];
+      reorderBlocks.forEach(rb => {
+        if (Array.isArray(rb.sentences)) mergedSentences.push(...rb.sentences);
+        else if (rb.sentence) mergedSentences.push(rb.sentence);
+      });
+      // Filter out long compound sentences (>13 words)
+      const biteSized = mergedSentences.filter(s => s.split(/\s+/).length <= 13);
+      const finalSentences = (biteSized.length >= 2 ? biteSized : mergedSentences).slice(0, 4);
+
+      const firstReorderIdx = cleanBlocks.findIndex(b => b.type === 'sentence_reorder');
+      cleanBlocks = cleanBlocks.filter(b => b.type !== 'sentence_reorder');
+      cleanBlocks.splice(firstReorderIdx, 0, {
+        id: `b-reorder-${Date.now()}`,
+        type: 'sentence_reorder',
+        instruction: 'Put the words in order to form correct sentences:',
+        sentences: finalSentences.length > 0 ? finalSentences : ['Consistent daily practice builds conversational fluency.'],
+        sentence: finalSentences[0] || 'Consistent daily practice builds conversational fluency.'
+      });
+    }
 
     if (cleanBlocks.length === 0) {
       return { error: `AI generation failed: No valid blocks could be parsed from the response. Raw response: ${JSON.stringify(result.data).slice(0, 150)}` };
