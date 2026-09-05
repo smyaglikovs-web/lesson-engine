@@ -1,6 +1,6 @@
 import { ensureTables } from '../db/schema.js';
 
-// Default session data structure with Live Reactions & Floating Sticky Whiteboard
+// Default session data structure with Live Reactions, Floating Whiteboard, and Reset Epoch
 function createInitialSessionState(lessonId) {
   return {
     lessonId: lessonId,
@@ -9,7 +9,8 @@ function createInitialSessionState(lessonId) {
     notepad: '',
     xp: {},
     reaction: { emoji: '', id: 0, timestamp: 0 },
-    whiteboard: { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' },
+    whiteboard: { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a', publishedAt: 0 },
+    resetEpoch: 0,
     participants: {}
   };
 }
@@ -43,7 +44,8 @@ export async function getRoomState(env, roomId) {
       notepad: '',
       xp: {},
       reaction: { emoji: '', id: 0, timestamp: 0 },
-      whiteboard: { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' },
+      whiteboard: { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a', publishedAt: 0 },
+      resetEpoch: 0,
       participants: {},
       onlineCount: 0
     };
@@ -77,7 +79,8 @@ export async function getRoomState(env, roomId) {
     notepad: state.notepad || '',
     xp: state.xp || {},
     reaction: state.reaction || { emoji: '', id: 0, timestamp: 0 },
-    whiteboard: state.whiteboard || { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' },
+    whiteboard: state.whiteboard || { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a', publishedAt: 0 },
+    resetEpoch: typeof state.resetEpoch === 'number' ? state.resetEpoch : 0,
     participants: activeParticipants,
     onlineCount
   };
@@ -95,7 +98,8 @@ export async function updateTeacherBroadcast(env, roomId, payload = {}) {
     notepad: payload.notepad !== undefined ? payload.notepad : current.notepad,
     xp: payload.xp !== undefined ? payload.xp : current.xp,
     reaction: payload.reaction !== undefined ? payload.reaction : (current.reaction || { emoji: '', id: 0 }),
-    whiteboard: payload.whiteboard !== undefined ? payload.whiteboard : (current.whiteboard || { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' })
+    whiteboard: payload.whiteboard !== undefined ? payload.whiteboard : (current.whiteboard || { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a', publishedAt: 0 }),
+    resetEpoch: payload.resetEpoch !== undefined ? payload.resetEpoch : (current.resetEpoch || 0)
   };
 
   await env.DB.prepare(`
@@ -199,7 +203,8 @@ export async function resetRoomState(env, roomId) {
     notepad: '',
     xp: {},
     reaction: { emoji: '', id: 0, timestamp: 0 },
-    whiteboard: { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' },
+    whiteboard: { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a', publishedAt: 0 },
+    resetEpoch: nowUnix,
     participants
   };
 
