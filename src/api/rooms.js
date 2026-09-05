@@ -1,6 +1,6 @@
 import { ensureTables } from '../db/schema.js';
 
-// Default session data structure
+// Default session data structure with Live Reactions & Floating Sticky Whiteboard
 function createInitialSessionState(lessonId) {
   return {
     lessonId: lessonId,
@@ -8,6 +8,8 @@ function createInitialSessionState(lessonId) {
     broadcastPage: 0,
     notepad: '',
     xp: {},
+    reaction: { emoji: '', id: 0, timestamp: 0 },
+    whiteboard: { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' },
     participants: {}
   };
 }
@@ -33,7 +35,6 @@ export async function getRoomState(env, roomId) {
   ).bind(roomId).first();
 
   if (!row) {
-    // If not found (e.g. legacy room), initialize fallback
     return {
       roomId,
       lessonId: roomId,
@@ -41,6 +42,8 @@ export async function getRoomState(env, roomId) {
       broadcastPage: 0,
       notepad: '',
       xp: {},
+      reaction: { emoji: '', id: 0, timestamp: 0 },
+      whiteboard: { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' },
       participants: {},
       onlineCount: 0
     };
@@ -73,6 +76,8 @@ export async function getRoomState(env, roomId) {
     broadcastPage: typeof state.broadcastPage === 'number' ? state.broadcastPage : (row.page_idx || 0),
     notepad: state.notepad || '',
     xp: state.xp || {},
+    reaction: state.reaction || { emoji: '', id: 0, timestamp: 0 },
+    whiteboard: state.whiteboard || { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' },
     participants: activeParticipants,
     onlineCount
   };
@@ -88,7 +93,9 @@ export async function updateTeacherBroadcast(env, roomId, payload = {}) {
     teacherPage: payload.teacherPage !== undefined ? payload.teacherPage : current.teacherPage,
     broadcastPage: payload.broadcastPage !== undefined ? payload.broadcastPage : current.broadcastPage,
     notepad: payload.notepad !== undefined ? payload.notepad : current.notepad,
-    xp: payload.xp !== undefined ? payload.xp : current.xp
+    xp: payload.xp !== undefined ? payload.xp : current.xp,
+    reaction: payload.reaction !== undefined ? payload.reaction : (current.reaction || { emoji: '', id: 0 }),
+    whiteboard: payload.whiteboard !== undefined ? payload.whiteboard : (current.whiteboard || { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' })
   };
 
   await env.DB.prepare(`
@@ -180,7 +187,6 @@ export async function resetRoomState(env, roomId) {
   const nowUnix = Math.floor(Date.now() / 1000);
   const current = await getRoomState(env, roomId);
 
-  // Clear answers from all participants, reset pages
   const participants = {};
   Object.entries(current.participants || {}).forEach(([id, p]) => {
     participants[id] = { ...p, answers: {} };
@@ -192,6 +198,8 @@ export async function resetRoomState(env, roomId) {
     broadcastPage: 0,
     notepad: '',
     xp: {},
+    reaction: { emoji: '', id: 0, timestamp: 0 },
+    whiteboard: { isOpen: false, mode: 'draw', drawing: '', text: '', color: '#0f172a' },
     participants
   };
 
