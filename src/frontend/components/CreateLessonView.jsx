@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { VisualBuilderView } from './VisualBuilderView.jsx';
+import { compressAndUploadImage } from '../utils/youtube.js';
 
 // Dynamic browser PDF text extractor (Mozilla PDF.js)
 async function extractTextFromPdfFile(file) {
@@ -61,6 +62,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
 
   // DOCUMENT & PDF SCANNER STATE
   const [docText, setDocText] = useState('');
+  const [docImages, setDocImages] = useState([]);
   const [docTopic, setDocTopic] = useState('');
   const [docLevel, setDocLevel] = useState('C1');
   const [scanningDoc, setScanningDoc] = useState(false);
@@ -115,7 +117,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
   };
 
   // --------------------------------------------------------------------------
-  // 2. DOCUMENT & PDF TEXTBOOK SCANNER
+  // 2. DOCUMENT, PDF & SCANNED IMAGE SCANNER (MULTIMODAL VISION OCR)
   // --------------------------------------------------------------------------
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -125,14 +127,38 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
       setDocTopic(file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " "));
     }
 
-    // Process PDF files
-    if (file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') {
+    const fileNameLower = file.name.toLowerCase();
+
+    // 1. Process Scanned Images (.png, .jpg, .jpeg, .webp)
+    if (file.type.startsWith('image/') || fileNameLower.endsWith('.png') || fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg')) {
+      setReadingFile(true);
+      setBanner('⌛ Обработка фото страницы...');
+      try {
+        const compressedBase64 = await compressAndUploadImage(file, 1024, 0.75);
+        setDocImages(prev => [...prev, compressedBase64]);
+        setBanner(`📷 Фото страницы ${file.name} прикреплено для сканирования Vision AI!`);
+      } catch (err) {
+        setErrorMsg('Ошибка обработки фото: ' + err.message);
+      } finally {
+        setReadingFile(false);
+      }
+      return;
+    }
+
+    // 2. Process PDF Files
+    if (fileNameLower.endsWith('.pdf') || file.type === 'application/pdf') {
       setReadingFile(true);
       setBanner('⌛ Извлечение текста из PDF страниц...');
       try {
         const extractedText = await extractTextFromPdfFile(file);
         setDocText(extractedText);
-        setBanner(`✅ Текст из файла ${file.name} успешно извлечен!`);
+        
+        // If PDF was a scanned picture with no text layer, hint user to upload page photos
+        if (extractedText.replace(/--- PAGE \d+ ---/g, '').trim().length < 30) {
+          setBanner(`ℹ️ Это сканированный PDF без текста. Загрузите фото страниц (.jpg/.png) для сканирования Vision AI.`);
+        } else {
+          setBanner(`✅ Текст из файла ${file.name} успешно извлечен!`);
+        }
       } catch (err) {
         setErrorMsg('Ошибка чтения PDF: ' + err.message);
       } finally {
@@ -141,7 +167,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
       return;
     }
 
-    // Process Plain text / JSON / CSV files
+    // 3. Process Plain Text / JSON / CSV files
     setReadingFile(true);
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -157,9 +183,13 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
     reader.readAsText(file);
   };
 
+  const handleRemoveImage = (idx) => {
+    setDocImages(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const handleScanDocument = async () => {
-    if (!docText.trim()) {
-      setErrorMsg('Вставьте текст из учебника или загрузите PDF для сканирования.');
+    if (!docText.trim() && docImages.length === 0) {
+      setErrorMsg('Вставьте текст из учебника или загрузите PDF / фото страниц для сканирования.');
       return;
     }
 
@@ -173,6 +203,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: docText.trim(),
+          images: docImages,
           topic: docTopic.trim() || 'Scanned Practice Lesson',
           level: docLevel
         })
@@ -344,7 +375,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
       )}
 
       {/* -------------------------------------------------------------------- */}
-      {/* 2. TEXTBOOK & PDF SCANNER TOOL                                       */}
+      {/* 2. TEXTBOOK, PDF & SCANNED IMAGE SCANNER TOOL                        */}
       {/* -------------------------------------------------------------------- */}
       {mode === 'scan_pdf' && (
         <div className="bg-white p-6 sm:p-10 rounded-3xl border border-slate-200 shadow-sm max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -354,7 +385,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
               <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Преобразование PDF / Учебника в Урок</h2>
             </div>
             <p className="text-slate-500 text-xs leading-relaxed">
-              Загрузите PDF файл учебника или вставьте сканированный текст. AI решит все задания и создаст интерактивный урок.
+              Загрузите PDF учебника или фото страниц (.jpg/.png). Vision AI просмотрит страницы, решит задания и создаст интерактивный урок.
             </p>
           </div>
 
@@ -387,18 +418,41 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
               </div>
             </div>
 
+            {/* ATTACHED SCANNED PAGE IMAGES PREVIEW */}
+            {docImages.length > 0 && (
+              <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-2xl space-y-2">
+                <span className="text-[10px] font-extrabold text-indigo-900 uppercase tracking-wider block">
+                  📷 Прикрепленные фото страниц Vision AI ({docImages.length}):
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {docImages.map((imgB64, imgIdx) => (
+                    <div key={imgIdx} className="relative group w-16 h-20 rounded-xl overflow-hidden border border-indigo-200 shadow-2xs">
+                      <img src={imgB64} alt="Page scan" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(imgIdx)}
+                        className="absolute top-0.5 right-0.5 bg-rose-600 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center cursor-pointer shadow"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <div className="flex justify-between items-center flex-wrap gap-2">
                 <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">
                   Содержимое учебника / Текст теста *
                 </label>
                 <label className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold rounded-xl text-xs cursor-pointer transition flex items-center gap-1.5 shadow-2xs">
-                  {readingFile ? '⌛ Чтение PDF...' : '📁 Загрузить файл (.pdf / .txt / .docx)'}
+                  {readingFile ? '⌛ Чтение файла...' : '📁 Загрузить PDF / Фото (.jpg / .png / .pdf)'}
                   <input
                     type="file"
                     ref={pdfInputRef}
                     onChange={handleFileUpload}
-                    accept=".pdf,.txt,.json,.csv,.vtt,.docx"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.json,.docx"
                     disabled={readingFile}
                     className="hidden"
                   />
@@ -409,7 +463,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
                 rows="10"
                 value={docText}
                 onChange={e => setDocText(e.target.value)}
-                placeholder="Загрузите PDF файл выше или вставьте скопированный текст из учебника... AI автоматически извлечет задания, решит ответы и создаст интерактивные блоки."
+                placeholder="Загрузите PDF файл или фото страниц выше, либо вставьте скопированный текст из учебника... AI автоматически извлечет задания, решит ответы и создаст интерактивные блоки."
                 className="w-full p-4 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-600 rounded-2xl text-xs font-mono text-slate-900 outline-none leading-relaxed"
               ></textarea>
             </div>
@@ -425,7 +479,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
             </button>
             <button
               type="button"
-              disabled={scanningDoc || readingFile || !docText.trim()}
+              disabled={scanningDoc || readingFile || (!docText.trim() && docImages.length === 0)}
               onClick={handleScanDocument}
               className="px-8 py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-2xl text-xs shadow-md transition disabled:opacity-40 cursor-pointer flex items-center gap-2"
             >
