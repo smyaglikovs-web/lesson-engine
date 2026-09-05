@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LessonCardSkeleton } from './ui/Skeleton.jsx';
+import { PrintWorksheetModal } from './PrintWorksheetModal.jsx';
 
 export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, onDeleteLesson, onViewSubmissions, onEditLesson }) => {
   const fileInputRef = useRef(null);
@@ -7,6 +8,7 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
   const [activeFolder, setActiveFolder] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [printLesson, setPrintLesson] = useState(null);
 
   const fetchFolders = async () => {
     try {
@@ -70,14 +72,14 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full min-w-0">
       {/* HEADER WITH CTAS */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Библиотека уроков</h1>
           <p className="text-slate-500 text-xs mt-1">Интерактивные учебные модули и управление группами</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <input
             type="file"
             ref={fileInputRef}
@@ -103,12 +105,14 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
             className="hidden"
           />
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-2xl text-xs transition cursor-pointer"
+            className="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-2xl text-xs transition cursor-pointer shadow-2xs"
           >
             📥 Импорт JSON
           </button>
           <button
+            type="button"
             onClick={onCreateNew}
             className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs transition shadow-md cursor-pointer"
           >
@@ -120,6 +124,7 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
       {/* FOLDER PILL TABS */}
       <div className="flex gap-2 flex-wrap items-center">
         <button
+          type="button"
           onClick={() => setActiveFolder('')}
           className={`px-4 py-1.5 rounded-full text-xs font-bold transition cursor-pointer ${
             activeFolder === '' 
@@ -133,6 +138,7 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
         {folders.map(f => (
           <button
             key={f.id}
+            type="button"
             onClick={() => setActiveFolder(f.name)}
             className={`px-4 py-1.5 rounded-full text-xs font-bold transition cursor-pointer ${
               activeFolder === f.name 
@@ -145,6 +151,7 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
         ))}
 
         <button
+          type="button"
           onClick={handleAddFolder}
           className="px-3.5 py-1.5 rounded-full border border-dashed border-slate-300 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 text-xs font-bold transition cursor-pointer"
         >
@@ -198,17 +205,41 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
                   <span className="px-3 py-1 bg-indigo-50 text-indigo-700 font-extrabold text-[11px] rounded-full uppercase tracking-wider">
                     {l.level || 'B1'}
                   </span>
-                  <div className="flex items-center gap-1">
-                    <button onClick={e => handleExportLesson(l, e)} className="px-2.5 py-1 text-slate-500 hover:text-slate-900 text-xs font-bold cursor-pointer">
-                      💾 Экспорт
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setPrintLesson(l)}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer transition flex items-center gap-1"
+                      title="Распечатать рабочий лист A4 с QR-кодами"
+                    >
+                      🖨️ Печать
                     </button>
-                    <button onClick={() => onEditLesson(l)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer">
+                    <button 
+                      type="button"
+                      onClick={e => handleExportLesson(l, e)} 
+                      className="px-2.5 py-1 text-slate-500 hover:text-slate-900 text-xs font-bold cursor-pointer"
+                    >
+                      💾 JSON
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => onEditLesson(l)} 
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                    >
                       ✏️ Правка
                     </button>
-                    <button onClick={() => onViewSubmissions(l)} className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl cursor-pointer">
+                    <button 
+                      type="button"
+                      onClick={() => onViewSubmissions(l)} 
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl cursor-pointer"
+                    >
                       📊 ДЗ
                     </button>
-                    <button onClick={e => onDeleteLesson(l.id, e)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer">
+                    <button 
+                      type="button"
+                      onClick={e => onDeleteLesson(l.id, e)} 
+                      className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer"
+                    >
                       🗑️
                     </button>
                   </div>
@@ -222,12 +253,14 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
 
               <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
                 <button
+                  type="button"
                   onClick={() => onOpenLesson(l.id)}
                   className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl text-xs transition shadow-xs cursor-pointer"
                 >
                   Провести урок ➔
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     const url = `${window.location.origin}/?homework=${l.id}`;
                     navigator.clipboard.writeText(url);
@@ -241,6 +274,11 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
             </div>
           ))}
         </div>
+      )}
+
+      {/* SMART PRINTABLE WORKSHEET MODAL */}
+      {printLesson && (
+        <PrintWorksheetModal lesson={printLesson} onClose={() => setPrintLesson(null)} />
       )}
     </div>
   );
