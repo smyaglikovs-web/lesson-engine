@@ -14,7 +14,8 @@ import {
   transformBlockWithAI, 
   fetchYouTubeTranscriptNative, 
   evaluateOpenInputWithAI,
-  generatePodcastAudioWithAI 
+  generatePodcastAudioWithAI,
+  scanDocumentAndBuildLesson
 } from './api/ai.js';
 import { submitHomework, getHomeworkSubmissions, getStudentsDirectory } from './api/homework.js';
 import { 
@@ -80,10 +81,17 @@ export default {
           return res.error ? jsonResponse({ error: res.error }, 500) : jsonResponse(res);
         }
 
-        // NEW: 1-MINUTE PODCAST SCRIPT & TTS AUDIO GENERATOR
+        // 1-MINUTE PODCAST SCRIPT & TTS AUDIO GENERATOR
         if (path === '/api/ai/generate-podcast' && method === 'POST') {
           const payload = await request.json();
           const res = await generatePodcastAudioWithAI(env, payload);
+          return res.error ? jsonResponse({ error: res.error }, 500) : jsonResponse(res);
+        }
+
+        // TEXTBOOK & PDF DOCUMENT AUTO-SCANNER
+        if (path === '/api/ai/scan-doc' && method === 'POST') {
+          const payload = await request.json();
+          const res = await scanDocumentAndBuildLesson(env, payload);
           return res.error ? jsonResponse({ error: res.error }, 500) : jsonResponse(res);
         }
       }
