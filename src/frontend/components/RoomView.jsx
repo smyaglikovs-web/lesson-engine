@@ -126,7 +126,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return () => clearInterval(interval);
   }, [roomId, studentId, studentName, isTeacher, hasStarted]);
 
-  // Telemetry Polling (Room state, live responses, reactions & whiteboard)
+  // Telemetry Polling (Room state, live student answers, reactions & whiteboard)
   useEffect(() => {
     if (!roomId || isHomeworkMode) return;
 
@@ -199,9 +199,28 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     };
 
     fetchState();
-    const interval = setInterval(fetchState, 1800);
+    const interval = setInterval(fetchState, 1600);
     return () => clearInterval(interval);
   }, [roomId, isTeacher, isHomeworkMode]);
+
+  // LIVE STUDENT ANSWER DISPLAY ON TEACHER SLIDES
+  const displayedAnswers = useMemo(() => {
+    if (!isTeacher) return userAnswers;
+
+    // For teacher: merge live submitted answers from active student participants
+    const activeStudentList = Object.values(participants).filter(p => p && p.answers);
+    if (activeStudentList.length === 0) return userAnswers;
+
+    const merged = { ...userAnswers };
+    activeStudentList.forEach(p => {
+      Object.entries(p.answers || {}).forEach(([bId, ansVal]) => {
+        if (ansVal !== undefined && ansVal !== null) {
+          merged[bId] = ansVal;
+        }
+      });
+    });
+    return merged;
+  }, [isTeacher, userAnswers, participants]);
 
   // Broadcast Slide Position to All Students
   const handleBringEveryoneHere = async (targetIdx = safeSlideIdx) => {
@@ -231,7 +250,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
       timestamp: Date.now()
     };
 
-    // Trigger on teacher screen too
     const newParticles = Array.from({ length: 4 }).map((_, i) => ({
       id: `${reactionPayload.id}-${i}-${Math.random()}`,
       emoji: emoji,
@@ -288,7 +306,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentId, blockId, answer: answerVal })
       }).catch(() => {});
-    }, 400);
+    }, 350);
   }, [isTeacher, roomId, studentId]);
 
   // Student Answers Local State & Sync Trigger
@@ -481,7 +499,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           onClick={() => { setShowNotepad(!showNotepad); setSidebarOpen(false); }}
           className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
         >
-          📝 Блокнот
+          📝 Заметки
         </button>
         <button
           type="button"
@@ -524,7 +542,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         </div>
       ))}
 
-      {/* DRAGGABLE SYNCHRONIZED FLOATING WHITEBOARD */}
+      {/* DRAGGABLE 3-NOTE FLOATING WHITEBOARD / POST-IT */}
       {showWhiteboard && (
         <FloatingWhiteboard
           isTeacher={isTeacher}
@@ -649,7 +667,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 </div>
               </div>
 
-              {/* TEACHER LIVE NOTEPAD */}
+              {/* TEACHER LIVE NOTEPAD (IF OPENED FROM SIDEBAR) */}
               {isTeacher && showNotepad && (
                 <div className="bg-amber-50/90 border border-amber-200 p-4 rounded-2xl space-y-2 shadow-xs animate-fade-in">
                   <div className="flex justify-between items-center">
@@ -666,7 +684,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 </div>
               )}
 
-              {/* ACTIVE SLIDE BLOCKS */}
+              {/* ACTIVE SLIDE BLOCKS (NOW WITH REAL-TIME STUDENT ANSWER SYNC FOR TEACHER!) */}
               <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 min-h-[350px] w-full min-w-0 overflow-x-hidden">
                 {activeSlide.blocks.length === 0 ? (
                   <div className="text-center py-20 text-slate-400">
@@ -680,7 +698,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                       <BlockRenderer
                         key={blockId}
                         block={{ ...b, id: blockId }}
-                        value={userAnswers[blockId]}
+                        value={displayedAnswers[blockId]}
                         onChange={val => handleAnswerChange(blockId, val)}
                         isTeacher={isTeacher}
                       />
