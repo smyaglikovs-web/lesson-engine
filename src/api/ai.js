@@ -227,7 +227,7 @@ export function sanitizeBlockStructure(b) {
     if (Array.isArray(b.questions) && b.questions.length > 0) {
       return b.questions.map((q, qIdx) => {
         const rawOpts = q.options || q.choices || ['Option A', 'Option B'];
-        const cleanOpts = Array.isArray(rawOpts) ? rawOpts.map(o => String(o?.text || o).trim()) : ['Option A', 'Option B'];
+        const cleanOpts = Array.isArray(rawOpts) ? rawOpts.map(o => String(o?.text || o).replace(/\*$/, '').trim()) : ['Option A', 'Option B'];
         return {
           id: `b-mc-${Date.now()}-${qIdx}`,
           type: 'multiple_choice',
@@ -245,11 +245,18 @@ export function sanitizeBlockStructure(b) {
 
     if (Array.isArray(rawOpts)) {
       rawOpts.forEach((opt, idx) => {
-        if (typeof opt === 'string') cleanOptions.push(opt.trim());
-        else if (opt && typeof opt === 'object') {
-          cleanOptions.push(String(opt.text || opt.option || opt.value || JSON.stringify(opt)).trim());
+        if (typeof opt === 'string') {
+          let cleanStr = opt.trim();
+          if (cleanStr.endsWith('*')) {
+            cleanStr = cleanStr.slice(0, -1).trim();
+            detectedCorrect = idx;
+          }
+          cleanOptions.push(cleanStr);
+        } else if (opt && typeof opt === 'object') {
+          let textVal = String(opt.text || opt.option || opt.value || JSON.stringify(opt)).replace(/\*$/, '').trim();
+          cleanOptions.push(textVal);
           if (opt.isCorrect === true || opt.correct === true) detectedCorrect = idx;
-        } else cleanOptions.push(String(opt).trim());
+        } else cleanOptions.push(String(opt).replace(/\*$/, '').trim());
       });
     }
 
@@ -287,13 +294,12 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Fill the missing words in the blanks:';
   }
 
-  // 5. GAP FILL BANK (WORD BANK) - PURGES NUMBERS & LIST PREFIXES
+  // 5. GAP FILL BANK (WORD BANK) - PURGES STRAY NUMBERS
   if (b.type === 'gap_fill_bank') {
     let rawText = String(b.text || b.paragraph || b.content || b.passage || '').trim();
     b.text = rawText.replace(/\[[-_.\s]{2,}\]/g, '[practice]');
     let distractors = Array.isArray(b.distractors) ? b.distractors : [];
     
-    // Purge numbers, list indices ("1.", "2)") or standalone digits
     distractors = distractors
       .map(d => String(d).replace(/^\d+[\s.)-]+/, '').trim())
       .filter(d => Boolean(d) && !/^\d+$/.test(d) && !/^[-_.\s]+$/.test(d));
@@ -310,7 +316,7 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Choose the correct word in context:';
   }
 
-  // 7. MULTI-SENTENCE REORDER (ENFORCES SHORT, BITE-SIZED 7-11 WORD SENTENCES)
+  // 7. MULTI-SENTENCE REORDER
   if (b.type === 'sentence_reorder') {
     let sentencesList = [];
     if (Array.isArray(b.sentences) && b.sentences.length > 0) {
@@ -321,7 +327,6 @@ export function sanitizeBlockStructure(b) {
       sentencesList = b.text.split('\n').map(s => s.trim()).filter(Boolean);
     }
 
-    // Filter out long compound run-ons (>13 words) for smooth mobile unscramble
     const biteSized = sentencesList.filter(s => s.split(/\s+/).length <= 13);
     b.sentences = (biteSized.length >= 2 ? biteSized : sentencesList).slice(0, 4);
     if (b.sentences.length === 0) {
@@ -386,13 +391,12 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Sort the items into the correct categories:';
   }
 
-  // 12. DISCUSSION ROULETTE (AUTONOMOUS STANDALONE QUESTIONS, NO EMOJI CLUTTER)
+  // 12. DISCUSSION ROULETTE
   if (b.type === 'spinning_wheel') {
     let items = Array.isArray(b.items) ? b.items : [];
     items = items.map(it => String(it).trim()).filter(Boolean);
-    b.items = items.length > 0 ? items : ['What was the most surprising insight?', 'How will you apply this concept in your life?'];
+    b.items = items.length > 0 ? items : ['What was the key insight today?', 'How will you apply this in real life?'];
     
-    // Purge leading emojis to avoid double-display with UI icons
     let cleanTitle = String(b.title || 'Discussion Roulette').replace(/^[🎡🎲🎯\s]+/gu, '').trim();
     b.title = cleanTitle || 'Discussion Roulette';
     b.instruction = b.instruction || 'Spin the wheel and answer the selected question!';
@@ -421,7 +425,7 @@ export function sanitizeBlockStructure(b) {
 // --------------------------------------------------------------------------
 // HIGH-SPEED, ULTRA-LOW-NEURON AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
-export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 1900) {
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2200) {
   let errors = [];
 
   // 1. GROQ API (If key is available: 300 tps, sub-second latency, 0 CF Neurons)
@@ -492,13 +496,13 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 3. OPENROUTER GATEWAY
+  // 3. OPENROUTER DYNAMIC FREE ROUTER (Always picks latest Gemini Flash/Gemma/GLM)
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
     const openRouterModels = [
+      'openrouter/free',
       'google/gemma-4-31b-it:free',
-      'z-ai/glm-5.2:free',
-      'openrouter/free'
+      'z-ai/glm-5.2:free'
     ];
 
     for (const model of openRouterModels) {
@@ -520,7 +524,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             temperature: 0.2,
             response_format: { type: 'json_object' }
           })
-        }, 5000);
+        }, 5500);
 
         if (res.ok) {
           const data = await res.json();
@@ -561,6 +565,65 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
   }
 
   return { data: null, error: errors.join('; ') || 'All AI providers failed or timed out.', isFallback: true };
+}
+
+// --------------------------------------------------------------------------
+// AUTOMATIC PDF & TEXTBOOK SCANNER (C2 Auto-Solving Engine)
+// --------------------------------------------------------------------------
+export async function scanDocumentAndBuildLesson(env, payload) {
+  const { text = '', topic = '', level = 'C1', format = 'live' } = payload;
+  if (!text || !text.trim()) return { error: 'No document text or content provided.' };
+
+  const resolvedTopic = topic.trim() || text.trim().slice(0, 45).split('\n')[0].replace(/[#*]/g, '').trim() || 'Scanned Practice Lesson';
+  const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['C1'];
+
+  const systemPrompt = `[ROLE]
+You are a C2 Master ELT Examiner and Interactive Lesson Developer.
+Target CEFR Level: ${level} (${cefrRules})
+Lesson Topic: "${resolvedTopic}"
+
+[TASK]
+Convert the provided textbook document/test paper into a complete, 100% SOLVED interactive lesson JSON matching our app's block schema.
+
+[CONVERSION & SOLVING RULES - STRICT!]
+1. SOLVE ALL EXERCISES: You MUST solve every sentence, transformation, and multiple choice question with native C2 accuracy.
+2. INLINE SELECT STORIES: If the document contains a reading text with numbered vocabulary choices (e.g. word (1), word (2)), convert the reading text into an "inline_select" block:
+   - Put choices in brackets right inside the text: [correct_answer* | distractor_1 | distractor_2 | distractor_3]
+   - Mark the correct answer with an asterisk (*). Do NOT put numbers like (1) on new lines.
+3. WORD BANKS (Phrasal Verbs / Adjectives): Convert word bank exercises into "gap_fill_bank" blocks:
+   - Put correct answers in brackets in text: [correct_word].
+   - List distractors in "distractors" array. FORBIDDEN to use numbers ("1", "2") as distractors!
+4. SENTENCE TRANSFORMATIONS: Convert sentence rewrite tasks into "gap_fill" blocks with target bracketed answers: [correct_phrase].
+5. MULTIPLE CHOICE: Convert 4-option quizzes into "multiple_choice" blocks.
+   - "correct": 0-based index number of the correct option.
+   - FORBIDDEN: Do NOT put an asterisk (*) in the "options" text strings! Use the numerical "correct" index only.
+
+[OUTPUT FORMAT]
+{
+  "title": "${resolvedTopic}",
+  "level": "${level}",
+  "topic": "${resolvedTopic}",
+  "description": "Interactive digital conversion of textbook material.",
+  "pages": [
+    {
+      "id": "p1",
+      "title": "Part 1: Practice & Exercises",
+      "blocks": [ ... ]
+    }
+  ]
+}`;
+
+  const userPrompt = `Scanned Textbook Content:\n${text.slice(0, 6500)}\n\nConvert this entire document into interactive, fully solved lesson pages.`;
+
+  const result = await runAiPipeline(env, systemPrompt, userPrompt, 2400);
+  if (!result.data) {
+    return { error: `Document scanning failed: ${result.error}` };
+  }
+
+  return {
+    success: true,
+    jsonText: JSON.stringify(result.data, null, 2)
+  };
 }
 
 // --------------------------------------------------------------------------
@@ -1080,6 +1143,7 @@ export async function transformBlockWithAI(env, payload) {
   if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key arguments and concepts in the material.
+  CRITICAL: Do NOT put an asterisk (*) in the "options" text strings! Use the numerical "correct" 0-based index only.
   Schema: { "type": "multiple_choice", "question": "Question testing a specific point?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
   }
 
@@ -1213,7 +1277,7 @@ export async function transformBlockWithAI(env, payload) {
 
   if (actions.includes('shorten_text')) {
     tasksInstructions += `
-- GENERATE 1 "text" block with a concise summary (approximately 120-140 words) preserving key facts, adapted to CEFR ${level}.
+- GENERATE 1 "text" block with a concise summary (approximately 120-150 words) preserving key facts, adapted to CEFR ${level}.
   Schema: { "type": "text", "text": "Shortened summary reading passage here..." }`;
   }
 
@@ -1282,7 +1346,6 @@ ${tasksInstructions}
         if (Array.isArray(rb.sentences)) mergedSentences.push(...rb.sentences);
         else if (rb.sentence) mergedSentences.push(rb.sentence);
       });
-      // Filter out long compound sentences (>13 words)
       const biteSized = mergedSentences.filter(s => s.split(/\s+/).length <= 13);
       const finalSentences = (biteSized.length >= 2 ? biteSized : mergedSentences).slice(0, 4);
 
