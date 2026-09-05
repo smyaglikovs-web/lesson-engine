@@ -134,6 +134,27 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     updateLessonState(prev => ({ ...prev, pages: updatedPages }));
   };
 
+  // Reorder Pages via Drag-and-Drop
+  const handleReorderPages = (fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    const pages = [...(lesson.pages || [])];
+    const movedPage = pages.splice(fromIdx, 1)[0];
+    pages.splice(toIdx, 0, movedPage);
+
+    // Keep active focus aligned with the moved page
+    let newActiveIdx = activePageIndex;
+    if (activePageIndex === fromIdx) {
+      newActiveIdx = toIdx;
+    } else if (activePageIndex > fromIdx && activePageIndex <= toIdx) {
+      newActiveIdx = activePageIndex - 1;
+    } else if (activePageIndex < fromIdx && activePageIndex >= toIdx) {
+      newActiveIdx = activePageIndex + 1;
+    }
+
+    updateLessonState(prev => ({ ...prev, pages }));
+    setActivePageIndex(newActiveIdx);
+  };
+
   const createDefaultBlock = (rawType) => {
     const type = normalizeBlockType(rawType);
     const newBlock = { id: 'b-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6), type };
@@ -228,9 +249,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     else if (type === 'sentence_reorder') { 
       newBlock.instruction = 'Соберите предложения из слов:'; 
       newBlock.sentences = [
-        'Consistent daily practice is the key to speaking fluently.',
-        'She had never encountered such a challenging problem before.',
-        'They decided to explore different perspectives on this issue.'
+        'Consistent daily practice builds speaking fluency.',
+        'They decided to explore new ideas together.',
+        'Learning languages requires regular practice.'
       ]; 
       newBlock.sentence = newBlock.sentences[0];
     }
@@ -263,7 +284,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     handleInsertBlockAt(activePage.blocks?.length || 0, rawType);
   };
 
-  // Universal Drop Handler (Handles BOTH Palette blocks and Card reordering)
+  // Universal Drop Handler (Palette drag + Card reordering + Bottom drop target)
   const handleUniversalDrop = (e, targetIdx) => {
     e.preventDefault();
     setDragOverTarget(null);
@@ -281,7 +302,9 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
       const blocks = [...(activePage.blocks || [])];
       const draggedItem = blocks[draggedBlockIdx];
       blocks.splice(draggedBlockIdx, 1);
-      blocks.splice(targetIdx, 0, draggedItem);
+      
+      const insertAt = targetIdx > draggedBlockIdx ? targetIdx - 1 : targetIdx;
+      blocks.splice(insertAt, 0, draggedItem);
 
       const updatedPages = [...(lesson.pages || [])];
       updatedPages[activePageIndex].blocks = blocks;
@@ -404,6 +427,21 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
     }
   };
 
+  const renderQuickInsertMenu = (insertIdx) => (
+    <div className="relative z-20 bg-white border-2 border-indigo-500 shadow-xl rounded-2xl p-2 flex flex-wrap gap-1.5 items-center justify-center max-w-xl animate-fade-in my-1">
+      <span className="text-[10px] font-extrabold text-indigo-900 uppercase px-2">Вставить:</span>
+      <button type="button" onClick={() => { handleInsertBlockAt(insertIdx, 'text'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">📄 Текст</button>
+      <button type="button" onClick={() => { handleInsertBlockAt(insertIdx, 'flashcards'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🎴 Флешкарты</button>
+      <button type="button" onClick={() => { handleInsertBlockAt(insertIdx, 'multiple_choice'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">❓ Тест</button>
+      <button type="button" onClick={() => { handleInsertBlockAt(insertIdx, 'image'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🖼️ Фото</button>
+      <button type="button" onClick={() => { handleInsertBlockAt(insertIdx, 'audio'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🎧 Подкаст</button>
+      <button type="button" onClick={() => { handleInsertBlockAt(insertIdx, 'matching'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🔗 Пары</button>
+      <button type="button" onClick={() => { handleInsertBlockAt(insertIdx, 'gap_fill_bank'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🧩 Банк слов</button>
+      <button type="button" onClick={() => { handleInsertBlockAt(insertIdx, 'sentence_reorder'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🔤 Сборка</button>
+      <button type="button" onClick={() => setActiveInsertMenuIdx(null)} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-bold text-slate-600">✕</button>
+    </div>
+  );
+
   return (
     <div className="space-y-4 w-full min-w-0">
       
@@ -467,7 +505,7 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         </div>
       </div>
 
-      {/* 2. UNIFIED SINGLE-ROW TAB BAR */}
+      {/* 2. UNIFIED SINGLE-ROW TAB BAR WITH REORDERING */}
       <BuilderPagesBar
         pages={lesson.pages || []}
         activePageIndex={activePageIndex}
@@ -475,13 +513,14 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
         onAddPage={handleAddPage}
         onDeletePage={handleDeletePage}
         onUpdatePageTitle={handleUpdatePageTitle}
+        onReorderPages={handleReorderPages}
       />
 
       {/* 3. WORKSPACE CANVAS: PALETTE + BLOCKS */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         <BuilderPalette onAddBlock={handleAddBlock} />
 
-        <div className="lg:col-span-3 space-y-3 min-w-0">
+        <div className="lg:col-span-3 space-y-2 min-w-0">
           {(activePage.blocks || []).length === 0 ? (
             <div
               onDragOver={(e) => { e.preventDefault(); setDragOverTarget('empty-canvas'); }}
@@ -498,118 +537,138 @@ export const VisualBuilderView = ({ initialLesson, onSaveLesson, onChangeLesson,
               </p>
             </div>
           ) : (
-            (activePage.blocks || []).map((block, idx) => (
-              <React.Fragment key={block.id || idx}>
-                
-                {/* INLINE HOVER INSERTION DIVIDER & QUICK MENU */}
-                <div
-                  onDragOver={(e) => { e.preventDefault(); setDragOverTarget(`divider-${idx}`); }}
-                  onDragLeave={() => { if (dragOverTarget === `divider-${idx}`) setDragOverTarget(null); }}
-                  onDrop={(e) => handleUniversalDrop(e, idx)}
-                  className={`relative group/divider py-1 flex flex-col items-center justify-center transition-all ${
-                    dragOverTarget === `divider-${idx}` ? 'py-3' : ''
-                  }`}
-                >
-                  <div className="absolute inset-0 flex items-center">
-                    <div className={`w-full border-t transition-all ${
-                      dragOverTarget === `divider-${idx}` 
-                        ? 'border-indigo-500 border-2' 
-                        : 'border-transparent group-hover/divider:border-indigo-300 border-dashed'
-                    }`} />
-                  </div>
-
-                  {activeInsertMenuIdx === idx ? (
-                    /* QUICK INSERT POPOVER TOOLBAR */
-                    <div className="relative z-20 bg-white border-2 border-indigo-500 shadow-xl rounded-2xl p-2 flex flex-wrap gap-1.5 items-center justify-center max-w-xl animate-fade-in my-1">
-                      <span className="text-[10px] font-extrabold text-indigo-900 uppercase px-2">Вставить:</span>
-                      <button type="button" onClick={() => { handleInsertBlockAt(idx, 'text'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">📄 Текст</button>
-                      <button type="button" onClick={() => { handleInsertBlockAt(idx, 'flashcards'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🎴 Флешкарты</button>
-                      <button type="button" onClick={() => { handleInsertBlockAt(idx, 'multiple_choice'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">❓ Тест</button>
-                      <button type="button" onClick={() => { handleInsertBlockAt(idx, 'image'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🖼️ Фото</button>
-                      <button type="button" onClick={() => { handleInsertBlockAt(idx, 'audio'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🎧 Подкаст</button>
-                      <button type="button" onClick={() => { handleInsertBlockAt(idx, 'matching'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🔗 Пары</button>
-                      <button type="button" onClick={() => { handleInsertBlockAt(idx, 'gap_fill_bank'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🧩 Банк слов</button>
-                      <button type="button" onClick={() => { handleInsertBlockAt(idx, 'sentence_reorder'); setActiveInsertMenuIdx(null); }} className="px-2.5 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 transition">🔤 Сборка</button>
-                      <button type="button" onClick={() => setActiveInsertMenuIdx(null)} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-bold text-slate-600">✕</button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setActiveInsertMenuIdx(idx)}
-                      className="relative z-10 opacity-0 group-hover/divider:opacity-100 transition-all px-3 py-1 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-[10px] font-extrabold shadow-2xs flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>+ Вставить блок сюда</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* LEGO BLOCK CARD (DRAGGABLE ONLY FROM THE ⣿ HANDLE) */}
-                <div
-                  draggable={draggableCardIdx === idx}
-                  onDragStart={() => setDraggedBlockIdx(idx)}
-                  onDragEnd={() => {
-                    setDraggableCardIdx(null);
-                    setDraggedBlockIdx(null);
-                    setDragOverTarget(null);
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOverTarget(`card-${idx}`);
-                  }}
-                  onDragLeave={() => {
-                    if (dragOverTarget === `card-${idx}`) setDragOverTarget(null);
-                  }}
-                  onDrop={(e) => handleUniversalDrop(e, idx)}
-                  className={`bg-white p-4 sm:p-6 rounded-3xl border transition-all duration-200 shadow-xs hover:shadow-md relative group ${
-                    draggedBlockIdx === idx ? 'opacity-40 border-dashed border-indigo-500 scale-98' : 'border-slate-200/90 hover:border-indigo-300'
-                  } ${dragOverTarget === `card-${idx}` ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
-                >
-                  <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-100 flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      {/* DRAG HANDLE: DRAGGING IS ACTIVATED EXCLUSIVELY BY GRABBING HERE */}
-                      <span
-                        onMouseDown={() => setDraggableCardIdx(idx)}
-                        onMouseUp={() => setDraggableCardIdx(null)}
-                        className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-600 font-bold px-1.5 py-0.5 rounded text-base select-none hover:bg-indigo-50 transition"
-                        title="Потяните для изменения порядка карточек"
-                      >
-                        ⣿
-                      </span>
-                      <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">#{idx + 1}</span>
-                      <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">
-                        {normalizeBlockType(block?.type).replace(/_/g, ' ')}
-                      </span>
+            <>
+              {(activePage.blocks || []).map((block, idx) => (
+                <React.Fragment key={block.id || idx}>
+                  
+                  {/* INLINE HOVER INSERTION DIVIDER & QUICK MENU */}
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDragOverTarget(`divider-${idx}`); }}
+                    onDragLeave={() => { if (dragOverTarget === `divider-${idx}`) setDragOverTarget(null); }}
+                    onDrop={(e) => handleUniversalDrop(e, idx)}
+                    className={`relative group/divider py-1 flex flex-col items-center justify-center transition-all ${
+                      dragOverTarget === `divider-${idx}` ? 'py-3' : ''
+                    }`}
+                  >
+                    <div className="absolute inset-0 flex items-center">
+                      <div className={`w-full border-t transition-all ${
+                        dragOverTarget === `divider-${idx}` 
+                          ? 'border-indigo-500 border-2' 
+                          : 'border-transparent group-hover/divider:border-indigo-300 border-dashed'
+                      }`} />
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    {activeInsertMenuIdx === idx ? (
+                      renderQuickInsertMenu(idx)
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => handleOpenAiModal(block, idx)}
-                        className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl shadow-xs transition text-xs flex items-center gap-1.5 cursor-pointer"
+                        onClick={() => setActiveInsertMenuIdx(idx)}
+                        className="relative z-10 opacity-0 group-hover/divider:opacity-100 transition-all px-3 py-1 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-[10px] font-extrabold shadow-2xs flex items-center gap-1 cursor-pointer"
                       >
-                        <span>✨ Generate / Fill with AI</span>
+                        <span>+ Вставить блок сюда</span>
                       </button>
-                      <button type="button" onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▲</button>
-                      <button type="button" onClick={() => handleMoveBlock(idx, 1)} disabled={idx === (activePage.blocks?.length || 1) - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
-                      <button type="button" onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Удалить блок">🗑️</button>
-                    </div>
+                    )}
                   </div>
 
-                  {/* BLOCK EDITOR ROUTER (NORMAL TEXT SELECTION RESTORED!) */}
-                  <EditableBlockCard
-                    block={block}
-                    onChange={updated => handleUpdateBlock(idx, updated)}
-                    lesson={lesson}
-                    pages={lesson.pages || []}
-                    availableSourceBlocks={availableSourceBlocks}
-                    extractLessonContext={extractLessonContext}
-                    sourceText={extractLessonContext()}
-                    lessonTitle={lesson.title || lesson.topic || ''}
-                    level={lesson.level || 'B1'}
-                  />
+                  {/* LEGO BLOCK CARD (DRAGGABLE STRICTLY VIA ⣿ HANDLE) */}
+                  <div
+                    draggable={draggableCardIdx === idx}
+                    onDragStart={() => setDraggedBlockIdx(idx)}
+                    onDragEnd={() => {
+                      setDraggableCardIdx(null);
+                      setDraggedBlockIdx(null);
+                      setDragOverTarget(null);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragOverTarget(`card-${idx}`);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverTarget === `card-${idx}`) setDragOverTarget(null);
+                    }}
+                    onDrop={(e) => handleUniversalDrop(e, idx)}
+                    className={`bg-white p-4 sm:p-6 rounded-3xl border transition-all duration-200 shadow-xs hover:shadow-md relative group ${
+                      draggedBlockIdx === idx ? 'opacity-40 border-dashed border-indigo-500 scale-98' : 'border-slate-200/90 hover:border-indigo-300'
+                    } ${dragOverTarget === `card-${idx}` ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
+                  >
+                    <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-100 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        {/* DRAG HANDLE: DRAGGING IS ACTIVATED EXCLUSIVELY BY GRABBING HERE */}
+                        <span
+                          onMouseDown={() => setDraggableCardIdx(idx)}
+                          onMouseUp={() => setDraggableCardIdx(null)}
+                          className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-indigo-600 font-bold px-1.5 py-0.5 rounded text-base select-none hover:bg-indigo-50 transition"
+                          title="Потяните для изменения порядка карточек"
+                        >
+                          ⣿
+                        </span>
+                        <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs flex items-center justify-center">#{idx + 1}</span>
+                        <span className="font-extrabold text-xs uppercase tracking-wider text-slate-600">
+                          {normalizeBlockType(block?.type).replace(/_/g, ' ')}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAiModal(block, idx)}
+                          className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl shadow-xs transition text-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>✨ Generate / Fill with AI</span>
+                        </button>
+                        <button type="button" onClick={() => handleMoveBlock(idx, -1)} disabled={idx === 0} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▲</button>
+                        <button type="button" onClick={() => handleMoveBlock(idx, 1)} disabled={idx === (activePage.blocks?.length || 1) - 1} className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer">▼</button>
+                        <button type="button" onClick={() => handleDeleteBlock(idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer" title="Удалить блок">🗑️</button>
+                      </div>
+                    </div>
+
+                    {/* BLOCK EDITOR ROUTER */}
+                    <EditableBlockCard
+                      block={block}
+                      onChange={updated => handleUpdateBlock(idx, updated)}
+                      lesson={lesson}
+                      pages={lesson.pages || []}
+                      availableSourceBlocks={availableSourceBlocks}
+                      extractLessonContext={extractLessonContext}
+                      sourceText={extractLessonContext()}
+                      lessonTitle={lesson.title || lesson.topic || ''}
+                      level={lesson.level || 'B1'}
+                    />
+                  </div>
+                </React.Fragment>
+              ))}
+
+              {/* DEDICATED BOTTOM DROP ZONE (DROPPING TO LAST POSITION ON PAGE) */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOverTarget('bottom-zone'); }}
+                onDragLeave={() => { if (dragOverTarget === 'bottom-zone') setDragOverTarget(null); }}
+                onDrop={(e) => handleUniversalDrop(e, activePage.blocks.length)}
+                className={`relative group/bottom py-2 flex flex-col items-center justify-center transition-all ${
+                  dragOverTarget === 'bottom-zone' ? 'py-5' : ''
+                }`}
+              >
+                <div className="absolute inset-0 flex items-center">
+                  <div className={`w-full border-t transition-all ${
+                    dragOverTarget === 'bottom-zone'
+                      ? 'border-indigo-500 border-2 border-dashed'
+                      : 'border-transparent group-hover/bottom:border-indigo-300 border-dashed'
+                  }`} />
                 </div>
-              </React.Fragment>
-            ))
+
+                {activeInsertMenuIdx === 'bottom' ? (
+                  renderQuickInsertMenu(activePage.blocks.length)
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActiveInsertMenuIdx('bottom')}
+                    className="relative z-10 opacity-0 group-hover/bottom:opacity-100 transition-all px-4 py-1.5 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-xs font-extrabold shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>+ Добавить блок в конец</span>
+                  </button>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
