@@ -2,10 +2,9 @@ import React, { useState, useRef } from 'react';
 import { VisualBuilderView } from './VisualBuilderView.jsx';
 import { compressAndUploadImage } from '../utils/youtube.js';
 
-// Dynamic browser PDF text extractor (Mozilla PDF.js)
-async function extractTextFromPdfFile(file) {
-  if (typeof window === 'undefined') return '';
-
+// Load Mozilla PDF.js library dynamically from CDN
+async function loadPdfJs() {
+  if (typeof window === 'undefined') return;
   if (!window.pdfjsLib) {
     await new Promise((resolve, reject) => {
       const script = document.createElement('script');
@@ -16,6 +15,12 @@ async function extractTextFromPdfFile(file) {
     });
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
+}
+
+// Extract digital text layer from PDF
+async function extractTextFromPdfFile(file) {
+  if (typeof window === 'undefined') return '';
+  await loadPdfJs();
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -29,6 +34,33 @@ async function extractTextFromPdfFile(file) {
   }
 
   return fullText;
+}
+
+// Render scanned PDF pages into JPEG images for Vision AI OCR
+async function renderPdfPagesToImages(file, maxPages = 6) {
+  if (typeof window === 'undefined') return [];
+  await loadPdfJs();
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pageImages = [];
+
+  const pagesToProcess = Math.min(pdf.numPages, maxPages);
+
+  for (let i = 1; i <= pagesToProcess; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1.25 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const imgDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    pageImages.push(imgDataUrl);
+  }
+
+  return pageImages;
 }
 
 const DEFAULT_LESSON = {
@@ -145,19 +177,25 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
       return;
     }
 
-    // 2. Process PDF Files
+    // 2. Process PDF Files (Digital vs Scanned Image PDF)
     if (fileNameLower.endsWith('.pdf') || file.type === 'application/pdf') {
       setReadingFile(true);
-      setBanner('⌛ Извлечение текста из PDF страниц...');
+      setBanner('⌛ Анализ структуры PDF...');
       try {
         const extractedText = await extractTextFromPdfFile(file);
-        setDocText(extractedText);
-        
-        // If PDF was a scanned picture with no text layer, hint user to upload page photos
-        if (extractedText.replace(/--- PAGE \d+ ---/g, '').trim().length < 30) {
-          setBanner(`ℹ️ Это сканированный PDF без текста. Загрузите фото страниц (.jpg/.png) для сканирования Vision AI.`);
+        const cleanChars = extractedText.replace(/--- PAGE \d+ ---/g, '').trim();
+
+        if (cleanChars.length > 80) {
+          // Digital PDF with real text layer
+          setDocText(extractedText);
+          setBanner(`✅ Извлечен текстовый слой из файла ${file.name}!`);
         } else {
-          setBanner(`✅ Текст из файла ${file.name} успешно извлечен!`);
+          // Scanned Image PDF without text layer: render pages to images for Vision AI!
+          setBanner('⌛ Сканированный PDF без текста. Рендеринг страниц в фото для Vision AI...');
+          const pagePhotos = await renderPdfPagesToImages(file, 6);
+          setDocImages(pagePhotos);
+          setDocText(`[Сканированный PDF: ${file.name} — ${pagePhotos.length} стр.]\nСтраницы извлечены как фото высокого разрешения. Vision AI распознает текст с фотографий страниц.`);
+          setBanner(`📸 ${pagePhotos.length} стр. PDF успешно преобразованы в фото для Vision AI!`);
         }
       } catch (err) {
         setErrorMsg('Ошибка чтения PDF: ' + err.message);
@@ -385,7 +423,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
               <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Преобразование PDF / Учебника в Урок</h2>
             </div>
             <p className="text-slate-500 text-xs leading-relaxed">
-              Загрузите PDF учебника или фото страниц (.jpg/.png). Vision AI просмотрит страницы, решит задания и создаст интерактивный урок.
+              Загрузите PDF файл учебника или фото страниц (.jpg/.png). Vision AI просмотрит страницы, решит задания и создаст интерактивный урок.
             </p>
           </div>
 
@@ -447,7 +485,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
                   Содержимое учебника / Текст теста *
                 </label>
                 <label className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold rounded-xl text-xs cursor-pointer transition flex items-center gap-1.5 shadow-2xs">
-                  {readingFile ? '⌛ Чтение файла...' : '📁 Загрузить PDF / Фото (.jpg / .png / .pdf)'}
+                  {readingFile ? '⌛ Рендеринг PDF...' : '📁 Загрузить PDF / Фото (.jpg / .png / .pdf)'}
                   <input
                     type="file"
                     ref={pdfInputRef}
