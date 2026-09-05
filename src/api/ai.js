@@ -63,7 +63,7 @@ export async function fetchLiveWebSearch(query = '') {
   if (!query || !query.trim()) return null;
   const cleanQuery = query.trim();
 
-  // 1. Try DuckDuckGo Web Search parser (Extracts top real organic URL)
+  // 1. Try DuckDuckGo Web Search parser
   try {
     const ddgRes = await fetchWithTimeout(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`, {
       method: 'POST',
@@ -97,7 +97,7 @@ export async function fetchLiveWebSearch(query = '') {
     }
   } catch (e) {}
 
-  // 2. Wikipedia Live API OpenSearch (Returns verified existing article URL)
+  // 2. Wikipedia Live API OpenSearch
   try {
     const wikiRes = await fetchWithTimeout(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(cleanQuery)}&limit=1&namespace=0&format=json`, {
       headers: BROWSER_HEADERS
@@ -115,7 +115,7 @@ export async function fetchLiveWebSearch(query = '') {
     }
   } catch (e) {}
 
-  // 3. Fallback to Live Topic Search URL (Never a 404!)
+  // 3. Fallback to Live Topic Search URL
   return {
     title: `Web Search: ${cleanQuery}`,
     url: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(cleanQuery)}`,
@@ -222,7 +222,7 @@ export function sanitizeBlockStructure(b) {
 
   b.type = type;
 
-  // 1. MULTIPLE CHOICE UNROLLING
+  // 1. MULTIPLE CHOICE UNROLLING & STAR STRIPPING
   if (b.type === 'multiple_choice') {
     if (Array.isArray(b.questions) && b.questions.length > 0) {
       return b.questions.map((q, qIdx) => {
@@ -294,9 +294,18 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Fill the missing words in the blanks:';
   }
 
-  // 5. GAP FILL BANK (WORD BANK) - PURGES STRAY NUMBERS
+  // 5. GAP FILL BANK (WORD BANK) - PURGES STRAY NUMBERS & FIXES DROPDOWN PIPES
   if (b.type === 'gap_fill_bank') {
     let rawText = String(b.text || b.paragraph || b.content || b.passage || '').trim();
+    
+    // If AI accidentally put inline dropdown pipes [a | b | c] inside a gap_fill_bank block, convert to inline_select!
+    if (rawText.includes('|') && rawText.includes('[')) {
+      b.type = 'inline_select';
+      b.text = rawText;
+      b.instruction = b.instruction || 'Choose the correct word in context:';
+      return [b];
+    }
+
     b.text = rawText.replace(/\[[-_.\s]{2,}\]/g, '[practice]');
     let distractors = Array.isArray(b.distractors) ? b.distractors : [];
     
@@ -423,13 +432,16 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// HIGH-SPEED, ULTRA-LOW-NEURON AI INFERENCE PIPELINE
+// HIGH-SPEED, ULTRA-LOW-NEURON MULTIMODAL AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2200) {
   let errors = [];
 
+  // Support both String and Multimodal Array userContent (for Vision OCR)
+  const isMultimodal = Array.isArray(userContent);
+
   // 1. GROQ API (If key is available: 300 tps, sub-second latency, 0 CF Neurons)
-  if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5) {
+  if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5 && !isMultimodal) {
     const groqKey = env.GROQ_API_KEY.trim();
     for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
       try {
@@ -461,8 +473,50 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. CLOUDFLARE WORKERS AI (Using ONLY ~40-100 neuron lightweight/fast models)
-  if (env.AI) {
+  // 2. OPENROUTER DYNAMIC FREE VISION ROUTER (0 Neurons - Supports Image OCR & Text)
+  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
+    const openrouterKey = env.OPENROUTER_API_KEY.trim();
+    const openRouterModels = [
+      'openrouter/free',
+      'google/gemini-2.0-flash-lite-001:free',
+      'meta-llama/llama-3.2-11b-vision-instruct:free',
+      'z-ai/glm-5.2:free'
+    ];
+
+    for (const model of openRouterModels) {
+      try {
+        const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openrouterKey}`,
+            'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
+            'X-Title': 'Lesson Engine'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
+              { role: 'user', content: userContent }
+            ],
+            temperature: 0.2,
+            response_format: { type: 'json_object' }
+          })
+        }, 8000);
+
+        if (res.ok) {
+          const data = await res.json();
+          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+          if (parsed) return { data: parsed, isFallback: false };
+        }
+      } catch (eOr) {
+        errors.push(`OpenRouter (${model})`);
+      }
+    }
+  }
+
+  // 3. CLOUDFLARE WORKERS AI (Fallback for plain text)
+  if (env.AI && !isMultimodal) {
     const cfModels = [
       '@cf/meta/llama-3.1-8b-instruct-fast',
       '@cf/zai-org/glm-4.7-flash',
@@ -496,62 +550,42 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 3. OPENROUTER DYNAMIC FREE ROUTER (Always picks latest Gemini Flash/Gemma/GLM)
-  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
-    const openrouterKey = env.OPENROUTER_API_KEY.trim();
-    const openRouterModels = [
-      'openrouter/free',
-      'google/gemma-4-31b-it:free',
-      'z-ai/glm-5.2:free'
-    ];
-
-    for (const model of openRouterModels) {
-      try {
-        const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openrouterKey}`,
-            'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
-            'X-Title': 'Lesson Engine'
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
-              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
-            ],
-            temperature: 0.2,
-            response_format: { type: 'json_object' }
-          })
-        }, 5500);
-
-        if (res.ok) {
-          const data = await res.json();
-          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
-          if (parsed) return { data: parsed, isFallback: false };
-        }
-      } catch (eOr) {
-        errors.push(`OpenRouter (${model})`);
-      }
-    }
-  }
-
   // 4. GEMINI DIRECT FALLBACK
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
       try {
         const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${apiKey}`;
+        
+        let gContents = [];
+        if (isMultimodal) {
+          const parts = [];
+          userContent.forEach(item => {
+            if (item.type === 'text') parts.push({ text: item.text });
+            if (item.type === 'image_url' && item.image_url?.url?.startsWith('data:')) {
+              const [mime, b64] = item.image_url.url.split(';base64,');
+              parts.push({
+                inlineData: {
+                  mimeType: mime.replace('data:', ''),
+                  data: b64
+                }
+              });
+            }
+          });
+          gContents = [{ role: 'user', parts }];
+        } else {
+          gContents = [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }];
+        }
+
         const gRes = await fetchWithTimeout(gUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: `${systemPrompt}\nOutput valid JSON only.` }] },
-            contents: [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }],
+            contents: gContents,
             generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
           })
-        }, 5000);
+        }, 7000);
 
         if (gRes.ok) {
           const gData = await gRes.json();
@@ -568,13 +602,17 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 }
 
 // --------------------------------------------------------------------------
-// AUTOMATIC PDF & TEXTBOOK SCANNER (C2 Auto-Solving Engine)
+// AUTOMATIC PDF & TEXTBOOK SCANNER (C2 Auto-Solving & Vision OCR Engine)
 // --------------------------------------------------------------------------
 export async function scanDocumentAndBuildLesson(env, payload) {
-  const { text = '', topic = '', level = 'C1', format = 'live' } = payload;
-  if (!text || !text.trim()) return { error: 'No document text or content provided.' };
+  const { text = '', images = [], topic = '', level = 'C1', format = 'live' } = payload;
+  if ((!text || !text.trim()) && (!images || images.length === 0)) {
+    return { error: 'No document text or scanned images provided.' };
+  }
 
-  const resolvedTopic = topic.trim() || text.trim().slice(0, 45).split('\n')[0].replace(/[#*]/g, '').trim() || 'Scanned Practice Lesson';
+  const resolvedTopic = topic.trim() 
+    || (text.trim() ? text.trim().slice(0, 45).split('\n')[0].replace(/[#*]/g, '').trim() : 'Scanned Practice Lesson');
+  
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['C1'];
 
   const systemPrompt = `[ROLE]
@@ -583,7 +621,7 @@ Target CEFR Level: ${level} (${cefrRules})
 Lesson Topic: "${resolvedTopic}"
 
 [TASK]
-Convert the provided textbook document/test paper into a complete, 100% SOLVED interactive lesson JSON matching our app's block schema.
+Convert the provided textbook document/test paper (or scanned images) into a complete, 100% SOLVED interactive lesson JSON matching our app's block schema.
 
 [CONVERSION & SOLVING RULES - STRICT!]
 1. SOLVE ALL EXERCISES: You MUST solve every sentence, transformation, and multiple choice question with native C2 accuracy.
@@ -613,9 +651,23 @@ Convert the provided textbook document/test paper into a complete, 100% SOLVED i
   ]
 }`;
 
-  const userPrompt = `Scanned Textbook Content:\n${text.slice(0, 6500)}\n\nConvert this entire document into interactive, fully solved lesson pages.`;
+  // Build multimodal payload if scanned page images are attached
+  let userPayload;
+  if (Array.isArray(images) && images.length > 0) {
+    userPayload = [
+      { type: 'text', text: `Scanned Textbook Pages:\n${text.slice(0, 3000)}\n\nPlease read all images/scans, extract the exercise text, solve all answers, and output fully solved lesson blocks.` }
+    ];
+    images.forEach(imgUrl => {
+      userPayload.push({
+        type: 'image_url',
+        image_url: { url: imgUrl }
+      });
+    });
+  } else {
+    userPayload = `Scanned Textbook Content:\n${text.slice(0, 6500)}\n\nConvert this entire document into interactive, fully solved lesson pages.`;
+  }
 
-  const result = await runAiPipeline(env, systemPrompt, userPrompt, 2400);
+  const result = await runAiPipeline(env, systemPrompt, userPayload, 2400);
   if (!result.data) {
     return { error: `Document scanning failed: ${result.error}` };
   }
@@ -964,7 +1016,6 @@ ${cefrRules}
     ? `Source Material:\n${text.slice(0, 2200)}\n\nCreate a complete 220-250 word 3-paragraph lesson on Topic: "${resolvedTopic}".`
     : `Create a comprehensive 220-250 word 3-paragraph lesson anchor on Topic: "${resolvedTopic}". Format: ${format}.`;
 
-  // Run AI Text Generation and Real Live Web Search IN PARALLEL (0ms added delay!)
   const [result, liveRef] = await Promise.all([
     runAiPipeline(env, systemPrompt, userPrompt, 1800),
     fetchLiveWebSearch(resolvedTopic)
@@ -1213,7 +1264,7 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. Sentence with [word].\\n2. Another sentence with [word].", "answers": ["word1", "word2"] }`;
   }
 
-  // 8. GAP FILL BANK (STRICTLY VOCABULARY DISTRACTORS - NEVER NUMBERS)
+  // 8. GAP FILL BANK
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 vocabulary distractors.
@@ -1221,7 +1272,7 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "The atmosphere was [bleak] due to widespread [surveillance] by the regime.", "distractors": ["hesitation", "distraction", "comfort"] }`;
   }
 
-  // 9. SENTENCE REORDER (STRICTLY 1 BLOCK, 7-11 WORDS PER SENTENCE)
+  // 9. SENTENCE REORDER
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
 - GENERATE strictly ONE (1) "sentence_reorder" block with 3 or 4 short, natural sentences (each STRICTLY 7 to 11 words maximum).
@@ -1244,7 +1295,7 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. The report was [accurate* | misleading] in its description.\\n2. Citizens expressed their [dissent* | agreement] peacefully." }`;
   }
 
-  // 12. DISCUSSION ROULETTE (100% AUTONOMOUS STANDALONE QUESTIONS)
+  // 12. DISCUSSION ROULETTE
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
 - GENERATE 1 "spinning_wheel" block with 6 to 8 engaging communicative questions specifically about the topic.
