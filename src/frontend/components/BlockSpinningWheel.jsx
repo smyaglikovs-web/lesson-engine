@@ -1,20 +1,21 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { playCorrectSound, triggerConfetti } from '../utils/sounds.js';
 
+// Modern 2026 Tech & Creative Palette (Luminescent Indigo, Cyan, Violet, Emerald, Coral)
 const MODERN_WHEEL_PALETTE = [
-  '#4f46e5', // Royal Indigo
-  '#06b6d4', // Cyan
-  '#8b5cf6', // Electric Purple
+  '#4f46e5', // Deep Indigo
+  '#06b6d4', // Electric Cyan
+  '#7c3aed', // Radiant Purple
   '#10b981', // Emerald Mint
-  '#f43f5e', // Rose Coral
+  '#f43f5e', // Neon Coral
+  '#0284c7', // Sky Blue
+  '#d946ef', // Magenta Glow
+  '#059669', // Deep Teal
   '#f59e0b', // Warm Amber
-  '#0ea5e9', // Sky Blue
-  '#ec4899', // Berry Pink
-  '#0d9488', // Deep Teal
   '#6366f1'  // Bright Indigo
 ];
 
-// Singleton AudioContext to prevent browser AudioContext limit crashes
+// Safe Web Audio API Singleton for tactile tick sounds
 let wheelAudioContextInstance = null;
 
 function getWheelAudioContext() {
@@ -38,16 +39,16 @@ function playWheelTick() {
     const gain = ctx.createGain();
 
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(540, now);
-    osc.frequency.exponentialRampToValueAtTime(140, now + 0.025);
+    osc.frequency.setValueAtTime(620, now);
+    osc.frequency.exponentialRampToValueAtTime(180, now + 0.022);
 
-    gain.gain.setValueAtTime(0.08, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.022);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.03);
+    osc.stop(now + 0.025);
   } catch (e) {}
 }
 
@@ -60,10 +61,10 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
     return [
       'How would you apply this in real life?',
       'Have you ever had a memorable experience like this?',
-      'What was the most interesting concept today?',
-      'If you could travel anywhere tomorrow, where would you go?',
-      'Summarize the core lesson idea in two sentences.',
-      'What advice would you give regarding this topic?'
+      'What was the most surprising concept?',
+      'If you were in their shoes, what would you do?',
+      'Summarize the core idea in two sentences.',
+      'What advice would you give regarding this?'
     ];
   });
 
@@ -82,7 +83,12 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
   const numItems = items.length;
   const arcSize = numItems > 0 ? (2 * Math.PI) / numItems : 0;
 
-  const wrapTextToLines = (text, maxCharsPerLine = 14) => {
+  // Clean title to eliminate double emoji (🎡 🎡)
+  const rawTitle = block.title || 'Discussion Roulette';
+  const cleanTitle = rawTitle.replace(/^[🎡🎲🎯\s]+/gu, '').trim() || 'Discussion Roulette';
+
+  // Smart text wrapping for readability
+  const wrapTextToLines = (text, maxCharsPerLine = 13) => {
     const words = String(text || '').split(' ');
     const lines = [];
     let currentLine = '';
@@ -96,18 +102,23 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
       }
     });
     if (currentLine) lines.push(currentLine);
-    return lines.slice(0, 3);
+
+    if (lines.length > 3) {
+      lines[2] = lines[2].slice(0, 10) + '...';
+      return lines.slice(0, 3);
+    }
+    return lines;
   };
 
   const drawWheel = useCallback((currentAngle) => {
     const canvas = canvasRef.current;
     if (!canvas || numItems === 0) return;
     const ctx = canvas.getContext('2d');
-    
-    // High-DPI compensation
-    const dpr = window.devicePixelRatio || 1;
+
+    // 2x Retina DPI Scaling for Ultra-Sharp Edges
+    const dpr = window.devicePixelRatio || 2;
     const displaySize = 380;
-    
+
     if (canvas.width !== displaySize * dpr || canvas.height !== displaySize * dpr) {
       canvas.width = displaySize * dpr;
       canvas.height = displaySize * dpr;
@@ -118,21 +129,21 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
     ctx.clearRect(0, 0, displaySize, displaySize);
 
     const center = displaySize / 2;
-    const outerRadius = center - 14;
-    const hubRadius = 34;
+    const outerRadius = center - 16;
+    const hubRadius = 38;
 
-    // Outer rim drop shadow
+    // 1. Sleek Outer Rim Shadow & Border
     ctx.save();
     ctx.beginPath();
-    ctx.arc(center, center, outerRadius + 4, 0, 2 * Math.PI);
+    ctx.arc(center, center, outerRadius + 6, 0, 2 * Math.PI);
     ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(15, 23, 42, 0.14)';
-    ctx.shadowBlur = 12;
-    ctx.shadowOffsetY = 4;
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.12)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 6;
     ctx.fill();
     ctx.restore();
 
-    // Slices
+    // 2. Wheel Slices with Subtle Shading & Thin Crisp Dividers
     for (let i = 0; i < numItems; i++) {
       const angle = currentAngle + i * arcSize;
       const sliceColor = MODERN_WHEEL_PALETTE[i % MODERN_WHEEL_PALETTE.length];
@@ -145,12 +156,13 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
       ctx.fillStyle = sliceColor;
       ctx.fill();
 
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.5;
+      // Thin frosted white dividers
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = 2;
       ctx.stroke();
       ctx.restore();
 
-      // Text labels
+      // Slices Text Layout
       const midAngle = angle + arcSize / 2;
       const normalizedMid = (midAngle % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
       const isLeftHalf = normalizedMid > Math.PI / 2 && normalizedMid < (3 * Math.PI) / 2;
@@ -160,14 +172,14 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
       ctx.rotate(midAngle);
 
       const rawLabel = items[i];
-      const maxChars = numItems > 8 ? 11 : 14;
+      const maxChars = numItems > 8 ? 10 : 13;
       const textLines = wrapTextToLines(rawLabel, maxChars);
-      const fontSize = numItems > 8 ? 10 : 12;
+      const fontSize = numItems > 8 ? 10 : 11.5;
 
-      ctx.font = `800 ${fontSize}px "Plus Jakarta Sans", system-ui, -apple-system, sans-serif`;
+      ctx.font = `700 ${fontSize}px "Plus Jakarta Sans", system-ui, -apple-system, sans-serif`;
       ctx.fillStyle = '#ffffff';
       ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-      ctx.shadowBlur = 3;
+      ctx.shadowBlur = 4;
 
       const lineHeight = fontSize + 3;
       const totalHeight = (textLines.length - 1) * lineHeight;
@@ -176,7 +188,7 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
         ctx.rotate(Math.PI);
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        const startX = -outerRadius + 16;
+        const startX = -outerRadius + 18;
 
         textLines.forEach((line, lineIdx) => {
           const yPos = (lineIdx * lineHeight) - (totalHeight / 2);
@@ -185,7 +197,7 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
       } else {
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        const startX = outerRadius - 16;
+        const startX = outerRadius - 18;
 
         textLines.forEach((line, lineIdx) => {
           const yPos = (lineIdx * lineHeight) - (totalHeight / 2);
@@ -196,41 +208,47 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
       ctx.restore();
     }
 
-    // Center Hub with glossy styling
+    // 3. 2026 Brushed Titanium & Glassmorphic Center Hub
     ctx.save();
+    // Outer glass ring
     ctx.beginPath();
-    ctx.arc(center, center, hubRadius, 0, 2 * Math.PI);
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-    ctx.shadowBlur = 8;
+    ctx.arc(center, center, hubRadius + 4, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.2)';
+    ctx.shadowBlur = 10;
     ctx.fill();
 
+    // Metallic inner core
     ctx.beginPath();
-    ctx.arc(center, center, hubRadius - 6, 0, 2 * Math.PI);
-    ctx.fillStyle = '#4f46e5';
+    ctx.arc(center, center, hubRadius - 4, 0, 2 * Math.PI);
+    const hubGradient = ctx.createLinearGradient(center - 30, center - 30, center + 30, center + 30);
+    hubGradient.addColorStop(0, '#4f46e5');
+    hubGradient.addColorStop(1, '#7c3aed');
+    ctx.fillStyle = hubGradient;
     ctx.fill();
 
-    ctx.font = 'bold 15px Arial';
+    // Center icon
+    ctx.font = 'bold 16px "Plus Jakarta Sans", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffffff';
     ctx.fillText('✨', center, center);
     ctx.restore();
 
-    // Top indicator needle
+    // 4. Sleek Floating Laser-Cut Indicator Needle
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(center - 12, 4);
-    ctx.lineTo(center + 12, 4);
-    ctx.lineTo(center, 26);
+    ctx.moveTo(center - 10, 2);
+    ctx.lineTo(center + 10, 2);
+    ctx.lineTo(center, 28);
     ctx.closePath();
     ctx.fillStyle = '#f43f5e';
-    ctx.shadowColor = 'rgba(15, 23, 42, 0.3)';
-    ctx.shadowBlur = 6;
+    ctx.shadowColor = 'rgba(244, 63, 94, 0.5)';
+    ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 2;
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
     ctx.restore();
 
@@ -248,7 +266,7 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
 
     const extraSpins = 6 + Math.random() * 4;
     const targetAngle = rotationAngleRef.current + extraSpins * 2 * Math.PI + Math.random() * 2 * Math.PI;
-    const duration = 4400;
+    const duration = 4200;
     const startTime = performance.now();
     const startAngle = rotationAngleRef.current;
 
@@ -256,8 +274,8 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
 
-      // Smooth cubic-bezier deceleration
-      const easeOut = 1 - Math.pow(1 - progress, 4);
+      // Smooth Quintic deceleration curve for realistic inertia
+      const easeOut = 1 - Math.pow(1 - progress, 5);
       const currentAngle = startAngle + (targetAngle - startAngle) * easeOut;
       rotationAngleRef.current = currentAngle;
 
@@ -297,13 +315,15 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
   };
 
   return (
-    <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200/90 shadow-2xs mb-6 space-y-4 sm:space-y-6 text-center w-full min-w-0 overflow-hidden">
-      {/* HEADER */}
+    <div className="bg-white p-5 sm:p-8 rounded-3xl border border-slate-200/90 shadow-xs mb-6 space-y-5 sm:space-y-6 text-center w-full min-w-0 overflow-hidden">
+      {/* CLEAN SINGLE-EMOJI HEADER */}
       <div>
-        <div className="flex items-center justify-center gap-2 mb-1">
-          <span className="text-xl sm:text-2xl animate-pulse">🎡</span>
+        <div className="flex items-center justify-center gap-2 mb-1.5">
+          <span className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 text-base shadow-2xs">
+            🎡
+          </span>
           <h4 className="font-extrabold text-slate-900 text-lg sm:text-2xl tracking-tight leading-snug">
-            {block.title || 'Speaking & Discussion Roulette'}
+            {cleanTitle}
           </h4>
         </div>
         <p className="text-slate-500 text-xs sm:text-sm font-medium max-w-md mx-auto px-2">
@@ -311,8 +331,8 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
         </p>
       </div>
 
-      {/* RESPONSIVE ASPECT-SQUARE CANVAS CONTAINER (PREVENTS OVAL DISTORTION) */}
-      <div className="relative inline-flex items-center justify-center mx-auto w-full max-w-[320px] sm:max-w-[380px] aspect-square">
+      {/* RESPONSIVE RETINA WHEEL CANVAS */}
+      <div className="relative inline-flex items-center justify-center mx-auto w-full max-w-[320px] sm:max-w-[380px] aspect-square select-none">
         <canvas
           ref={canvasRef}
           style={{ width: '100%', height: '100%', aspectRatio: '1 / 1' }}
@@ -320,22 +340,22 @@ export const BlockSpinningWheel = ({ block = {}, value = {}, onChange }) => {
         ></canvas>
       </div>
 
-      {/* SPIN BUTTON */}
+      {/* MODERN ACTION BUTTON */}
       <div className="pt-1">
         <button
           type="button"
           onClick={handleSpin}
           disabled={spinning || numItems === 0}
-          className="w-full sm:w-auto px-8 sm:px-10 py-3 sm:py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 active:scale-95 text-white font-extrabold rounded-2xl text-xs sm:text-sm shadow-md transition disabled:opacity-40 cursor-pointer"
+          className="w-full sm:w-auto px-10 py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 active:scale-95 text-white font-extrabold rounded-2xl text-xs sm:text-sm shadow-md transition disabled:opacity-40 cursor-pointer"
         >
           {spinning ? '🌀 Spinning...' : '🎡 SPIN THE WHEEL'}
         </button>
       </div>
 
-      {/* SELECTED RESULT CARD */}
+      {/* 2026 FROSTED RESULT REVEAL CARD */}
       {selectedItem && (
-        <div className="p-4 sm:p-6 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-500 rounded-2xl sm:rounded-3xl space-y-2.5 max-w-xl mx-auto shadow-md animate-fade-in">
-          <span className="px-3 py-1 bg-indigo-600 text-white text-[10px] font-extrabold rounded-full uppercase tracking-wider inline-block shadow-2xs">
+        <div className="p-5 sm:p-6 bg-gradient-to-br from-indigo-50/90 via-purple-50/70 to-pink-50/50 border-2 border-indigo-400/80 rounded-3xl space-y-3 max-w-xl mx-auto shadow-md animate-fade-in">
+          <span className="px-3.5 py-1 bg-indigo-600 text-white text-[10px] font-extrabold rounded-full uppercase tracking-wider inline-block shadow-2xs">
             🎯 Selected Question
           </span>
           <p className="font-extrabold text-slate-900 text-base sm:text-xl leading-relaxed">
