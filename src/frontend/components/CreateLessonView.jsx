@@ -1,6 +1,35 @@
 import React, { useState, useRef } from 'react';
 import { VisualBuilderView } from './VisualBuilderView.jsx';
 
+// Dynamic browser PDF text extractor (Mozilla PDF.js)
+async function extractTextFromPdfFile(file) {
+  if (typeof window === 'undefined') return '';
+
+  if (!window.pdfjsLib) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Не удалось загрузить PDF ридер'));
+      document.head.appendChild(script);
+    });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = '';
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map(item => item.str).join(' ');
+    fullText += `\n--- PAGE ${i} ---\n` + pageText;
+  }
+
+  return fullText;
+}
+
 const DEFAULT_LESSON = {
   title: "New Interactive Lesson",
   level: "B1",
@@ -35,6 +64,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
   const [docTopic, setDocTopic] = useState('');
   const [docLevel, setDocLevel] = useState('C1');
   const [scanningDoc, setScanningDoc] = useState(false);
+  const [readingFile, setReadingFile] = useState(false);
   const pdfInputRef = useRef(null);
 
   // Loading & Feedback
@@ -87,24 +117,49 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
   // --------------------------------------------------------------------------
   // 2. DOCUMENT & PDF TEXTBOOK SCANNER
   // --------------------------------------------------------------------------
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!docTopic) {
+      setDocTopic(file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " "));
+    }
+
+    // Process PDF files
+    if (file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') {
+      setReadingFile(true);
+      setBanner('⌛ Извлечение текста из PDF страниц...');
+      try {
+        const extractedText = await extractTextFromPdfFile(file);
+        setDocText(extractedText);
+        setBanner(`✅ Текст из файла ${file.name} успешно извлечен!`);
+      } catch (err) {
+        setErrorMsg('Ошибка чтения PDF: ' + err.message);
+      } finally {
+        setReadingFile(false);
+      }
+      return;
+    }
+
+    // Process Plain text / JSON / CSV files
+    setReadingFile(true);
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target.result;
       setDocText(content);
-      if (!docTopic) {
-        setDocTopic(file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " "));
-      }
+      setBanner(`✅ Файл ${file.name} успешно загружен!`);
+      setReadingFile(false);
+    };
+    reader.onerror = () => {
+      setErrorMsg('Ошибка чтения файла');
+      setReadingFile(false);
     };
     reader.readAsText(file);
   };
 
   const handleScanDocument = async () => {
     if (!docText.trim()) {
-      setErrorMsg('Вставьте текст из учебника или загрузите файл для сканирования.');
+      setErrorMsg('Вставьте текст из учебника или загрузите PDF для сканирования.');
       return;
     }
 
@@ -299,7 +354,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
               <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Преобразование PDF / Учебника в Урок</h2>
             </div>
             <p className="text-slate-500 text-xs leading-relaxed">
-              Загрузите сканированный тест или вставьте текст из учебника. AI решит все задания и создаст интерактивный урок.
+              Загрузите PDF файл учебника или вставьте сканированный текст. AI решит все задания и создаст интерактивный урок.
             </p>
           </div>
 
@@ -333,17 +388,18 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
             </div>
 
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center flex-wrap gap-2">
                 <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">
                   Содержимое учебника / Текст теста *
                 </label>
                 <label className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold rounded-xl text-xs cursor-pointer transition flex items-center gap-1.5 shadow-2xs">
-                  📁 Загрузить файл (.txt / .docx / .json)
+                  {readingFile ? '⌛ Чтение PDF...' : '📁 Загрузить файл (.pdf / .txt / .docx)'}
                   <input
                     type="file"
                     ref={pdfInputRef}
                     onChange={handleFileUpload}
-                    accept=".txt,.json,.csv,.vtt,.docx"
+                    accept=".pdf,.txt,.json,.csv,.vtt,.docx"
+                    disabled={readingFile}
                     className="hidden"
                   />
                 </label>
@@ -353,7 +409,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
                 rows="10"
                 value={docText}
                 onChange={e => setDocText(e.target.value)}
-                placeholder="Вставьте скопированный текст из PDF учебника, упражнений или теста... AI автоматически распознает варианты ответов, фразовые глаголы и трансформирует их в интерактивные блоки."
+                placeholder="Загрузите PDF файл выше или вставьте скопированный текст из учебника... AI автоматически извлечет задания, решит ответы и создаст интерактивные блоки."
                 className="w-full p-4 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-600 rounded-2xl text-xs font-mono text-slate-900 outline-none leading-relaxed"
               ></textarea>
             </div>
@@ -369,7 +425,7 @@ export const CreateLessonView = ({ initialLesson, onSaveLesson, onCancel }) => {
             </button>
             <button
               type="button"
-              disabled={scanningDoc || !docText.trim()}
+              disabled={scanningDoc || readingFile || !docText.trim()}
               onClick={handleScanDocument}
               className="px-8 py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-2xl text-xs shadow-md transition disabled:opacity-40 cursor-pointer flex items-center gap-2"
             >
