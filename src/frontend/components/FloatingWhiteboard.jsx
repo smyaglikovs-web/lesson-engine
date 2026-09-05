@@ -82,7 +82,6 @@ export const FloatingWhiteboard = ({
   const currentTheme = NOTE_THEMES[activeNoteIdx] || NOTE_THEMES[0];
   const currentNote = notes[activeNoteIdx] || notes[0];
 
-  // Load canvas image when switching notes or when student receives published update
   const restoreCanvasFromDataUrl = (dataUrl) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -153,14 +152,20 @@ export const FloatingWhiteboard = ({
     } catch (err) {}
   };
 
-  // Canvas drawing handlers (Smooth local drawing - no lag!)
+  // Pixel-perfect coordinate calculation with display-to-canvas ratio scaling
   const getCanvasCoords = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0]?.clientX) || 0;
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0]?.clientY) || 0;
+
     return {
-      x: (e.clientX || (e.touches && e.touches[0]?.clientX) || 0) - rect.left,
-      y: (e.clientY || (e.touches && e.touches[0]?.clientY) || 0) - rect.top
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
     };
   };
 
@@ -188,7 +193,7 @@ export const FloatingWhiteboard = ({
     ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
     ctx.lineTo(coords.x, coords.y);
     ctx.strokeStyle = isEraser ? '#ffffff' : activeColor;
-    ctx.lineWidth = isEraser ? 20 : lineWidth;
+    ctx.lineWidth = isEraser ? 22 : lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.stroke();
@@ -200,7 +205,6 @@ export const FloatingWhiteboard = ({
     if (!isDrawingRef.current || !isTeacher) return;
     isDrawingRef.current = false;
 
-    // Save stroke to active note local cache
     if (canvasRef.current) {
       const dataUrl = canvasRef.current.toDataURL('image/png', 0.85);
       setNotes(prev => {
@@ -232,7 +236,6 @@ export const FloatingWhiteboard = ({
   };
 
   const handleSwitchNoteTab = (newIdx) => {
-    // Save current canvas state before switching
     if (canvasRef.current && isTeacher) {
       const currentData = canvasRef.current.toDataURL('image/png', 0.85);
       notes[activeNoteIdx].drawing = currentData;
@@ -240,11 +243,10 @@ export const FloatingWhiteboard = ({
     setActiveNoteIdx(newIdx);
   };
 
-  // 🚀 PUBLISH / BROADCAST TO STUDENT WORKFLOW
+  // 🚀 PUBLISH WITH TIMESTAMP (PREVENTS ACCIDENTAL RE-OPENING ON STUDENT POLLS)
   const handlePublishToStudent = () => {
     if (!isTeacher || !onUpdate) return;
     
-    // Capture latest canvas snapshot
     let currentDrawing = currentNote.drawing;
     if (canvasRef.current) {
       currentDrawing = canvasRef.current.toDataURL('image/png', 0.85);
@@ -253,6 +255,7 @@ export const FloatingWhiteboard = ({
 
     onUpdate({
       isOpen: true,
+      publishedAt: Date.now(),
       activeNoteIdx,
       notes,
       drawing: currentDrawing,
@@ -315,7 +318,7 @@ export const FloatingWhiteboard = ({
           boxShadow: '0 15px 35px -5px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.04)'
         }}
       >
-        {/* 📐 3D FOLDED CORNER IN THE TOP-RIGHT CORNER */}
+        {/* 📐 3D FOLDED CORNER IN THE TOP-RIGHT */}
         <div
           className="absolute top-0 right-0 w-8 h-8 pointer-events-none z-20"
           style={{
@@ -402,7 +405,7 @@ export const FloatingWhiteboard = ({
         </div>
       </div>
 
-      {/* 4. EXTERNAL BOTTOM TOOLBAR (DOCKED NEATLY UNDERNEATH THE SQUARE NOTE) */}
+      {/* 4. EXTERNAL BOTTOM TOOLBAR */}
       {isTeacher && (
         <div className="w-full mt-2 bg-white/95 backdrop-blur-md p-2.5 rounded-2xl border border-slate-200/90 shadow-lg flex flex-col gap-2">
           
