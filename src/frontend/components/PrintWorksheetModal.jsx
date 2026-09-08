@@ -36,7 +36,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
     // 1. HEADING
     if (type === 'heading') {
       return (
-        <div key={idx} className="border-b-2 border-slate-900 pb-1 mt-6 mb-3">
+        <div key={idx} className="print-card border-b-2 border-slate-900 pb-1 mt-6 mb-3">
           <h3 className="text-xl font-extrabold text-slate-900 uppercase tracking-tight">
             {block.text}
           </h3>
@@ -47,7 +47,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
     // 2. READING TEXT / PASSAGE
     if (type === 'text') {
       return (
-        <div key={idx} className="my-4 text-slate-800 text-sm leading-relaxed font-serif whitespace-pre-line bg-slate-50 p-4 rounded-xl border border-slate-200">
+        <div key={idx} className="print-card my-4 text-slate-800 text-sm leading-relaxed font-serif whitespace-pre-line bg-slate-50 p-4 rounded-xl border border-slate-300">
           {block.text}
         </div>
       );
@@ -59,7 +59,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
       if (cards.length === 0) return null;
 
       return (
-        <div key={idx} className="my-5 border border-slate-300 rounded-xl overflow-hidden">
+        <div key={idx} className="print-card my-5 border border-slate-300 rounded-xl overflow-hidden">
           <div className="bg-slate-100 px-3 py-2 border-b border-slate-300 font-extrabold text-xs text-slate-900 uppercase">
             🎴 {block.title || 'Key Target Vocabulary'}
           </div>
@@ -92,7 +92,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
         : ['Option A', 'Option B'];
 
       return (
-        <div key={idx} className="my-4 p-3.5 border border-slate-300 rounded-xl break-inside-avoid">
+        <div key={idx} className="print-card my-4 p-3.5 border border-slate-300 rounded-xl">
           <p className="font-bold text-sm text-slate-900 mb-2">
             <span className="text-slate-500 mr-1.5 font-mono">Q:</span>
             {block.question || 'Choose the correct answer:'}
@@ -117,7 +117,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
       const lines = rawText.split('\n').filter(l => l.trim().length > 0);
 
       return (
-        <div key={idx} className="my-5 p-4 border border-slate-300 rounded-xl break-inside-avoid space-y-2">
+        <div key={idx} className="print-card my-5 p-4 border border-slate-300 rounded-xl space-y-2">
           <p className="font-extrabold text-xs text-slate-900 uppercase">
             ✏️ {block.instruction || 'Fill the missing words in the blanks:'}
           </p>
@@ -148,7 +148,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
       const allWordPool = [...answers, ...distractors].filter(d => !/^\d+$/.test(d));
 
       return (
-        <div key={idx} className="my-5 p-4 border border-slate-300 rounded-xl break-inside-avoid space-y-3">
+        <div key={idx} className="print-card my-5 p-4 border border-slate-300 rounded-xl space-y-3">
           <p className="font-extrabold text-xs text-slate-900 uppercase">
             🧩 {block.instruction || 'Fill the gaps using words from the bank:'}
           </p>
@@ -179,11 +179,10 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
       const pairs = Array.isArray(block.pairs) ? block.pairs : [];
       if (pairs.length === 0) return null;
 
-      // Shuffle right side for print puzzle
       const shuffledRights = [...pairs].map(p => p.right).sort(() => 0.5 - Math.random());
 
       return (
-        <div key={idx} className="my-5 p-4 border border-slate-300 rounded-xl break-inside-avoid space-y-3">
+        <div key={idx} className="print-card my-5 p-4 border border-slate-300 rounded-xl space-y-3">
           <p className="font-extrabold text-xs text-slate-900 uppercase">
             🔗 {block.instruction || 'Match the words on the left with definitions on the right:'}
           </p>
@@ -216,7 +215,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
         : (block.sentence ? [block.sentence] : []);
 
       return (
-        <div key={idx} className="my-5 p-4 border border-slate-300 rounded-xl break-inside-avoid space-y-3">
+        <div key={idx} className="print-card my-5 p-4 border border-slate-300 rounded-xl space-y-3">
           <p className="font-extrabold text-xs text-slate-900 uppercase">
             🔤 {block.instruction || 'Put the words in order to form correct sentences:'}
           </p>
@@ -252,7 +251,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
         : null;
 
       return (
-        <div key={idx} className="my-5 p-4 border-2 border-dashed border-slate-300 rounded-2xl break-inside-avoid flex flex-col sm:flex-row justify-between items-start gap-4">
+        <div key={idx} className="print-card my-5 p-4 border-2 border-dashed border-slate-300 rounded-2xl flex flex-col sm:flex-row justify-between items-start gap-4">
           <div className="flex-1 space-y-1.5">
             <span className="text-[10px] font-extrabold uppercase text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
               {type === 'video' ? '🎥 Video Transcript' : '🎙️ Audio / Podcast Script'}
@@ -284,7 +283,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
         : null;
 
       return (
-        <div key={idx} className="my-4 p-3.5 border border-slate-300 rounded-xl break-inside-avoid flex justify-between items-center gap-3">
+        <div key={idx} className="print-card my-4 p-3.5 border border-slate-300 rounded-xl flex justify-between items-center gap-3">
           <div>
             <span className="text-[10px] font-bold uppercase text-slate-500">🔗 Reference Material:</span>
             <h5 className="font-bold text-xs text-slate-900">{block.title || 'Online Article'}</h5>
@@ -302,7 +301,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
     // 11. OPEN INPUT / ESSAY / WRITING PROMPT
     if (type === 'open_input') {
       return (
-        <div key={idx} className="my-5 p-4 border border-slate-300 rounded-xl break-inside-avoid space-y-2">
+        <div key={idx} className="print-card my-5 p-4 border border-slate-300 rounded-xl space-y-2">
           <p className="font-bold text-xs text-slate-900 whitespace-pre-line">
             📝 {block.prompt || 'Writing / Discussion Prompt:'}
           </p>
@@ -319,7 +318,7 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
     // 12. GRAMMAR CARD
     if (type === 'grammar_card') {
       return (
-        <div key={idx} className="my-4 p-4 border-2 border-indigo-200 bg-indigo-50/40 rounded-xl break-inside-avoid space-y-2">
+        <div key={idx} className="print-card my-4 p-4 border-2 border-indigo-200 bg-indigo-50/40 rounded-xl space-y-2">
           <span className="text-[10px] font-extrabold uppercase text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded">
             📘 Grammar Focus: {block.title}
           </span>
@@ -333,10 +332,10 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
       );
     }
 
-    // 13. TEACHER NOTES (HIDDEN BY DEFAULT UNLESS TOGGLED)
+    // 13. TEACHER NOTES
     if (type === 'teacher_notes' && includeTeacherNotes) {
       return (
-        <div key={idx} className="my-4 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 break-inside-avoid">
+        <div key={idx} className="print-card my-4 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950">
           <strong>👨‍🏫 Teacher Note / Aim:</strong> {block.aim || ''} &bull; {block.speech || ''}
         </div>
       );
@@ -346,102 +345,157 @@ export const PrintWorksheetModal = ({ lesson, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      
-      {/* SCREEN CONTROLS TOOLBAR (HIDDEN ON PHYSICAL PRINT) */}
-      <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden print:shadow-none print:border-none print:max-h-full print:rounded-none">
-        
-        {/* TOP MODAL HEADER BAR */}
-        <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
-          <div>
-            <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
-              🖨️ Печать / Сохранить рабочий лист (PDF)
-            </h3>
-            <p className="text-xs text-slate-500">
-              Автоматическая адаптация для печати на бумаге A4 с QR-кодами
-            </p>
-          </div>
+    <>
+      {/* GLOBAL PRINT STYLESHEET TO UNLOCK NATURAL A4 MULTI-PAGE FLOW */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 15mm 12mm 15mm 12mm;
+          }
+          html, body {
+            height: auto !important;
+            min-height: 100% !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+          }
+          body * {
+            visibility: hidden;
+          }
+          #print-worksheet-wrapper, #print-worksheet-wrapper * {
+            visibility: visible;
+          }
+          #print-worksheet-wrapper {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            box-shadow: none !important;
+            border: none !important;
+            overflow: visible !important;
+            display: block !important;
+            max-height: none !important;
+          }
+          .print-modal-container {
+            max-height: none !important;
+            height: auto !important;
+            overflow: visible !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+          }
+          .print-hide {
+            display: none !important;
+          }
+          .print-card {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+        }
+      `}</style>
 
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeQrCodes}
-                onChange={e => setIncludeQrCodes(e.target.checked)}
-                className="w-4 h-4 accent-indigo-600 rounded"
-              />
-              <span>QR-коды</span>
-            </label>
-
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-md transition cursor-pointer flex items-center gap-1.5"
-            >
-              <span>🖨️</span>
-              <span>Распечатать</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-8 h-8 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold flex items-center justify-center text-xs cursor-pointer transition"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-
-        {/* PRINTABLE WORKSHEET DOCUMENT (A4 READY) */}
-        <div className="p-6 sm:p-10 overflow-y-auto flex-1 bg-white text-slate-900 print:p-0 print:overflow-visible">
+      <div
+        id="print-worksheet-wrapper"
+        className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
+      >
+        <div className="print-modal-container bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
           
-          {/* WORKSHEET STUDENT HEADER */}
-          <div className="border-b-2 border-slate-900 pb-4 mb-6">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
-                  Level {activeLesson.level || 'B1'} &bull; English Worksheet
-                </span>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
-                  {activeLesson.title || 'English Practice Lesson'}
-                </h1>
-              </div>
+          {/* TOP SCREEN CONTROLS BAR (HIDDEN ON PRINT) */}
+          <div className="print-hide bg-slate-50 px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div>
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
+                🖨️ Печать / Сохранить рабочий лист (PDF)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Автоматическая адаптация для печати на бумаге A4 с QR-кодами
+              </p>
             </div>
 
-            {/* HANDWRITING LINES FOR STUDENT & DATE */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2 text-xs font-bold text-slate-700">
-              <div>
-                <span>Student Name:</span>
-                <span className="border-b border-slate-700 inline-block w-32 ml-1"></span>
-              </div>
-              <div>
-                <span>Date:</span>
-                <span className="border-b border-slate-700 inline-block w-24 ml-1"></span>
-              </div>
-              <div>
-                <span>Score:</span>
-                <span className="border-b border-slate-700 inline-block w-16 ml-1"></span>
-                <span>/ ______</span>
-              </div>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeQrCodes}
+                  onChange={e => setIncludeQrCodes(e.target.checked)}
+                  className="w-4 h-4 accent-indigo-600 rounded"
+                />
+                <span>QR-коды</span>
+              </label>
+
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-md transition cursor-pointer flex items-center gap-1.5"
+              >
+                <span>🖨️</span>
+                <span>Распечатать / Сохранить</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-8 h-8 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold flex items-center justify-center text-xs cursor-pointer transition"
+              >
+                ✕
+              </button>
             </div>
           </div>
 
-          {/* ALL WORKSHEET TASKS */}
-          {loading ? (
-            <div className="text-center py-12 text-slate-400 font-bold">Подготовка рабочего листа...</div>
-          ) : (
-            <div className="space-y-4">
-              {allBlocks.map((b, idx) => renderPrintBlock(b, idx))}
-            </div>
-          )}
+          {/* PRINTABLE A4 MULTI-PAGE DOCUMENT BODY */}
+          <div className="p-6 sm:p-10 overflow-y-auto flex-1 bg-white text-slate-900">
+            
+            {/* WORKSHEET STUDENT HEADER */}
+            <div className="print-card border-b-2 border-slate-900 pb-4 mb-6">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                    Level {activeLesson.level || 'B1'} &bull; English Worksheet
+                  </span>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
+                    {activeLesson.title || 'English Practice Lesson'}
+                  </h1>
+                </div>
+              </div>
 
-          {/* PRINT FOOTER */}
-          <div className="mt-10 pt-4 border-t border-slate-300 text-center text-[10px] text-slate-400 font-mono">
-            {activeLesson.title} &bull; Generated with Lesson Engine
+              {/* HANDWRITING HEADER LINES */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2 text-xs font-bold text-slate-700">
+                <div>
+                  <span>Student Name:</span>
+                  <span className="border-b border-slate-700 inline-block w-32 ml-1"></span>
+                </div>
+                <div>
+                  <span>Date:</span>
+                  <span className="border-b border-slate-700 inline-block w-24 ml-1"></span>
+                </div>
+                <div>
+                  <span>Score:</span>
+                  <span className="border-b border-slate-700 inline-block w-16 ml-1"></span>
+                  <span>/ ______</span>
+                </div>
+              </div>
+            </div>
+
+            {/* ALL LESSON TASKS FLOWING CONTINUOUSLY */}
+            {loading ? (
+              <div className="text-center py-12 text-slate-400 font-bold">Подготовка рабочего листа...</div>
+            ) : (
+              <div className="space-y-4">
+                {allBlocks.map((b, idx) => renderPrintBlock(b, idx))}
+              </div>
+            )}
+
+            {/* DOCUMENT FOOTER */}
+            <div className="print-card mt-10 pt-4 border-t border-slate-300 text-center text-[10px] text-slate-400 font-mono">
+              {activeLesson.title} &bull; Generated with Lesson Engine
+            </div>
           </div>
+
         </div>
-
       </div>
-    </div>
+    </>
   );
 };
