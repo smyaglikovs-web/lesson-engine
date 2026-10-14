@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { playCorrectSound, playWrongSound } from '../utils/sounds.js';
-import { areAnswersEquivalent } from '../../api/homework.js';
+import { areAnswersEquivalent } from '../utils/grading.js';
 
 export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
   const rawText = block.text || '';
@@ -79,7 +79,6 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
 
   return (
     <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4 w-full min-w-0 overflow-hidden">
-      {/* CATEGORY BADGE & INSTRUCTION */}
       <div>
         <div className="mb-2">
           <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] uppercase tracking-wider">
@@ -91,7 +90,6 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
         </h4>
       </div>
 
-      {/* READING STORY PASSAGE WITH INLINE DROPDOWNS */}
       <div className="space-y-3 text-sm sm:text-base leading-relaxed font-serif text-slate-800">
         {parsedLines.map((lineSegments, lIdx) => (
           <div key={lIdx} className="py-0.5 leading-loose">
@@ -124,7 +122,6 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
                     ))}
                   </select>
 
-                  {/* REVEAL CORRECT WORD ON INCORRECT SUBMISSION */}
                   {submitted && !isCorrect && (
                     <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-md border border-emerald-200 shadow-2xs font-sans">
                       ✓ {seg.correct}
@@ -139,7 +136,6 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
 
       {!submitted ? (
         <div className="flex gap-2 pt-2">
-          {/* REMOVED disabled={!allFilled} */}
           <button
             type="button"
             onClick={handleSubmit}
