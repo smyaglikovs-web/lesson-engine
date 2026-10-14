@@ -10,6 +10,22 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
+  <!-- Mobile Drag and Drop Polyfill for iPad/Touch Support -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css">
+  <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/scroll-behaviour.min.js"></script>
+  <script>
+    // Initialize polyfill immediately when DOM is ready
+    window.addEventListener('DOMContentLoaded', () => {
+      MobileDragDrop.polyfill({
+        // Prevent default scrolling when dragging a block
+        dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
+      });
+    });
+    // Prevent iOS rubber-band scrolling when dragging
+    window.addEventListener('touchmove', function() {}, {passive: false});
+  </script>
+
   <!-- Central Design System Stylesheet (Built via Tailwind + Vite) -->
   <link rel="stylesheet" href="/src/frontend/theme.css">
 </head>
