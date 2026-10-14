@@ -8,6 +8,9 @@ import { AIPromptsView } from './components/AIPromptsView.jsx';
 import { RoomView } from './components/RoomView.jsx';
 import { SubmissionsModal } from './components/SubmissionsModal.jsx';
 import { VocabTrainerView } from './components/VocabTrainerView.jsx';
+import { DictionaryView } from './components/DictionaryView.jsx';
+import { StudentDashboard } from './components/StudentDashboard.jsx';
+import { generateVocabLesson } from './utils/vocabParser.js';
 
 export default function App() {
   const [view, setView] = useState('library');
@@ -34,20 +37,16 @@ export default function App() {
     localStorage.removeItem('teacher_jwt');
     setIsAuthenticated(false);
     setIsTeacher(false);
-    setView('library');
+    setView('student_dashboard');
   };
 
   const fetchLessons = async () => {
     try {
-      // Pass auth headers to prevent pulling data without permission
       const res = await fetch('/api/lessons', { headers: getAuthHeaders() });
-      
-      // FIX: Ghost Login Catch (Logout if token is expired/invalid)
       if (res.status === 401 || res.status === 403) {
         handleTeacherLogout();
         return;
       }
-      
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) setLessons(data);
@@ -76,8 +75,15 @@ export default function App() {
       const roleParam = params.get('role');
       const hwParam = params.get('homework');
       const trainerParam = params.get('trainer');
+      const studentParam = params.get('student');
 
       const activeRoomId = sessionParam || roomParam;
+
+      if (studentParam) {
+        setIsTeacher(false);
+        setView('student_dashboard');
+        return true;
+      }
 
       if (trainerParam) {
         setIsTeacher(false);
@@ -101,16 +107,23 @@ export default function App() {
       return false;
     };
 
-    const isInRoom = processUrlParams();
-    if (!isInRoom) setIsTeacher(!!token);
+    const isInSpecialView = processUrlParams();
+    if (!isInSpecialView) {
+      if (token) {
+        setIsTeacher(true);
+        setView('library');
+      } else {
+        setIsTeacher(false);
+        setView('student_dashboard');
+      }
+    }
 
-    // FIX: Browser Back Button logic to restore proper views
     const handlePopState = () => {
-      const isRoomInUrl = processUrlParams();
-      if (!isRoomInUrl) {
+      const isHandled = processUrlParams();
+      if (!isHandled) {
         setRoomId('');
         setActiveLesson(null);
-        setView('library');
+        setView(token ? 'library' : 'student_dashboard');
       }
     };
     
@@ -136,6 +149,7 @@ export default function App() {
         setIsTeacher(true);
         setLoginError(false);
         fetchLessons();
+        setView('library');
       } else {
         setLoginError(true);
       }
@@ -254,17 +268,74 @@ export default function App() {
     }
   };
 
+  // Launch Vocab Trainer from Dictionary Words
+  const handleLaunchTrainerFromDictionary = (wordsList) => {
+    if (!wordsList || wordsList.length === 0) return;
+    const generatedLesson = generateVocabLesson('My Saved Vocabulary', 'B2', wordsList);
+    setActiveLesson(generatedLesson);
+    setRoomId(generatedLesson.id);
+    setView('room');
+    setIsTeacher(false);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+      {/* TEACHER HEADER */}
       {isTeacher && isAuthenticated && view !== 'room' && (
         <TeacherHeader view={view} setView={setView} onLogout={handleTeacherLogout} />
       )}
 
+      {/* NON-TEACHER QUICK SWITCH LINK */}
+      {!isAuthenticated && view !== 'room' && (
+        <div className="w-full bg-slate-100 border-b border-slate-200 py-1.5 px-4 text-right">
+          {view === 'teacher_login' ? (
+            <button
+              onClick={() => setView('student_dashboard')}
+              className="text-xs font-bold text-slate-600 hover:text-indigo-600"
+            >
+              🧑‍🎓 Перейти в кабинет ученика ➔
+            </button>
+          ) : (
+            <button
+              onClick={() => setView('teacher_login')}
+              className="text-xs font-bold text-slate-500 hover:text-indigo-600"
+            >
+              🔑 Вход для преподавателя
+            </button>
+          )}
+        </div>
+      )}
+
       <main className={view === 'room' ? 'w-full' : 'max-w-6xl mx-auto px-4 py-8'}>
-        {isTeacher && !isAuthenticated && view !== 'room' && (
+        {/* TEACHER LOGIN MODAL */}
+        {view === 'teacher_login' && !isAuthenticated && (
           <TeacherAuthModal onLogin={handleTeacherLogin} loginError={loginError} />
         )}
 
+        {/* STUDENT DASHBOARD (DEFAULT VIEW FOR STUDENTS) */}
+        {view === 'student_dashboard' && !isAuthenticated && (
+          <StudentDashboard
+            onOpenLesson={(id) => openLesson(id, true, false)}
+            onLaunchVocabTrainer={handleLaunchTrainerFromDictionary}
+            onLogout={() => {
+              const newName = prompt('Введите ваше имя:', 'Ученик');
+              if (newName) {
+                localStorage.setItem('ls_student_name', newName.trim());
+                window.location.reload();
+              }
+            }}
+          />
+        )}
+
+        {/* DICTIONARY VIEW FOR TEACHERS */}
+        {view === 'dictionary' && isTeacher && isAuthenticated && (
+          <DictionaryView 
+            onLaunchTrainer={handleLaunchTrainerFromDictionary} 
+            onBack={() => setView('library')} 
+          />
+        )}
+
+        {/* TEACHER VIEWS */}
         {view === 'library' && isTeacher && isAuthenticated && (
           <LibraryView
             lessons={lessons}
@@ -298,12 +369,16 @@ export default function App() {
 
         {view === 'prompts' && isTeacher && isAuthenticated && <AIPromptsView />}
 
+        {/* ACTIVE CLASSROOM / TRAINER ROOM */}
         {view === 'room' && activeLesson && (
           <RoomView
             activeLesson={activeLesson}
             roomId={roomId}
             isTeacher={isTeacher}
-            onExitRoom={() => { window.history.pushState({}, '', '/'); setView('library'); }}
+            onExitRoom={() => { 
+              window.history.pushState({}, '', '/'); 
+              setView(isAuthenticated ? 'library' : 'student_dashboard'); 
+            }}
           />
         )}
 
