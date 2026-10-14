@@ -111,8 +111,6 @@ export const BlockGapFillBank = ({ block = {}, value = {}, onChange }) => {
     if (validOptions.includes(userPlaced)) correctCount++;
   });
 
-  const isAllSlotsFilled = correctAnswers.length > 0 && Object.keys(placedSlots).length === correctAnswers.length;
-
   if (correctAnswers.length === 0) return null;
 
   return (
@@ -206,11 +204,11 @@ export const BlockGapFillBank = ({ block = {}, value = {}, onChange }) => {
       {/* CONTROLS & PARTIAL SCORE FEEDBACK */}
       {!submitted ? (
         <div className="flex gap-2 pt-1">
+          {/* REMOVED disabled={!isAllSlotsFilled} SO STUDENT CAN CHECK PARTIAL ANSWERS */}
           <button
             type="button"
-            disabled={!isAllSlotsFilled}
             onClick={handleSubmit}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs transition disabled:opacity-40 cursor-pointer shadow-md"
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs transition cursor-pointer shadow-md"
           >
             Check Answers
           </button>
