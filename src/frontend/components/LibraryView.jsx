@@ -2,13 +2,24 @@ import React, { useState, useEffect, useRef } from 'react';
 import { LessonCardSkeleton } from './ui/Skeleton.jsx';
 import { PrintWorksheetModal } from './PrintWorksheetModal.jsx';
 
-export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, onDeleteLesson, onViewSubmissions, onEditLesson }) => {
+export const LibraryView = ({ 
+  lessons = [], 
+  loading, 
+  isMaster = false,
+  onOpenLesson, 
+  onCreateNew, 
+  onDeleteLesson, 
+  onViewSubmissions, 
+  onEditLesson,
+  onScopeChange
+}) => {
   const fileInputRef = useRef(null);
   const [folders, setFolders] = useState([]);
   const [activeFolder, setActiveFolder] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [printLesson, setPrintLesson] = useState(null);
+  const [masterScope, setMasterScope] = useState('all'); // 'all' | 'my'
 
   const fetchFolders = async () => {
     try {
@@ -39,6 +50,13 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
         setActiveFolder(name.trim());
       }
     } catch (e) {}
+  };
+
+  const handleScopeToggle = (scope) => {
+    setMasterScope(scope);
+    if (onScopeChange) {
+      onScopeChange(scope);
+    }
   };
 
   const filteredLessons = lessons.filter(l => {
@@ -90,7 +108,7 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
               reader.onload = async event => {
                 try {
                   const imported = JSON.parse(event.target.result);
-                  const token = localStorage.getItem('teacher_jwt');
+                  const token = localStorage.getItem('teacher_jwt') || localStorage.getItem('auth_jwt');
                   await fetch('/api/lessons', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -120,6 +138,33 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
           </button>
         </div>
       </div>
+
+      {/* MASTER OWNER SCOPE SELECTOR */}
+      {isMaster && (
+        <div className="flex items-center gap-2 p-1.5 bg-amber-50 border border-amber-200 rounded-2xl w-fit">
+          <span className="text-[11px] font-extrabold text-amber-900 px-2 uppercase tracking-wider">
+            👑 Режим Владельца:
+          </span>
+          <button
+            type="button"
+            onClick={() => handleScopeToggle('all')}
+            className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+              masterScope === 'all' ? 'bg-amber-500 text-white shadow-2xs' : 'text-amber-800 hover:bg-amber-100'
+            }`}
+          >
+            Все уроки платформы ({lessons.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => handleScopeToggle('my')}
+            className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+              masterScope === 'my' ? 'bg-amber-500 text-white shadow-2xs' : 'text-amber-800 hover:bg-amber-100'
+            }`}
+          >
+            Мои личные уроки
+          </button>
+        </div>
+      )}
 
       {/* FOLDER PILL TABS */}
       <div className="flex gap-2 flex-wrap items-center">
@@ -276,7 +321,6 @@ export const LibraryView = ({ lessons = [], loading, onOpenLesson, onCreateNew, 
         </div>
       )}
 
-      {/* SMART PRINTABLE WORKSHEET MODAL */}
       {printLesson && (
         <PrintWorksheetModal lesson={printLesson} onClose={() => setPrintLesson(null)} />
       )}
