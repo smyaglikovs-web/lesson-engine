@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 
-export const TeacherHeader = ({ view, setView, onLogout }) => {
+export const TeacherHeader = ({ view, setView, user, onLogout }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isMaster = Boolean(user?.isMaster || user?.role === 'admin');
 
   const handleNavigate = (targetView) => {
-    window.history.pushState({}, '', '/');
+    window.history.pushState({}, '', '/teacher');
     setView(targetView);
     setMobileMenuOpen(false);
   };
@@ -12,7 +13,7 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
       <div className="max-w-6xl mx-auto px-4 h-16 flex justify-between items-center">
-        {/* LOGO & APP TITLE */}
+        {/* LOGO & MASTER BADGE */}
         <div 
           className="flex items-center gap-2.5 cursor-pointer select-none" 
           onClick={() => handleNavigate('library')}
@@ -20,7 +21,20 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
           <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-extrabold shadow-sm">
             L
           </div>
-          <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight">Lesson Engine</span>
+          <div>
+            <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight block leading-tight">
+              Lesson Engine
+            </span>
+            {isMaster ? (
+              <span className="text-[10px] font-extrabold text-amber-600 uppercase tracking-wider block">
+                👑 Владелец (Master Access)
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-400 font-bold block">
+                {user?.name || 'Преподаватель'}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* DESKTOP NAVIGATION */}
@@ -99,13 +113,12 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
           type="button"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="md:hidden w-10 h-10 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold flex items-center justify-center text-lg transition cursor-pointer"
-          aria-label="Открыть меню навигации"
         >
           {mobileMenuOpen ? '✕' : '☰'}
         </button>
       </div>
 
-      {/* MOBILE DROPDOWN ACCORDION */}
+      {/* MOBILE DROPDOWN */}
       {mobileMenuOpen && (
         <div className="md:hidden border-t border-slate-100 bg-white px-4 py-3 space-y-1.5 shadow-lg">
           <button
