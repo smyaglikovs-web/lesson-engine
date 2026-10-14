@@ -24,7 +24,6 @@ function cleanVttToSentences(vttText = '') {
     .trim();
 }
 
-// 1. TEXT BLOCK EDITOR
 const TextBlockEditor = ({ block, onChange }) => {
   const [topicInput, setTopicInput] = useState('');
   const [textLength, setTextLength] = useState('250');
@@ -104,7 +103,6 @@ const TextBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 2. GRAMMAR CARD EDITOR
 const GrammarCardEditor = ({ block, onChange }) => {
   const [grammarTopicInput, setGrammarTopicInput] = useState(block.title || '');
   const [generatingGrammar, setGeneratingGrammar] = useState(false);
@@ -216,7 +214,6 @@ const GrammarCardEditor = ({ block, onChange }) => {
   );
 };
 
-// 3. TEACHER NOTES EDITOR
 const TeacherNotesEditor = ({ block, onChange }) => (
   <div className="space-y-3 bg-amber-50/80 p-4 rounded-2xl border border-amber-200">
     <div className="flex items-center gap-2">
@@ -248,7 +245,6 @@ const TeacherNotesEditor = ({ block, onChange }) => (
   </div>
 );
 
-// 4. INLINE SELECT EDITOR
 const InlineSelectEditor = ({ block, onChange }) => (
   <div className="space-y-3">
     <input
@@ -274,7 +270,6 @@ const InlineSelectEditor = ({ block, onChange }) => (
   </div>
 );
 
-// 5. SPINNING WHEEL EDITOR
 const SpinningWheelEditor = ({ block, onChange }) => {
   const [wheelPrompt, setWheelPrompt] = useState('');
   const [generatingWheel, setGeneratingWheel] = useState(false);
@@ -371,7 +366,6 @@ const SpinningWheelEditor = ({ block, onChange }) => {
   );
 };
 
-// 6. VIDEO BLOCK EDITOR
 const VideoBlockEditor = ({ block, onChange }) => {
   const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
   const [subtitleStatus, setSubtitleStatus] = useState('');
@@ -480,7 +474,6 @@ const VideoBlockEditor = ({ block, onChange }) => {
   );
 };
 
-// 7. UPGRADED AI TEXT-TO-IMAGE STUDIO (UNIVERSAL CORS-SAFE IMAGE LOADER)
 const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }) => {
   const [promptInput, setPromptInput] = useState('');
   const [imageStyle, setImageStyle] = useState('cinematic, photorealistic, 4k, natural lighting');
@@ -504,7 +497,6 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
     const randomSeed = Math.floor(Math.random() * 1000000);
     const generatedUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=500&nologo=true&seed=${randomSeed}`;
 
-    // Replace current single image with newly generated one
     const updated = [{ url: generatedUrl, caption: cleanInput }];
     onChange({ ...block, images: updated, url: generatedUrl, caption: cleanInput });
 
@@ -528,8 +520,6 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
     if (!rawUrl || !rawUrl.trim()) return;
 
     let cleanUrl = rawUrl.trim();
-
-    // Auto-extract real image link if user pasted a Google Images redirect
     if (cleanUrl.includes('google.com/imgres') || cleanUrl.includes('imgurl=')) {
       try {
         const urlObj = new URL(cleanUrl);
@@ -565,7 +555,6 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
 
   return (
     <div className="space-y-4">
-      {/* 🪄 ZERO-TOKEN AI IMAGE GENERATOR STUDIO */}
       <div className="bg-gradient-to-r from-indigo-50/80 via-purple-50/60 to-pink-50/60 p-4 rounded-2xl border border-indigo-100 space-y-3 shadow-2xs">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
@@ -614,7 +603,6 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
         </div>
       </div>
 
-      {/* GALLERY CAPTION */}
       <input
         type="text"
         value={block.caption || ''}
@@ -623,7 +611,6 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
         className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold w-full outline-none focus:border-indigo-500"
       />
 
-      {/* IMAGE PREVIEWS (CORS-SAFE AND NO REFERRER BLOCKS) */}
       {images.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {images.map((img, i) => (
@@ -656,7 +643,6 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
         </div>
       )}
 
-      {/* MANUAL CONTROLS */}
       <div className="flex gap-2 flex-wrap items-center">
         <button
           type="button"
@@ -674,7 +660,6 @@ const ImageBlockEditor = ({ block, onChange, lessonTitle = '', sourceText = '' }
   );
 };
 
-// 8. CLEAN LIGHT-THEMED AI PODCAST STUDIO (DIRECT LESSON TEXT INTEGRATION)
 const AudioBlockEditor = ({
   block,
   onChange,
@@ -692,9 +677,8 @@ const AudioBlockEditor = ({
 
   const handleGeneratePodcast = async () => {
     setGeneratingPodcast(true);
-    setStatusMsg('⌛ AI writing 1-min podcast script and synthesizing audio...');
+    setStatusMsg('⌛ AI writing 2-min podcast script and synthesizing audio...');
 
-    // 1. Thoroughly extract lesson reading story text from all available pages
     let sourceContent = '';
     
     if (pages && Array.isArray(pages)) {
@@ -710,16 +694,9 @@ const AudioBlockEditor = ({
     if (!sourceContent && typeof extractLessonContext === 'function') {
       sourceContent = extractLessonContext();
     }
+    if (!sourceContent && sourceText) sourceContent = sourceText;
+    if (!sourceContent && block.transcript) sourceContent = block.transcript;
 
-    if (!sourceContent && sourceText) {
-      sourceContent = sourceText;
-    }
-
-    if (!sourceContent && block.transcript) {
-      sourceContent = block.transcript;
-    }
-
-    // 2. Resolve topic name cleanly (never use generic fallback)
     let topicToUse = customTopic.trim();
     if (!topicToUse || topicToUse.toLowerCase().includes('аудиозапись') || topicToUse.toLowerCase().includes('story discussion')) {
       topicToUse = lessonTitle || lesson?.title || lesson?.topic || '';
@@ -727,9 +704,7 @@ const AudioBlockEditor = ({
     if (!topicToUse && sourceContent) {
       topicToUse = sourceContent.slice(0, 50).split('\n')[0].replace(/[#*]/g, '').trim();
     }
-    if (!topicToUse) {
-      topicToUse = 'Lesson Story Discussion';
-    }
+    if (!topicToUse) topicToUse = 'Lesson Story Discussion';
 
     try {
       const res = await fetch('/api/ai/generate-podcast', {
@@ -739,7 +714,9 @@ const AudioBlockEditor = ({
           topic: topicToUse,
           lessonTitle: lessonTitle || lesson?.title || lesson?.topic || '',
           sourceText: sourceMode === 'custom' ? '' : sourceContent,
-          level: level || lesson?.level || 'B1'
+          level: level || lesson?.level || 'B1',
+          targetLength: '2_minutes',
+          extraInstructions: 'Make the audio script approximately 2 minutes long (around 250-300 words). Maintain a natural pace.'
         })
       });
       const data = await res.json();
@@ -750,7 +727,7 @@ const AudioBlockEditor = ({
           transcript: data.script || block.transcript,
           url: data.audioUrl || block.url
         });
-        setStatusMsg('✅ 1-Minute Podcast & Audio generated!');
+        setStatusMsg('✅ 2-Minute Podcast & Audio generated!');
       } else {
         alert('Podcast generation failed: ' + (data.error || 'Unknown error'));
         setStatusMsg('');
@@ -767,17 +744,15 @@ const AudioBlockEditor = ({
 
   return (
     <div className="space-y-4 bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-slate-50 p-5 rounded-3xl border border-indigo-100/90 shadow-2xs">
-      {/* AI PODCAST STUDIO HEADER (CLEAN LIGHT THEME) */}
       <div className="bg-white p-4 rounded-2xl border border-indigo-100 shadow-2xs space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="text-xl">🎙️</span>
             <label className="block text-[11px] font-extrabold text-indigo-900 uppercase tracking-wider">
-              AI Podcast Studio: Auto-generate 1-min spoken dialogue & voiceover
+              AI Podcast Studio: Auto-generate 2-min spoken dialogue & voiceover
             </label>
           </div>
 
-          {/* SOURCE CONTEXT DROPDOWN SELECTOR */}
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-slate-500 font-bold uppercase">Source:</span>
             <select
@@ -805,7 +780,7 @@ const AudioBlockEditor = ({
             onClick={handleGeneratePodcast}
             className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-white font-extrabold rounded-xl text-xs shadow-xs transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
           >
-            {generatingPodcast ? '⌛ Creating Episode...' : '🎙️ AI Create Podcast'}
+            {generatingPodcast ? '⌛ Creating Episode...' : '🎙️ AI Create Podcast (2 Min)'}
           </button>
         </div>
 
@@ -816,7 +791,6 @@ const AudioBlockEditor = ({
         )}
       </div>
 
-      {/* EPISODE TITLE & AUDIO URL */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-500 uppercase">Episode Title:</label>
@@ -840,7 +814,6 @@ const AudioBlockEditor = ({
         </div>
       </div>
 
-      {/* LIVE AUDIO PLAYER PREVIEW */}
       {block.url && (
         <div className="p-3.5 bg-white rounded-2xl border border-slate-200 space-y-1.5 shadow-2xs">
           <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">Live Audio Preview:</span>
@@ -851,7 +824,6 @@ const AudioBlockEditor = ({
         </div>
       )}
 
-      {/* TRANSCRIPT / SCRIPT EDITOR */}
       <div className="space-y-1.5">
         <label className="text-[10px] font-bold text-slate-500 uppercase block">
           📝 Spoken Podcast Script / Transcript (Used by AI Assistant for Tasks):
@@ -868,7 +840,6 @@ const AudioBlockEditor = ({
   );
 };
 
-// 9. MULTI-SENTENCE REORDER EDITOR
 const SentenceReorderEditor = ({ block, onChange }) => {
   const sentences = Array.isArray(block.sentences) && block.sentences.length > 0 
     ? block.sentences 
@@ -906,7 +877,9 @@ const SentenceReorderEditor = ({ block, onChange }) => {
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
             Предложения для сборки ({sentences.length}):
           </label>
-          <span className="text-[11px] text-slate-400 font-medium">Рекомендуется: 8–14 слов на предложение</span>
+          <span className="text-[11px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+            AI автоматически сгруппирует длинные предложения в фразы
+          </span>
         </div>
 
         {sentences.map((sent, i) => {
@@ -954,7 +927,6 @@ const SentenceReorderEditor = ({ block, onChange }) => {
   );
 };
 
-// 10. CATEGORIZATION EDITOR
 const CategorizationEditor = ({ block, onChange }) => {
   const categories = block.categories || ['Категория 1', 'Категория 2'];
   const items = block.items || [];
@@ -1045,7 +1017,6 @@ const CategorizationEditor = ({ block, onChange }) => {
   );
 };
 
-// 11. LINK / EMBED BLOCK EDITOR
 const LinkBlockEditor = ({ block, onChange }) => (
   <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
     <div className="flex items-center gap-2">
@@ -1103,7 +1074,6 @@ const LinkBlockEditor = ({ block, onChange }) => (
   </div>
 );
 
-// MAIN EDITABLE BLOCK CARD ROUTER
 export const EditableBlockCard = ({
   block,
   onChange,
