@@ -132,6 +132,48 @@ async function ensureMultiplayerTables(env) {
   }
 }
 
+// DYNAMIC HELPER TO FIND STUDENTS BELONGING TO A SPECIFIC TEACHER
+async function getTeacherStudentNames(env, teacherId) {
+  if (!env.DB || !teacherId) return [];
+
+  try {
+    // 1. Identify which table stores homework submissions
+    const tablesRes = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+    const tableNames = (tablesRes.results || []).map(t => t.name);
+
+    let subTable = null;
+    for (const candidate of ['homework', 'submissions', 'homework_submissions']) {
+      if (tableNames.includes(candidate)) {
+        subTable = candidate;
+        break;
+      }
+    }
+
+    if (!subTable) return [];
+
+    // 2. Identify column names dynamically
+    const colsRes = await env.DB.prepare(`PRAGMA table_info(${subTable})`).all();
+    const colNames = (colsRes.results || []).map(c => c.name);
+
+    const studentCol = colNames.includes('student_name') ? 'student_name' : (colNames.includes('studentName') ? 'studentName' : null);
+    const lessonCol = colNames.includes('lesson_id') ? 'lesson_id' : (colNames.includes('lessonId') ? 'lessonId' : null);
+
+    if (!studentCol || !lessonCol) return [];
+
+    // 3. Find students who submitted work to lessons created by this teacher
+    const query = `
+      SELECT DISTINCT ${studentCol} as student_name
+      FROM ${subTable}
+      WHERE ${lessonCol} IN (SELECT id FROM lessons WHERE teacher_id = ?)
+    `;
+    const { results } = await env.DB.prepare(query).bind(teacherId).all();
+    return (results || []).map(r => r.student_name).filter(Boolean);
+  } catch (err) {
+    console.error('getTeacherStudentNames error:', err);
+    return [];
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') {
@@ -159,9 +201,7 @@ export default {
       await ensureTables(env);
       await ensureMultiplayerTables(env);
 
-      // ---------------------------------------------------------------------
       // AUTH: REGISTRATION & LOGIN
-      // ---------------------------------------------------------------------
       if (path === '/api/auth/register' && method === 'POST') {
         const { email, password, name, role = 'student' } = await request.json();
         if (!email || !password || !name) {
@@ -205,7 +245,6 @@ export default {
           return jsonResponse({ error: 'Неверный email или пароль' }, 401);
         }
 
-        // Allow user to log in as teacher and upgrade role if selected
         let userRole = user.role;
         if (role && (role === 'teacher' || role === 'student')) {
           userRole = role;
@@ -229,7 +268,7 @@ export default {
         return jsonResponse({ success: true, user: verified });
       }
 
-      // MASTER PASSWORD LOGIN
+      // MASTER PASSWORD LOGIN: GRANTS ACCESS TO ALL LESSONS & ALL STUDENTS
       if (path === '/api/teacher/login' && method === 'POST') {
         const body = await request.json();
         const res = await authenticateTeacher(env, body.password);
@@ -246,9 +285,7 @@ export default {
         return jsonResponse({ error: 'Invalid password' }, 401);
       }
 
-      // ---------------------------------------------------------------------
-      // CRITICAL FIX: RECOGNIZE REGULAR REGISTERED TEACHERS AS AUTHORIZED!
-      // ---------------------------------------------------------------------
+      // RESOLVE USER CONTEXT & MASTER STATUS
       const authHeader = request.headers.get('Authorization') || '';
       const token = authHeader.replace(/^Bearer\s+/i, '');
       const userContext = await verifyToken(token);
@@ -365,7 +402,7 @@ export default {
       }
 
       // ---------------------------------------------------------------------
-      // LESSONS SCOPE: MASTER SEES ALL; REGULAR TEACHERS SEE ONLY THEIR OWN
+      // LESSONS: MASTER SEES ALL; REGULAR TEACHERS ONLY SEE THEIR OWN
       // ---------------------------------------------------------------------
       if (path === '/api/lessons' && method === 'GET') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
@@ -376,14 +413,18 @@ export default {
 
         let list = await getLessons(env, { level, folder, search });
 
-        if (!isMasterUser && userContext?.id) {
+        if (!isMasterUser) {
+          const teacherId = userContext?.id;
+          if (!teacherId) return jsonResponse([]);
           try {
             const { results } = await env.DB.prepare(
               "SELECT id FROM lessons WHERE teacher_id = ?"
-            ).bind(userContext.id).all();
+            ).bind(teacherId).all();
             const allowedIds = new Set((results || []).map(r => r.id));
             list = list.filter(l => allowedIds.has(l.id));
-          } catch (e) {}
+          } catch (e) {
+            list = [];
+          }
         } else if (isMasterUser && scope === 'my') {
           try {
             const { results } = await env.DB.prepare(
@@ -403,7 +444,7 @@ export default {
         return lesson ? jsonResponse(lesson) : jsonResponse({ error: 'Lesson not found' }, 404);
       }
 
-      // SAVE LESSON
+      // SAVE LESSON: STAMPS WITH TEACHER_ID
       if (path === '/api/lessons' && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход' }, 403);
         const lesson = await request.json();
@@ -444,32 +485,50 @@ export default {
         return jsonResponse(res);
       }
 
-      // STUDENTS DIRECTORY
+      // ---------------------------------------------------------------------
+      // STUDENTS DIRECTORY: STRICT ISOLATION FOR REGULAR TEACHERS
+      // ---------------------------------------------------------------------
       if (path === '/api/students' && method === 'GET') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход' }, 403);
-        const students = await getStudentsDirectory(env);
+        const allStudents = await getStudentsDirectory(env);
 
+        // 1. MASTER SEES ALL 15 STUDENTS IN THE SCHOOL
         if (isMasterUser) {
-          return jsonResponse(students);
+          return jsonResponse(allStudents);
         }
 
+        // 2. REGULAR TEACHER (PEDRO) ONLY SEES STUDENTS ENROLLED IN HIS LESSONS
+        const teacherId = userContext?.id;
+        if (!teacherId) return jsonResponse([]);
+
         try {
-          const { results: mySubmissions } = await env.DB.prepare(`
-            SELECT DISTINCT student_name 
-            FROM homework 
-            WHERE lesson_id IN (SELECT id FROM lessons WHERE teacher_id = ?)
-          `).bind(userContext?.id || '').all();
-          const allowedNames = new Set((mySubmissions || []).map(r => r.student_name));
-          const filteredStudents = (students || []).filter(s => allowedNames.has(s.name));
+          const allowedNames = await getTeacherStudentNames(env, teacherId);
+          if (!allowedNames || allowedNames.length === 0) {
+            return jsonResponse([]); // Pedro has no students yet: return 0 students!
+          }
+
+          const nameSet = new Set(allowedNames);
+          const filteredStudents = (allStudents || []).filter(s => nameSet.has(s.name));
           return jsonResponse(filteredStudents);
-        } catch (e) {
-          return jsonResponse(students);
+        } catch (err) {
+          return jsonResponse([]);
         }
       }
 
       if (path.startsWith('/api/homework/') && method === 'GET') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход' }, 403);
         const lessonId = path.split('/')[3];
+
+        // Ensure teacher can only inspect homework from their own lessons
+        if (!isMasterUser && userContext?.id) {
+          try {
+            const lesson = await env.DB.prepare("SELECT teacher_id FROM lessons WHERE id = ?").bind(lessonId).first();
+            if (lesson && lesson.teacher_id && lesson.teacher_id !== userContext.id && lesson.teacher_id !== 'master_owner') {
+              return jsonResponse({ error: 'Доступ запрещен к чужому уроку' }, 403);
+            }
+          } catch (e) {}
+        }
+
         const list = await getHomeworkSubmissions(env, lessonId);
         return jsonResponse(list);
       }
