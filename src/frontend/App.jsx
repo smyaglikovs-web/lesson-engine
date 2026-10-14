@@ -14,7 +14,7 @@ import { StudentDashboard } from './components/StudentDashboard.jsx';
 import { generateVocabLesson } from './utils/vocabParser.js';
 
 export default function App() {
-  const [view, setView] = useState('student_dashboard');
+  const [view, setView] = useState('loading');
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeLesson, setActiveLesson] = useState(null);
@@ -41,7 +41,8 @@ export default function App() {
     setIsAuthenticated(false);
     setIsTeacher(false);
     setCurrentUser(null);
-    setView('student_dashboard');
+    window.history.pushState({}, '', '/');
+    setView('role_select');
   };
 
   const fetchLessons = async () => {
@@ -62,88 +63,125 @@ export default function App() {
     }
   };
 
+  // ROUTE RESOLUTION FUNCTION BASED ON URL PATH (/teacher, /student, /)
+  const resolveRoute = (user = currentUser) => {
+    const pathname = window.location.pathname.toLowerCase();
+    const params = new URLSearchParams(window.location.search);
+
+    const sessionParam = params.get('session');
+    const roomParam = params.get('room');
+    const roleParam = params.get('role');
+    const hwParam = params.get('homework');
+    const trainerParam = params.get('trainer');
+
+    const activeRoomId = sessionParam || roomParam;
+
+    if (trainerParam) {
+      setIsTeacher(false);
+      openLesson(trainerParam, false, false);
+      return;
+    }
+
+    if (hwParam) {
+      setIsTeacher(false);
+      openLesson(hwParam, false, false);
+      return;
+    }
+
+    if (activeRoomId) {
+      const teacher = roleParam === 'teacher' && !!localStorage.getItem('teacher_jwt');
+      setIsTeacher(teacher);
+      openRoomSession(activeRoomId, teacher);
+      return;
+    }
+
+    // 1. DEDICATED /teacher ROUTE
+    if (pathname.startsWith('/teacher')) {
+      const hasTeacherToken = !!localStorage.getItem('teacher_jwt') || user?.role === 'teacher';
+      if (hasTeacherToken) {
+        setIsTeacher(true);
+        setIsAuthenticated(true);
+        fetchLessons();
+        setView('library');
+      } else {
+        setIsTeacher(true);
+        setIsAuthenticated(false);
+        setView('auth_teacher');
+      }
+      return;
+    }
+
+    // 2. DEDICATED /student ROUTE
+    if (pathname.startsWith('/student')) {
+      const hasStudentToken = !!localStorage.getItem('auth_jwt') || user?.role === 'student';
+      if (hasStudentToken && user) {
+        setIsTeacher(false);
+        setIsAuthenticated(true);
+        setView('student_dashboard');
+      } else {
+        setIsTeacher(false);
+        setIsAuthenticated(false);
+        setView('auth_student');
+      }
+      return;
+    }
+
+    // 3. ROOT / ROUTE
+    if (user?.role === 'teacher' || localStorage.getItem('teacher_jwt')) {
+      window.history.replaceState({}, '', '/teacher');
+      setIsTeacher(true);
+      setIsAuthenticated(true);
+      fetchLessons();
+      setView('library');
+    } else if (user?.role === 'student' || localStorage.getItem('auth_jwt')) {
+      window.history.replaceState({}, '', '/student');
+      setIsTeacher(false);
+      setIsAuthenticated(true);
+      setView('student_dashboard');
+    } else {
+      setView('role_select');
+    }
+  };
+
   useEffect(() => {
-    const checkAuthSession = async () => {
+    const initAuth = async () => {
       const token = localStorage.getItem('auth_jwt') || localStorage.getItem('teacher_jwt');
+      let identifiedUser = null;
+
       if (token) {
         try {
-          const meRes = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } });
-          if (meRes.ok) {
-            const { user } = await meRes.json();
-            setCurrentUser(user);
+          const res = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } });
+          if (res.ok) {
+            const data = await res.json();
+            identifiedUser = data.user;
+            setCurrentUser(identifiedUser);
             setIsAuthenticated(true);
-            const teacherRole = user.role === 'teacher';
-            setIsTeacher(teacherRole);
-            if (teacherRole) {
-              fetchLessons();
-              setView('library');
-            } else {
-              setView('student_dashboard');
-            }
           } else {
-            // Legacy teacher token fallback
-            setIsAuthenticated(true);
-            setIsTeacher(true);
-            fetchLessons();
-            setView('library');
+            // Legacy teacher session
+            if (localStorage.getItem('teacher_jwt')) {
+              identifiedUser = { role: 'teacher', name: 'Преподаватель' };
+              setCurrentUser(identifiedUser);
+              setIsAuthenticated(true);
+            }
           }
         } catch (e) {
-          setIsAuthenticated(true);
-          setIsTeacher(true);
-          fetchLessons();
-          setView('library');
+          if (localStorage.getItem('teacher_jwt')) {
+            identifiedUser = { role: 'teacher', name: 'Преподаватель' };
+            setCurrentUser(identifiedUser);
+            setIsAuthenticated(true);
+          }
         }
-      } else {
-        setLoading(false);
-        setView('student_dashboard');
       }
+
+      resolveRoute(identifiedUser);
     };
 
-    checkAuthSession();
-
-    const processUrlParams = () => {
-      const params = new URLSearchParams(window.location.search);
-      const sessionParam = params.get('session');
-      const roomParam = params.get('room');
-      const roleParam = params.get('role');
-      const hwParam = params.get('homework');
-      const trainerParam = params.get('trainer');
-
-      const activeRoomId = sessionParam || roomParam;
-
-      if (trainerParam) {
-        setIsTeacher(false);
-        openLesson(trainerParam, false, false);
-        return true;
-      }
-
-      if (hwParam) {
-        setIsTeacher(false);
-        openLesson(hwParam, false, false);
-        return true;
-      }
-
-      if (activeRoomId) {
-        const teacher = roleParam === 'teacher' && !!localStorage.getItem('teacher_jwt');
-        setIsTeacher(teacher);
-        openRoomSession(activeRoomId, teacher);
-        return true;
-      }
-      
-      return false;
-    };
-
-    processUrlParams();
+    initAuth();
 
     const handlePopState = () => {
-      const isHandled = processUrlParams();
-      if (!isHandled) {
-        setRoomId('');
-        setActiveLesson(null);
-        setView(localStorage.getItem('teacher_jwt') ? 'library' : 'student_dashboard');
-      }
+      resolveRoute();
     };
-    
+
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
@@ -154,10 +192,12 @@ export default function App() {
     setLoginError(false);
 
     if (user.role === 'teacher') {
+      window.history.pushState({}, '', '/teacher');
       setIsTeacher(true);
       fetchLessons();
       setView('library');
     } else {
+      window.history.pushState({}, '', '/student');
       setIsTeacher(false);
       setView('student_dashboard');
     }
@@ -177,10 +217,13 @@ export default function App() {
 
       if (res.ok && data.token) {
         localStorage.setItem('teacher_jwt', data.token);
+        const teacherUser = { role: 'teacher', name: 'Преподаватель' };
+        setCurrentUser(teacherUser);
         setIsAuthenticated(true);
         setIsTeacher(true);
         setLoginError(false);
         fetchLessons();
+        window.history.pushState({}, '', '/teacher');
         setView('library');
       } else {
         setLoginError(true);
@@ -325,43 +368,98 @@ export default function App() {
         />
       )}
 
-      {/* 3. VISITOR TOP BAR (WHEN NOT LOGGED IN) */}
-      {!isAuthenticated && view !== 'room' && (
-        <div className="w-full bg-slate-100 border-b border-slate-200 py-2 px-4 flex justify-between items-center text-xs font-bold text-slate-600">
-          <span>Гостевой режим</span>
-          {view === 'auth_modal' ? (
-            <button onClick={() => setView('student_dashboard')} className="hover:text-indigo-600 cursor-pointer">
-              🧑‍🎓 Перейти в кабинет ученика ➔
-            </button>
-          ) : (
-            <button onClick={() => setView('auth_modal')} className="hover:text-indigo-600 cursor-pointer">
-              🔑 Вход / Регистрация
-            </button>
-          )}
-        </div>
-      )}
-
       <main className={view === 'room' ? 'w-full' : 'max-w-6xl mx-auto px-4 py-8'}>
-        {/* AUTH MODAL */}
-        {view === 'auth_modal' && !isAuthenticated && (
-          <TeacherAuthModal 
-            onLogin={handleTeacherLogin}
+        
+        {/* 0. INITIAL ROLE SELECTOR (WHEN VISITING ROOT '/' WITHOUT LOGIN) */}
+        {view === 'role_select' && (
+          <div className="max-w-md mx-auto my-16 bg-white p-8 sm:p-10 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6">
+            <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto text-3xl font-extrabold shadow-2xs">
+              🎓
+            </div>
+            <div>
+              <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Добро пожаловать в Lesson Engine</h2>
+              <p className="text-slate-500 text-xs mt-1.5 leading-relaxed">
+                Выберите ваш профиль для входа в платформу:
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/student');
+                  setView('auth_student');
+                }}
+                className="w-full p-4 rounded-2xl border-2 border-indigo-200 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 transition text-left flex items-center justify-between cursor-pointer group shadow-2xs"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🧑‍🎓</span>
+                  <div>
+                    <h4 className="font-extrabold text-slate-900 text-sm">Я Ученик</h4>
+                    <p className="text-[11px] text-slate-500 font-medium">Мой словарь, задания и вход в класс</p>
+                  </div>
+                </div>
+                <span className="text-indigo-600 font-extrabold text-sm group-hover:translate-x-1 transition">➔</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/teacher');
+                  setView('auth_teacher');
+                }}
+                className="w-full p-4 rounded-2xl border-2 border-slate-200 hover:border-indigo-600 bg-white hover:bg-slate-50 transition text-left flex items-center justify-between cursor-pointer group shadow-2xs"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">👨‍🏫</span>
+                  <div>
+                    <h4 className="font-extrabold text-slate-900 text-sm">Я Преподаватель</h4>
+                    <p className="text-[11px] text-slate-500 font-medium">Конструктор уроков, библиотека, ученики</p>
+                  </div>
+                </div>
+                <span className="text-slate-400 group-hover:text-indigo-600 font-extrabold text-sm group-hover:translate-x-1 transition">➔</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 1. STUDENT AUTH PAGE (FOR /student ROUTE) */}
+        {view === 'auth_student' && (
+          <TeacherAuthModal
+            initialRole="student"
             onAuthSuccess={handleAuthSuccess}
-            loginError={loginError} 
+            onCancel={() => {
+              window.history.pushState({}, '', '/');
+              setView('role_select');
+            }}
           />
         )}
 
-        {/* STUDENT DASHBOARD */}
-        {view === 'student_dashboard' && (
+        {/* 2. TEACHER AUTH PAGE (FOR /teacher ROUTE) */}
+        {view === 'auth_teacher' && (
+          <TeacherAuthModal
+            initialRole="teacher"
+            onLogin={handleTeacherLogin}
+            onAuthSuccess={handleAuthSuccess}
+            loginError={loginError}
+            onCancel={() => {
+              window.history.pushState({}, '', '/');
+              setView('role_select');
+            }}
+          />
+        )}
+
+        {/* 3. AUTHENTICATED STUDENT DASHBOARD */}
+        {view === 'student_dashboard' && isAuthenticated && (
           <StudentDashboard
             onOpenLesson={(id) => openLesson(id, true, false)}
             onJoinRoom={(targetRoomId) => openRoomSession(targetRoomId, false)}
             onLaunchVocabTrainer={handleLaunchTrainerFromDictionary}
-            onLogout={() => setView('auth_modal')}
+            onLogout={handleLogout}
           />
         )}
 
-        {/* DICTIONARY VIEW */}
+        {/* 4. DICTIONARY VIEW */}
         {view === 'dictionary' && (
           <DictionaryView 
             onLaunchTrainer={handleLaunchTrainerFromDictionary} 
@@ -369,7 +467,7 @@ export default function App() {
           />
         )}
 
-        {/* TEACHER VIEWS */}
+        {/* 5. TEACHER WORKSPACE */}
         {view === 'library' && isTeacher && isAuthenticated && (
           <LibraryView
             lessons={lessons}
@@ -403,14 +501,14 @@ export default function App() {
 
         {view === 'prompts' && isTeacher && isAuthenticated && <AIPromptsView />}
 
-        {/* ACTIVE LIVE ROOM */}
+        {/* 6. LIVE ROOM VIEW */}
         {view === 'room' && activeLesson && (
           <RoomView
             activeLesson={activeLesson}
             roomId={roomId}
             isTeacher={isTeacher}
             onExitRoom={() => { 
-              window.history.pushState({}, '', '/'); 
+              window.history.pushState({}, '', isTeacher ? '/teacher' : '/student'); 
               setView(isTeacher && isAuthenticated ? 'library' : 'student_dashboard'); 
             }}
           />
