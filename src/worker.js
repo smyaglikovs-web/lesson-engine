@@ -39,7 +39,7 @@ function jsonResponse(data, status = 200) {
 }
 
 // ---------------------------------------------------------------------------
-// NATIVE WEB CRYPTO HELPERS (ZERO EXTERNAL DEPENDENCIES)
+// NATIVE WEB CRYPTO HELPERS
 // ---------------------------------------------------------------------------
 async function hashPassword(password, salt = 'lesson-engine-salt-2026') {
   const enc = new TextEncoder();
@@ -88,7 +88,7 @@ async function verifyToken(token, secret = 'lesson-engine-jwt-secret-key-2026') 
   }
 }
 
-// Ensure modern multi-account tables exist automatically in D1
+// Ensure modern tables and collaborative shared room state exist in D1
 async function ensureMultiplayerTables(env) {
   if (!env.DB) return;
   try {
@@ -114,6 +114,17 @@ async function ensureMultiplayerTables(env) {
         created_at INTEGER DEFAULT (cast(strftime('%s','now') as int))
       );
     `).run();
+
+    // LIVE COLLABORATIVE SHARED ROOM ANSWERS (Teacher & Student co-op)
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS room_shared_answers (
+        room_id TEXT NOT NULL,
+        block_id TEXT NOT NULL,
+        answer_json TEXT NOT NULL,
+        updated_at INTEGER DEFAULT (cast(strftime('%s','now') as int)),
+        PRIMARY KEY (room_id, block_id)
+      );
+    `).run();
   } catch (e) {
     console.error('Auto migration notice:', e);
   }
@@ -134,9 +145,7 @@ export default {
       await ensureTables(env);
       await ensureMultiplayerTables(env);
 
-      // ---------------------------------------------------------------------
-      // 1. UNIFIED AUTHENTICATION (STUDENT & TEACHER REGISTRATION & LOGIN)
-      // ---------------------------------------------------------------------
+      // AUTH LOGIN & REGISTRATION
       if (path === '/api/auth/register' && method === 'POST') {
         const { email, password, name, role = 'student' } = await request.json();
         if (!email || !password || !name) {
@@ -194,19 +203,15 @@ export default {
         return jsonResponse({ success: true, user: verified });
       }
 
-      // BACKWARD-COMPATIBLE TEACHER LOGIN (PRESERVES EXISTING SETUP)
       if (path === '/api/teacher/login' && method === 'POST') {
         const body = await request.json();
         const res = await authenticateTeacher(env, body.password);
         return res.success ? jsonResponse(res) : jsonResponse({ error: 'Invalid password' }, 401);
       }
 
-      // ---------------------------------------------------------------------
-      // 2. PERSONAL DICTIONARY (FLASHCARD WORD SAVER)
-      // ---------------------------------------------------------------------
+      // PERSONAL DICTIONARY
       if (path === '/api/dictionary' && method === 'GET') {
         const studentId = url.searchParams.get('studentId') || '';
-        let query = 'SELECT * FROM dictionary';
         let stmt;
         if (studentId) {
           stmt = env.DB.prepare('SELECT * FROM dictionary WHERE student_id = ? ORDER BY created_at DESC').bind(studentId);
@@ -236,9 +241,7 @@ export default {
         return jsonResponse({ success: true });
       }
 
-      // ---------------------------------------------------------------------
-      // 3. STUDENT HOMEWORK HISTORY
-      // ---------------------------------------------------------------------
+      // STUDENT HOMEWORK HISTORY
       if (path === '/api/student/history' && method === 'GET') {
         const studentName = url.searchParams.get('studentName') || '';
         if (!studentName) return jsonResponse([]);
@@ -254,12 +257,9 @@ export default {
         return jsonResponse(results || []);
       }
 
-      // ---------------------------------------------------------------------
-      // 4. EXISTING TEACHER AUTHORIZATION CHECK
-      // ---------------------------------------------------------------------
       const isTeacherAuthorized = await isRequestAuthorized(request, env);
 
-      // AI ENDPOINTS (RATE LIMITED)
+      // AI ENDPOINTS
       if (path.startsWith('/api/ai/')) {
         const rateCheck = checkRateLimit(clientIp, 25, 60000);
         if (!rateCheck.allowed) {
@@ -312,7 +312,7 @@ export default {
         return jsonResponse({ success: false, message: 'Subtitles not found.' });
       }
 
-      // FOLDERS & LESSONS (READ)
+      // FOLDERS & LESSONS
       if (path === '/api/folders' && method === 'GET') {
         const list = await getFolders(env);
         return jsonResponse(list);
@@ -332,7 +332,6 @@ export default {
         return lesson ? jsonResponse(lesson) : jsonResponse({ error: 'Lesson not found' }, 404);
       }
 
-      // TEACHER-PROTECTED MUTATING ENDPOINTS (JWT SECURED)
       if (path === '/api/lessons' && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход' }, 403);
         const lesson = await request.json();
@@ -374,14 +373,15 @@ export default {
         return jsonResponse(list);
       }
 
-      // PUBLIC HOMEWORK SUBMISSION
       if (path === '/api/homework/submit' && method === 'POST') {
         const payload = await request.json();
         const res = await submitHomework(env, payload);
         return jsonResponse(res);
       }
 
-      // CLASSROOM ROOM SESSION ENDPOINTS
+      // ---------------------------------------------------------------------
+      // CLASSROOM ROOM SESSION ENDPOINTS (LIVE SYNCHRONIZATION)
+      // ---------------------------------------------------------------------
       if (path === '/api/rooms/create' && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const { lessonId } = await request.json();
@@ -390,12 +390,33 @@ export default {
         return jsonResponse(res);
       }
 
+      // GET ROOM STATE (INCLUDES MERGED SHARED LIVE ANSWERS FOR TEACHER & STUDENT)
       if (path.match(/\/api\/rooms\/[^/]+\/state$/) && method === 'GET') {
         const roomId = path.split('/')[3];
         const state = await getRoomState(env, roomId);
+
+        if (env.DB && state) {
+          try {
+            const { results } = await env.DB.prepare(
+              'SELECT block_id, answer_json FROM room_shared_answers WHERE room_id = ?'
+            ).bind(roomId).all();
+
+            const shared = {};
+            (results || []).forEach(r => {
+              try {
+                shared[r.block_id] = JSON.parse(r.answer_json);
+              } catch (e) {}
+            });
+            state.sharedAnswers = shared;
+          } catch (e) {
+            console.error('Shared state error:', e);
+          }
+        }
+
         return jsonResponse(state);
       }
 
+      // TEACHER BROADCAST
       if (path.match(/\/api\/rooms\/[^/]+\/broadcast$/) && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const roomId = path.split('/')[3];
@@ -404,9 +425,13 @@ export default {
         return jsonResponse(res);
       }
 
+      // RESET ROOM STATE
       if (path.match(/\/api\/rooms\/[^/]+\/reset$/) && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const roomId = path.split('/')[3];
+        if (env.DB) {
+          await env.DB.prepare('DELETE FROM room_shared_answers WHERE room_id = ?').bind(roomId).run().catch(() => {});
+        }
         const res = await resetRoomState(env, roomId);
         return jsonResponse(res);
       }
@@ -418,11 +443,29 @@ export default {
         return jsonResponse(res);
       }
 
+      // UNIFIED ANSWER SYNC (WORKS FOR BOTH TEACHER AND STUDENT IN REAL TIME)
       if (path.match(/\/api\/rooms\/[^/]+\/answer$/) && method === 'POST') {
         const roomId = path.split('/')[3];
         const { studentId, blockId, answer } = await request.json();
-        const res = await saveStudentAnswer(env, roomId, studentId, blockId, answer);
-        return jsonResponse(res);
+
+        // 1. Save live collaborative answer to room_shared_answers in D1
+        if (env.DB && blockId) {
+          try {
+            await env.DB.prepare(`
+              INSERT INTO room_shared_answers (room_id, block_id, answer_json, updated_at)
+              VALUES (?, ?, ?, cast(strftime('%s','now') as int))
+              ON CONFLICT(room_id, block_id) DO UPDATE SET
+                answer_json = excluded.answer_json,
+                updated_at = excluded.updated_at
+            `).bind(roomId, blockId, JSON.stringify(answer)).run();
+          } catch (e) {
+            console.error('Error saving shared answer:', e);
+          }
+        }
+
+        // 2. Also keep record in rooms participants map
+        const res = await saveStudentAnswer(env, roomId, studentId || 'teacher', blockId, answer);
+        return jsonResponse(res || { success: true });
       }
 
       return jsonResponse({ error: 'Endpoint not found: ' + path }, 404);
