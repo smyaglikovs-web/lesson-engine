@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { areAnswersEquivalent } from '../../api/homework.js';
+import { areAnswersEquivalent } from '../utils/grading.js';
 import { playCorrectSound, playWrongSound } from '../utils/sounds.js';
 
 export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
@@ -7,10 +7,8 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
   const lines = rawText.split('\n').filter(line => line.trim().length > 0);
   const submitted = value?.submitted || false;
   
-  // Local state buffer to prevent typing lag/cursor jumping from network polling
   const [localAnswers, setLocalAnswers] = useState(value?.userAnswers || {});
 
-  // Sync from server when submitted status changes (like on room reset)
   useEffect(() => {
     if (value?.userAnswers && Object.keys(value.userAnswers).length === 0) {
       setLocalAnswers({});
@@ -24,7 +22,6 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
     setLocalAnswers(prev => ({ ...prev, [key]: val }));
   };
 
-  // Only sync to the parent (and network) when the user stops typing (onBlur)
   const handleSyncToParent = () => {
     if (submitted) return;
     onChange({ userAnswers: localAnswers, userAnswer: Object.values(localAnswers).join(', '), submitted: false });
@@ -81,7 +78,6 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
 
   return (
     <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4 w-full min-w-0 overflow-hidden">
-      {/* CATEGORY BADGE & INSTRUCTION */}
       <div>
         <div className="mb-2">
           <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] uppercase tracking-wider">
@@ -126,7 +122,6 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
                             : 'border-indigo-500 bg-indigo-50/30 focus:bg-white focus:border-indigo-600 text-slate-900'
                         }`}
                       />
-                      {/* REVEAL CORRECT ANSWER ON INCORRECT SUBMISSION */}
                       {submitted && !lineIsCorrect && (
                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-md border border-emerald-200 shadow-2xs">
                           ✓ {expectedAns}
