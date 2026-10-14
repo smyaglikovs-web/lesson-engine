@@ -30,9 +30,24 @@ export default function App() {
     return headers;
   };
 
+  const handleTeacherLogout = () => {
+    localStorage.removeItem('teacher_jwt');
+    setIsAuthenticated(false);
+    setIsTeacher(false);
+    setView('library');
+  };
+
   const fetchLessons = async () => {
     try {
-      const res = await fetch('/api/lessons');
+      // Pass auth headers to prevent pulling data without permission
+      const res = await fetch('/api/lessons', { headers: getAuthHeaders() });
+      
+      // FIX: Ghost Login Catch (Logout if token is expired/invalid)
+      if (res.status === 401 || res.status === 403) {
+        handleTeacherLogout();
+        return;
+      }
+      
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) setLessons(data);
@@ -54,38 +69,55 @@ export default function App() {
       setLoading(false);
     }
 
-    const params = new URLSearchParams(window.location.search);
-    const sessionParam = params.get('session');
-    const roomParam = params.get('room');
-    const roleParam = params.get('role');
-    const hwParam = params.get('homework');
-    const trainerParam = params.get('trainer');
+    const processUrlParams = () => {
+      const params = new URLSearchParams(window.location.search);
+      const sessionParam = params.get('session');
+      const roomParam = params.get('room');
+      const roleParam = params.get('role');
+      const hwParam = params.get('homework');
+      const trainerParam = params.get('trainer');
 
-    const activeRoomId = sessionParam || roomParam;
+      const activeRoomId = sessionParam || roomParam;
 
-    if (trainerParam) {
-      setIsTeacher(false);
-      openLesson(trainerParam, false, false);
-      return;
-    }
+      if (trainerParam) {
+        setIsTeacher(false);
+        openLesson(trainerParam, false, false);
+        return true;
+      }
 
-    if (hwParam) {
-      setIsTeacher(false);
-      openLesson(hwParam, false, false);
-      return;
-    }
+      if (hwParam) {
+        setIsTeacher(false);
+        openLesson(hwParam, false, false);
+        return true;
+      }
 
-    if (activeRoomId) {
-      const teacher = roleParam === 'teacher' && !!token;
-      setIsTeacher(teacher);
-      openRoomSession(activeRoomId, teacher);
-      return;
-    }
+      if (activeRoomId) {
+        const teacher = roleParam === 'teacher' && !!token;
+        setIsTeacher(teacher);
+        openRoomSession(activeRoomId, teacher);
+        return true;
+      }
+      
+      return false;
+    };
 
-    setIsTeacher(true);
+    const isInRoom = processUrlParams();
+    if (!isInRoom) setIsTeacher(!!token);
+
+    // FIX: Browser Back Button logic to restore proper views
+    const handlePopState = () => {
+      const isRoomInUrl = processUrlParams();
+      if (!isRoomInUrl) {
+        setRoomId('');
+        setActiveLesson(null);
+        setView('library');
+      }
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Strict Server-Side Authentication
   const handleTeacherLogin = async (passwordInput) => {
     const clean = (passwordInput || '').trim();
     if (!clean) return;
@@ -112,14 +144,8 @@ export default function App() {
     }
   };
 
-  const handleTeacherLogout = () => {
-    localStorage.removeItem('teacher_jwt');
-    setIsAuthenticated(false);
-  };
-
   const handleLaunchClassroom = async (lessonId) => {
     try {
-      // Parallelize room creation and lesson prefetch
       const [createRes, lessonRes] = await Promise.all([
         fetch('/api/rooms/create', {
           method: 'POST',
@@ -175,7 +201,6 @@ export default function App() {
     }
   };
 
-  // Instant transition to edit mode without library skeleton flash
   const handleEditLesson = async (lessonSummary) => {
     try {
       const res = await fetch(`/api/lessons/${lessonSummary.id}`);
