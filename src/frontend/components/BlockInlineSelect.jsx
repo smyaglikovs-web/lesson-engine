@@ -58,10 +58,6 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
     });
   });
 
-  const allFilled = parsedLines
-    .flatMap(line => line.filter(seg => seg.type === 'select'))
-    .every(seg => Boolean(selections[seg.gapKey]));
-
   const handleSelectChange = (gapKey, chosenVal) => {
     if (submitted || !onChange) return;
     const updated = { ...selections, [gapKey]: chosenVal };
@@ -69,8 +65,8 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
   };
 
   const handleSubmit = () => {
-    if (!allFilled || !onChange) return;
-    if (correctCount === totalGaps) playCorrectSound();
+    if (!onChange) return;
+    if (correctCount === totalGaps && totalGaps > 0) playCorrectSound();
     else playWrongSound();
     onChange({ selections, submitted: true });
   };
@@ -143,11 +139,11 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
 
       {!submitted ? (
         <div className="flex gap-2 pt-2">
+          {/* REMOVED disabled={!allFilled} */}
           <button
             type="button"
-            disabled={!allFilled}
             onClick={handleSubmit}
-            className="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs shadow-md transition disabled:opacity-40 cursor-pointer"
+            className="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs shadow-md transition cursor-pointer"
           >
             Check Answers
           </button>
@@ -168,7 +164,7 @@ export const BlockInlineSelect = ({ block = {}, value = {}, onChange }) => {
           <span>
             {correctCount === totalGaps 
               ? '🎉 All selections are correct!' 
-              : `Result: ${correctCount} of ${totalGaps} points awarded.`}
+              : `Result: ${correctCount} of ${totalGaps} correct.`}
           </span>
           <button 
             type="button"
