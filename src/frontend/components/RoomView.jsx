@@ -14,8 +14,9 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [studentId, setStudentId] = useState('');
   const [studentName, setStudentName] = useState('');
   const [hasStarted, setHasStarted] = useState(isTeacher);
-  const [userAnswers, setUserAnswers] = useState({});
-  const [teacherAnswers, setTeacherAnswers] = useState({});
+
+  // UNIFIED LIVE ROOM ANSWERS (SHARED CO-OP STATE FOR TEACHER & STUDENT)
+  const [roomAnswers, setRoomAnswers] = useState({});
   const [isCompleted, setIsCompleted] = useState(false);
   const [finalScore, setFinalScore] = useState(null);
 
@@ -48,7 +49,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     publishedAt: 0
   });
 
-  // Network Sync Debounce Ref
   const debounceTimersRef = useRef({});
 
   const getAuthHeaders = useCallback(() => {
@@ -91,7 +91,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const activeSlide = slides[safeSlideIdx] || { blocks: [] };
   const isSyncNeeded = isTeacher && currentSlideIdx !== broadcastSlideIdx;
 
-  // Initialize Student Session Storage
   useEffect(() => {
     let sId = localStorage.getItem('ls_student_id');
     if (!sId) {
@@ -109,12 +108,11 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     const savedAnswers = localStorage.getItem(`ls_ans_${roomId}`);
     if (savedAnswers) {
       try {
-        setUserAnswers(JSON.parse(savedAnswers));
+        setRoomAnswers(JSON.parse(savedAnswers));
       } catch (e) {}
     }
   }, [roomId]);
 
-  // Student Presence Heartbeat
   useEffect(() => {
     if (isTeacher || !roomId || !studentId || !hasStarted) return;
 
@@ -131,7 +129,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return () => clearInterval(interval);
   }, [roomId, studentId, studentName, isTeacher, hasStarted]);
 
-  // Telemetry Polling (With Teacher Answer Co-Op Sync)
+  // LIVE CO-OP TELEMETRY POLLING (1 SECOND INTERVAL FOR SNAPPY CO-OP)
   useEffect(() => {
     if (!roomId || isHomeworkMode) return;
 
@@ -146,26 +144,28 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         setBroadcastSlideIdx(data.broadcastPage ?? 0);
         if (data.notepad !== undefined) setNotepadText(data.notepad);
 
-        // SYNC TEACHER'S LIVE CLICKS & OVERRIDES TO STUDENT
-        if (data.teacherAnswers) {
-          setTeacherAnswers(data.teacherAnswers);
+        // SYNC SHARED ROOM ANSWERS (Teacher & Student see identical matches, choices, and mistakes!)
+        if (data.sharedAnswers && Object.keys(data.sharedAnswers).length > 0) {
+          setRoomAnswers(prev => ({
+            ...prev,
+            ...data.sharedAnswers
+          }));
         }
 
-        // Room reset wipe
+        // Synchronized reset wipe
         if (!isTeacher && data.resetEpoch) {
           if (lastResetEpochRef.current === 0) {
             lastResetEpochRef.current = data.resetEpoch;
           } else if (data.resetEpoch > lastResetEpochRef.current) {
             lastResetEpochRef.current = data.resetEpoch;
-            setUserAnswers({});
-            setTeacherAnswers({});
+            setRoomAnswers({});
             setIsCompleted(false);
             setCurrentSlideIdx(0);
             localStorage.removeItem(`ls_ans_${roomId}`);
           }
         }
 
-        // Whiteboard sync
+        // Whiteboard auto-sync
         if (data.whiteboard) {
           setWhiteboardState(data.whiteboard);
           if (!isTeacher && data.whiteboard.publishedAt) {
@@ -196,7 +196,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           }
         }
 
-        // Teacher slide broadcast with smooth scroll delay
+        // Teacher page broadcast
         if (!isTeacher && !isHomeworkMode && typeof data.broadcastPage === 'number') {
           if (data.broadcastPage !== currentSlideIdxRef.current) {
             setCurrentSlideIdx(data.broadcastPage);
@@ -204,7 +204,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           }
         }
 
-        // Responses feed
+        // Teacher responses telemetry
         if (isTeacher && data.participants) {
           const stream = [];
           Object.values(data.participants).forEach(p => {
@@ -223,50 +223,13 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     };
 
     fetchState();
-    const interval = setInterval(fetchState, 1600);
+    const interval = setInterval(fetchState, 1000);
     return () => clearInterval(interval);
   }, [roomId, isTeacher, isHomeworkMode]);
 
-  // DISPLAYED ANSWERS: MERGES STUDENT INPUT AND TEACHER'S LIVE CLICKS/OVERLAYS
-  const displayedAnswers = useMemo(() => {
-    if (!isTeacher) {
-      // Student view: show student's own answers, but if teacher typed or corrected something, show teacher's answer!
-      return { ...userAnswers, ...teacherAnswers };
-    }
-
-    // Teacher view: merge live student input + teacher's own overrides
-    const activeStudentList = Object.values(participants).filter(p => p && p.answers);
-    const merged = { ...userAnswers };
-    if (activeStudentList.length > 0) {
-      activeStudentList.forEach(p => {
-        Object.entries(p.answers || {}).forEach(([bId, ansVal]) => {
-          if (ansVal !== undefined && ansVal !== null) {
-            merged[bId] = ansVal;
-          }
-        });
-      });
-    }
-    return { ...merged, ...teacherAnswers };
-  }, [isTeacher, userAnswers, participants, teacherAnswers]);
-
-  // BROADCAST TEACHER'S LIVE ANSWERS TO STUDENTS
-  const syncTeacherAnswersToServer = useCallback((updatedAnswers) => {
-    if (!isTeacher || !roomId) return;
-    if (debounceTimersRef.current['teacher_sync']) {
-      clearTimeout(debounceTimersRef.current['teacher_sync']);
-    }
-    debounceTimersRef.current['teacher_sync'] = setTimeout(() => {
-      fetch(`/api/rooms/${roomId}/broadcast`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ teacherAnswers: updatedAnswers })
-      }).catch(() => {});
-    }, 250);
-  }, [isTeacher, roomId, getAuthHeaders]);
-
-  // STUDENT ANSWER DEBOUNCE SYNC
+  // LIVE FAST SYNC TO D1
   const syncAnswerToServer = useCallback((blockId, answerVal) => {
-    if (isTeacher || !roomId || !studentId) return;
+    if (!roomId) return;
 
     if (debounceTimersRef.current[blockId]) {
       clearTimeout(debounceTimersRef.current[blockId]);
@@ -275,38 +238,30 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     debounceTimersRef.current[blockId] = setTimeout(() => {
       fetch(`/api/rooms/${roomId}/answer`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, blockId, answer: answerVal })
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          studentId: isTeacher ? 'teacher' : studentId,
+          blockId,
+          answer: answerVal
+        })
       }).catch(() => {});
-    }, 350);
-  }, [isTeacher, roomId, studentId]);
+    }, 180);
+  }, [roomId, studentId, isTeacher, getAuthHeaders]);
 
-  // HANDLE USER OR TEACHER ANSWER CHANGES
+  // UNIFIED ANSWER HANDLER (WORKS FOR TEACHER AND STUDENT IDENTICALLY)
   const handleAnswerChange = (blockId, newVal) => {
-    if (isTeacher) {
-      // TEACHER CLICKED OR TYPED AN ANSWER: BROADCAST IT!
-      setTeacherAnswers(prev => {
-        const updated = newVal === null || newVal === undefined 
-          ? { ...prev } 
-          : { ...prev, [blockId]: newVal };
-        if (newVal === null || newVal === undefined) delete updated[blockId];
-        syncTeacherAnswersToServer(updated);
-        return updated;
-      });
-    } else {
-      // STUDENT ANSWERED
-      setUserAnswers(prev => {
-        const updated = newVal === null || newVal === undefined 
-          ? { ...prev } 
-          : { ...prev, [blockId]: newVal };
-        if (newVal === null || newVal === undefined) delete updated[blockId];
-        try {
-          localStorage.setItem(`ls_ans_${roomId}`, JSON.stringify(updated));
-        } catch (e) {}
-        return updated;
-      });
-      syncAnswerToServer(blockId, newVal);
-    }
+    setRoomAnswers(prev => {
+      const updated = newVal === null || newVal === undefined 
+        ? { ...prev } 
+        : { ...prev, [blockId]: newVal };
+      if (newVal === null || newVal === undefined) delete updated[blockId];
+      try {
+        localStorage.setItem(`ls_ans_${roomId}`, JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    syncAnswerToServer(blockId, newVal);
   };
 
   const handleBringEveryoneHere = async (targetIdx = safeSlideIdx) => {
@@ -393,9 +348,8 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   };
 
   const handleResetRoom = async () => {
-    if (!confirm('Сбросить все ответы и вернуть урок к 1-му слайду для всех учеников?')) return;
-    setUserAnswers({});
-    setTeacherAnswers({});
+    if (!confirm('Сбросить все ответы и вернуть урок к 1-му слайду для всех участников?')) return;
+    setRoomAnswers({});
     setCurrentSlideIdx(0);
     setBroadcastSlideIdx(0);
     setIsCompleted(false);
@@ -424,7 +378,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         body: JSON.stringify({
           lessonId: activeLesson?.id || roomId,
           studentName: studentName || 'Student',
-          answers: userAnswers
+          answers: roomAnswers
         })
       });
       const data = await res.json();
@@ -641,7 +595,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           <p className="text-slate-600 text-sm font-medium">Ваши ответы сохранены и отправлены преподавателю.</p>
           
           <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl my-4 text-center">
-            <p className="text-emerald-800 font-bold text-sm">Выполнено заданий: {Object.keys(userAnswers).length}</p>
+            <p className="text-emerald-800 font-bold text-sm">Выполнено заданий: {Object.keys(roomAnswers).length}</p>
             {finalScore?.score !== undefined && (
               <p className="text-2xl font-extrabold text-emerald-600 mt-2">
                 Балл: {finalScore.score} / {finalScore.total_questions || '-'}
@@ -693,7 +647,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                     </h2>
                   </div>
                   <p className="text-[11px] sm:text-xs text-slate-400 font-medium truncate mt-0.5">
-                    {isTeacher ? '👨‍🏫 Преподаватель (Co-op синхронизация активна)' : `🧑‍🎓 ${studentName || 'Гость'}`} &bull; Слайд {safeSlideIdx + 1} из {totalSlides}
+                    {isTeacher ? '👨‍🏫 Преподаватель (Синхронизация активна 🟢)' : `🧑‍🎓 ${studentName || 'Гость'}`} &bull; Слайд {safeSlideIdx + 1} из {totalSlides}
                   </p>
                 </div>
 
@@ -731,7 +685,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 </div>
               )}
 
-              {/* INTERACTIVE WORKSPACE: DISK-SYNCED WITH TEACHER OVERLAYS */}
+              {/* SHARED COLLABORATIVE CANVAS: ALL BLOCKS USE UNIFIED roomAnswers */}
               <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 min-h-[350px] w-full min-w-0 overflow-x-hidden">
                 {activeSlide.blocks.length === 0 ? (
                   <div className="text-center py-20 text-slate-400">
@@ -745,7 +699,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                       <BlockRenderer
                         key={blockId}
                         block={{ ...b, id: blockId }}
-                        value={displayedAnswers[blockId]}
+                        value={roomAnswers[blockId]}
                         onChange={val => handleAnswerChange(blockId, val)}
                         isTeacher={isTeacher}
                       />
