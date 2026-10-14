@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { areAnswersEquivalent } from '../../api/homework.js';
 import { playCorrectSound, playWrongSound } from '../utils/sounds.js';
 
@@ -6,12 +6,28 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
   const rawText = block.text || '';
   const lines = rawText.split('\n').filter(line => line.trim().length > 0);
   const submitted = value?.submitted || false;
-  const userAnswers = value?.userAnswers || {};
+  
+  // Local state buffer to prevent typing lag/cursor jumping from network polling
+  const [localAnswers, setLocalAnswers] = useState(value?.userAnswers || {});
 
-  const handleInputChange = (key, val) => {
+  // Sync from server when submitted status changes (like on room reset)
+  useEffect(() => {
+    if (value?.userAnswers && Object.keys(value.userAnswers).length === 0) {
+      setLocalAnswers({});
+    } else if (submitted) {
+      setLocalAnswers(value?.userAnswers || {});
+    }
+  }, [submitted, value?.userAnswers]);
+
+  const handleLocalChange = (key, val) => {
     if (submitted) return;
-    const updated = { ...userAnswers, [key]: val };
-    onChange({ userAnswers: updated, userAnswer: Object.values(updated).join(', '), submitted: false });
+    setLocalAnswers(prev => ({ ...prev, [key]: val }));
+  };
+
+  // Only sync to the parent (and network) when the user stops typing (onBlur)
+  const handleSyncToParent = () => {
+    if (submitted) return;
+    onChange({ userAnswers: localAnswers, userAnswer: Object.values(localAnswers).join(', '), submitted: false });
   };
 
   const handleSubmit = () => {
@@ -24,7 +40,7 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
         total++;
         const key = `${lineIdx}_${i}`;
         const expectedAns = parts[i];
-        const studentAns = userAnswers[key] || '';
+        const studentAns = localAnswers[key] || '';
         if (areAnswersEquivalent(studentAns, expectedAns)) {
           correct++;
         }
@@ -37,10 +53,11 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
       playWrongSound();
     }
 
-    onChange({ userAnswers, userAnswer: Object.values(userAnswers).join(', '), submitted: true });
+    onChange({ userAnswers: localAnswers, userAnswer: Object.values(localAnswers).join(', '), submitted: true });
   };
 
   const handleReset = () => {
+    setLocalAnswers({});
     onChange({ userAnswers: {}, userAnswer: '', submitted: false });
   };
 
@@ -53,7 +70,7 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
       totalGaps++;
       const key = `${lineIdx}_${i}`;
       const expectedAns = parts[i];
-      const studentAns = userAnswers[key] || '';
+      const studentAns = localAnswers[key] || '';
       if (areAnswersEquivalent(studentAns, expectedAns)) {
         correctGaps++;
       }
@@ -89,7 +106,7 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
                 if (segIdx % 2 === 1) {
                   const key = `${lineIdx}_${segIdx}`;
                   const expectedAns = segment.replace(/\*$/, '').trim();
-                  const studentAns = userAnswers[key] || '';
+                  const studentAns = localAnswers[key] || '';
                   const lineIsCorrect = areAnswersEquivalent(studentAns, expectedAns);
 
                   return (
@@ -98,7 +115,8 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
                         type="text"
                         value={studentAns}
                         disabled={submitted}
-                        onChange={e => handleInputChange(key, e.target.value)}
+                        onChange={e => handleLocalChange(key, e.target.value)}
+                        onBlur={handleSyncToParent}
                         placeholder="..."
                         className={`border-b-2 outline-none px-3 py-1 font-bold text-center transition min-w-24 text-xs sm:text-sm rounded-t-md ${
                           submitted
@@ -139,7 +157,7 @@ export const BlockGapFill = ({ block = {}, value = {}, onChange }) => {
           <span>
             {isAllCorrect 
               ? '🎉 Perfect! All gaps filled correctly.' 
-              : `Result: ${correctGaps} of ${totalGaps} points awarded.`}
+              : `Result: ${correctGaps} of ${totalGaps} correct.`}
           </span>
           <button
             type="button"
