@@ -88,7 +88,6 @@ async function verifyToken(token, secret = 'lesson-engine-jwt-secret-key-2026') 
   }
 }
 
-// Ensure multiplayer tables & teacher_id column exist in D1
 async function ensureMultiplayerTables(env) {
   if (!env.DB) return;
   try {
@@ -125,7 +124,6 @@ async function ensureMultiplayerTables(env) {
       );
     `).run();
 
-    // Ensure 'teacher_id' column exists on 'lessons'
     try {
       await env.DB.prepare("ALTER TABLE lessons ADD COLUMN teacher_id TEXT").run();
     } catch (err) {}
@@ -144,6 +142,22 @@ export default {
     const path = url.pathname;
     const method = request.method;
     const clientIp = request.headers.get('cf-connecting-ip') || '127.0.0.1';
+
+    // -----------------------------------------------------------------------
+    // 1. SPA STATIC ASSET FALLBACK ROUTING
+    // Serves index.html for page navigations (/student, /teacher, etc.)
+    // -----------------------------------------------------------------------
+    if (!path.startsWith('/api/')) {
+      if (env.ASSETS) {
+        const assetResponse = await env.ASSETS.fetch(request);
+        if (assetResponse.status === 404) {
+          // Fall back to index.html so React handles the client-side route
+          const indexRequest = new Request(new URL('/', request.url), request);
+          return env.ASSETS.fetch(indexRequest);
+        }
+        return assetResponse;
+      }
+    }
 
     try {
       await ensureTables(env);
@@ -208,7 +222,7 @@ export default {
         return jsonResponse({ success: true, user: verified });
       }
 
-      // MASTER PASSWORD LOGIN: GRANTS PERMANENT OWNER / MASTER ACCESS TO ALL LESSONS & STUDENTS
+      // MASTER PASSWORD LOGIN
       if (path === '/api/teacher/login' && method === 'POST') {
         const body = await request.json();
         const res = await authenticateTeacher(env, body.password);
@@ -339,9 +353,7 @@ export default {
         return jsonResponse(list);
       }
 
-      // ---------------------------------------------------------------------
-      // LESSONS ACCESS CONTROL (MASTER SEES ALL; REGULAR TEACHERS SEE ONLY THEIRS)
-      // ---------------------------------------------------------------------
+      // LESSONS
       if (path === '/api/lessons' && method === 'GET') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const level = url.searchParams.get('level') || '';
@@ -351,7 +363,6 @@ export default {
 
         let list = await getLessons(env, { level, folder, search });
 
-        // If regular teacher (not master), only show lessons created by them
         if (!isMasterUser && userContext?.id) {
           try {
             const { results } = await env.DB.prepare(
@@ -361,7 +372,6 @@ export default {
             list = list.filter(l => allowedIds.has(l.id));
           } catch (e) {}
         } else if (isMasterUser && scope === 'my') {
-          // Master filter: only master's lessons
           try {
             const { results } = await env.DB.prepare(
               "SELECT id FROM lessons WHERE teacher_id = 'master_owner' OR teacher_id IS NULL"
@@ -380,7 +390,7 @@ export default {
         return lesson ? jsonResponse(lesson) : jsonResponse({ error: 'Lesson not found' }, 404);
       }
 
-      // SAVE LESSON (STAMPS THE CREATOR TEACHER_ID)
+      // SAVE LESSON
       if (path === '/api/lessons' && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход' }, 403);
         const lesson = await request.json();
@@ -421,7 +431,7 @@ export default {
         return jsonResponse(res);
       }
 
-      // STUDENTS DIRECTORY (MASTER SEES ALL; TEACHERS SEE THEIR OWN)
+      // STUDENTS DIRECTORY
       if (path === '/api/students' && method === 'GET') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход' }, 403);
         const students = await getStudentsDirectory(env);
@@ -430,7 +440,6 @@ export default {
           return jsonResponse(students);
         }
 
-        // Regular teacher: only see students who submitted homework to this teacher's lessons
         try {
           const { results: mySubmissions } = await env.DB.prepare(`
             SELECT DISTINCT student_name 
@@ -537,6 +546,11 @@ export default {
 
         const res = await saveStudentAnswer(env, roomId, studentId || 'teacher', blockId, answer);
         return jsonResponse(res || { success: true });
+      }
+
+      // If non-API request wasn't caught, defer to assets
+      if (!path.startsWith('/api/') && env.ASSETS) {
+        return env.ASSETS.fetch(request);
       }
 
       return jsonResponse({ error: 'Endpoint not found: ' + path }, 404);
