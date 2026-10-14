@@ -23,6 +23,10 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
     return shuffleArray(pairs.map((p, idx) => ({ id: `r-${idx}`, text: p.right, origIndex: idx })));
   }, [block.id, JSON.stringify(pairs)]);
 
+  // Filter out items that are already matched so they disappear from the working grid
+  const unmatchedPairs = pairs.filter(p => !matched.some(m => m.left === p.left));
+  const unmatchedRightItems = rightItems.filter(r => !matched.some(m => m.right === r.text));
+
   const handleLeftClick = (leftText) => {
     if (matched.some(m => m.left === leftText)) return;
     setSelectedLeft(leftText);
@@ -60,7 +64,7 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
   if (pairs.length === 0) return null;
 
   return (
-    <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4">
+    <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-xs mb-6 space-y-4 w-full min-w-0 overflow-hidden">
       {/* CATEGORY BADGE & INSTRUCTION */}
       <div>
         <div className="mb-2.5">
@@ -69,7 +73,7 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
           </span>
         </div>
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-          <h4 className="font-extrabold text-sm sm:text-lg text-slate-900 border-l-4 border-indigo-600 pl-3 leading-snug">
+          <h4 className="font-extrabold text-sm sm:text-lg text-slate-900 border-l-4 border-indigo-600 pl-3 leading-snug break-words">
             {block.instruction || 'Match the words with their definitions / translations:'}
           </h4>
           <div className="flex items-center gap-1.5 self-start sm:self-auto flex-wrap">
@@ -85,61 +89,70 @@ export const BlockMatching = ({ block = {}, value = {}, onChange }) => {
         </div>
       </div>
 
-      {/* MATCHING GRID (2 COLUMNS EVEN ON MOBILE FOR EASY TAPPING) */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-4 pt-1">
-        {/* LEFT COLUMN */}
-        <div className="space-y-2">
-          {pairs.map((p, idx) => {
-            const isMatched = matched.some(m => m.left === p.left);
-            const isSelected = selectedLeft === p.left;
-            let style = "w-full p-2.5 sm:p-3.5 min-h-[48px] text-left rounded-xl sm:rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer break-words hyphens-auto leading-tight sm:leading-snug ";
-            if (isMatched) style += "bg-emerald-50 border-emerald-500 text-emerald-900 opacity-60 cursor-default";
-            else if (isSelected) style += "bg-indigo-50 border-indigo-600 text-indigo-900 shadow-xs ring-2 ring-indigo-500/20 scale-102";
-            else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-800 hover:bg-white";
-
-            return (
-              <button 
-                key={`left-${idx}`} 
-                type="button"
-                disabled={isMatched} 
-                onClick={() => handleLeftClick(p.left)} 
-                className={style}
-              >
-                <span className="flex-1 pr-1">{p.left}</span>
-                {isMatched && <span className="text-emerald-600 font-extrabold shrink-0 text-xs">✓</span>}
-              </button>
-            );
-          })}
+      {/* COMPLETED MATCHES LIST (Clears up the grid) */}
+      {matched.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {matched.map((m, idx) => (
+            <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm animate-fade-in">
+              <span className="font-bold text-emerald-900">{m.left}</span>
+              <span className="hidden sm:inline text-emerald-500 font-bold px-2">➔</span>
+              <span className="font-bold text-emerald-800 text-left sm:text-right mt-1 sm:mt-0">{m.right}</span>
+            </div>
+          ))}
         </div>
+      )}
 
-        {/* RIGHT COLUMN */}
-        <div className="space-y-2">
-          {rightItems.map((rightObj, idx) => {
-            const isMatched = matched.some(m => m.right === rightObj.text);
-            let style = "w-full p-2.5 sm:p-3.5 min-h-[48px] text-left rounded-xl sm:rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer break-words hyphens-auto leading-tight sm:leading-snug ";
-            if (isMatched) style += "bg-emerald-50 border-emerald-500 text-emerald-900 opacity-60 cursor-default";
-            else if (wrongPair && selectedLeft) style += "bg-rose-50 border-rose-400 text-rose-900 animate-bounce";
-            else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-800 hover:bg-white";
+      {/* MATCHING GRID (ONLY SHOWS UNMATCHED ITEMS) */}
+      {!isCompleted && (
+        <div className="grid grid-cols-2 gap-2 sm:gap-4 pt-1">
+          {/* LEFT COLUMN */}
+          <div className="space-y-2">
+            {unmatchedPairs.map((p, idx) => {
+              const isSelected = selectedLeft === p.left;
+              let style = "w-full p-2.5 sm:p-3.5 min-h-[48px] text-left rounded-xl sm:rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer break-words hyphens-auto leading-tight sm:leading-snug ";
+              
+              if (isSelected) style += "bg-indigo-50 border-indigo-600 text-indigo-900 shadow-xs ring-2 ring-indigo-500/20 scale-102";
+              else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-800 hover:bg-white";
 
-            return (
-              <button 
-                key={`right-${idx}`} 
-                type="button"
-                disabled={isMatched} 
-                onClick={() => handleRightClick(rightObj.text)} 
-                className={style}
-              >
-                <span className="flex-1 pr-1">{rightObj.text}</span>
-                {isMatched && <span className="text-emerald-600 font-extrabold shrink-0 text-xs">✓</span>}
-              </button>
-            );
-          })}
+              return (
+                <button 
+                  key={`left-${idx}`} 
+                  type="button"
+                  onClick={() => handleLeftClick(p.left)} 
+                  className={style}
+                >
+                  <span className="flex-1 pr-1">{p.left}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* RIGHT COLUMN */}
+          <div className="space-y-2">
+            {unmatchedRightItems.map((rightObj, idx) => {
+              let style = "w-full p-2.5 sm:p-3.5 min-h-[48px] text-left rounded-xl sm:rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer break-words hyphens-auto leading-tight sm:leading-snug ";
+              
+              if (wrongPair && selectedLeft) style += "bg-rose-50 border-rose-400 text-rose-900 animate-bounce";
+              else style += "bg-slate-50 border-slate-200 hover:border-indigo-400 text-slate-800 hover:bg-white";
+
+              return (
+                <button 
+                  key={`right-${idx}`} 
+                  type="button"
+                  onClick={() => handleRightClick(rightObj.text)} 
+                  className={style}
+                >
+                  <span className="flex-1 pr-1">{rightObj.text}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* COMPLETION BANNER WITH RESET / TRY AGAIN */}
       {isCompleted && (
-        <div className="p-4 bg-emerald-100 text-emerald-900 rounded-2xl text-xs font-bold flex justify-between items-center px-4 flex-wrap gap-2">
+        <div className="p-4 bg-emerald-100 text-emerald-900 rounded-2xl text-xs font-bold flex justify-between items-center px-4 flex-wrap gap-2 mt-4">
           <div className="flex items-center gap-2">
             <span>🎉 All {pairs.length} pairs matched!</span>
             {mistakes === 0 && <span className="text-[10px] bg-emerald-200 px-2 py-0.5 rounded-full font-extrabold">Flawless!</span>}
