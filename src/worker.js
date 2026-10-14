@@ -88,14 +88,14 @@ async function verifyToken(token, secret = 'lesson-engine-jwt-secret-key-2026') 
   }
 }
 
-// Ensure modern tables and collaborative shared room state exist in D1
+// Ensure multiplayer tables & teacher_id column exist in D1
 async function ensureMultiplayerTables(env) {
   if (!env.DB) return;
   try {
     await env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
-        role TEXT NOT NULL CHECK(role IN ('teacher', 'student')),
+        role TEXT NOT NULL CHECK(role IN ('teacher', 'student', 'admin')),
         email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         name TEXT NOT NULL,
@@ -115,7 +115,6 @@ async function ensureMultiplayerTables(env) {
       );
     `).run();
 
-    // LIVE COLLABORATIVE SHARED ROOM ANSWERS (Teacher & Student co-op)
     await env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS room_shared_answers (
         room_id TEXT NOT NULL,
@@ -125,6 +124,11 @@ async function ensureMultiplayerTables(env) {
         PRIMARY KEY (room_id, block_id)
       );
     `).run();
+
+    // Ensure 'teacher_id' column exists on 'lessons'
+    try {
+      await env.DB.prepare("ALTER TABLE lessons ADD COLUMN teacher_id TEXT").run();
+    } catch (err) {}
   } catch (e) {
     console.error('Auto migration notice:', e);
   }
@@ -166,7 +170,7 @@ export default {
           'INSERT INTO users (id, role, email, password_hash, name) VALUES (?, ?, ?, ?, ?)'
         ).bind(userId, userRole, cleanEmail, passHash, name.trim()).run();
 
-        const userPayload = { id: userId, email: cleanEmail, name: name.trim(), role: userRole };
+        const userPayload = { id: userId, email: cleanEmail, name: name.trim(), role: userRole, isMaster: false };
         const token = await createToken(userPayload);
 
         return jsonResponse({ success: true, token, user: userPayload });
@@ -189,7 +193,8 @@ export default {
           return jsonResponse({ error: 'Неверный email или пароль' }, 401);
         }
 
-        const userPayload = { id: user.id, email: user.email, name: user.name, role: user.role };
+        const isMaster = user.role === 'admin';
+        const userPayload = { id: user.id, email: user.email, name: user.name, role: user.role, isMaster };
         const token = await createToken(userPayload);
 
         return jsonResponse({ success: true, token, user: userPayload });
@@ -203,11 +208,29 @@ export default {
         return jsonResponse({ success: true, user: verified });
       }
 
+      // MASTER PASSWORD LOGIN: GRANTS PERMANENT OWNER / MASTER ACCESS TO ALL LESSONS & STUDENTS
       if (path === '/api/teacher/login' && method === 'POST') {
         const body = await request.json();
         const res = await authenticateTeacher(env, body.password);
-        return res.success ? jsonResponse(res) : jsonResponse({ error: 'Invalid password' }, 401);
+        if (res.success) {
+          const masterUser = { 
+            id: 'master_owner', 
+            role: 'admin', 
+            isMaster: true, 
+            name: 'Владелец (Master)' 
+          };
+          const masterToken = await createToken(masterUser);
+          return jsonResponse({ success: true, token: masterToken, user: masterUser });
+        }
+        return jsonResponse({ error: 'Invalid password' }, 401);
       }
+
+      // RESOLVE USER CONTEXT & MASTER STATUS
+      const authHeader = request.headers.get('Authorization') || '';
+      const token = authHeader.replace(/^Bearer\s+/i, '');
+      const userContext = await verifyToken(token);
+      const isMasterUser = Boolean(userContext?.isMaster || userContext?.role === 'admin');
+      const isTeacherAuthorized = isMasterUser || (await isRequestAuthorized(request, env));
 
       // PERSONAL DICTIONARY
       if (path === '/api/dictionary' && method === 'GET') {
@@ -256,8 +279,6 @@ export default {
 
         return jsonResponse(results || []);
       }
-
-      const isTeacherAuthorized = await isRequestAuthorized(request, env);
 
       // AI ENDPOINTS
       if (path.startsWith('/api/ai/')) {
@@ -312,19 +333,44 @@ export default {
         return jsonResponse({ success: false, message: 'Subtitles not found.' });
       }
 
-      // FOLDERS & LESSONS
+      // FOLDERS
       if (path === '/api/folders' && method === 'GET') {
         const list = await getFolders(env);
         return jsonResponse(list);
       }
 
-// SECURE LESSONS LIST: ONLY TEACHERS CAN BROWSE THE FULL 48 LESSONS
+      // ---------------------------------------------------------------------
+      // LESSONS ACCESS CONTROL (MASTER SEES ALL; REGULAR TEACHERS SEE ONLY THEIRS)
+      // ---------------------------------------------------------------------
       if (path === '/api/lessons' && method === 'GET') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const level = url.searchParams.get('level') || '';
         const folder = url.searchParams.get('folder') || '';
         const search = url.searchParams.get('search') || '';
-        const list = await getLessons(env, { level, folder, search });
+        const scope = url.searchParams.get('scope') || '';
+
+        let list = await getLessons(env, { level, folder, search });
+
+        // If regular teacher (not master), only show lessons created by them
+        if (!isMasterUser && userContext?.id) {
+          try {
+            const { results } = await env.DB.prepare(
+              "SELECT id FROM lessons WHERE teacher_id = ?"
+            ).bind(userContext.id).all();
+            const allowedIds = new Set((results || []).map(r => r.id));
+            list = list.filter(l => allowedIds.has(l.id));
+          } catch (e) {}
+        } else if (isMasterUser && scope === 'my') {
+          // Master filter: only master's lessons
+          try {
+            const { results } = await env.DB.prepare(
+              "SELECT id FROM lessons WHERE teacher_id = 'master_owner' OR teacher_id IS NULL"
+            ).all();
+            const masterIds = new Set((results || []).map(r => r.id));
+            list = list.filter(l => masterIds.has(l.id));
+          } catch (e) {}
+        }
+
         return jsonResponse(list);
       }
 
@@ -334,10 +380,23 @@ export default {
         return lesson ? jsonResponse(lesson) : jsonResponse({ error: 'Lesson not found' }, 404);
       }
 
+      // SAVE LESSON (STAMPS THE CREATOR TEACHER_ID)
       if (path === '/api/lessons' && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход' }, 403);
         const lesson = await request.json();
+        
+        const ownerId = isMasterUser ? 'master_owner' : (userContext?.id || 'master_owner');
+        lesson.teacher_id = ownerId;
+
         const res = await saveLesson(env, lesson);
+
+        if (env.DB && lesson.id) {
+          await env.DB.prepare("UPDATE lessons SET teacher_id = ? WHERE id = ?")
+            .bind(ownerId, lesson.id)
+            .run()
+            .catch(() => {});
+        }
+
         return res.error ? jsonResponse({ error: res.error }, 400) : jsonResponse(res);
       }
 
@@ -362,10 +421,28 @@ export default {
         return jsonResponse(res);
       }
 
+      // STUDENTS DIRECTORY (MASTER SEES ALL; TEACHERS SEE THEIR OWN)
       if (path === '/api/students' && method === 'GET') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход' }, 403);
         const students = await getStudentsDirectory(env);
-        return jsonResponse(students);
+
+        if (isMasterUser) {
+          return jsonResponse(students);
+        }
+
+        // Regular teacher: only see students who submitted homework to this teacher's lessons
+        try {
+          const { results: mySubmissions } = await env.DB.prepare(`
+            SELECT DISTINCT student_name 
+            FROM homework 
+            WHERE lesson_id IN (SELECT id FROM lessons WHERE teacher_id = ?)
+          `).bind(userContext?.id || '').all();
+          const allowedNames = new Set((mySubmissions || []).map(r => r.student_name));
+          const filteredStudents = (students || []).filter(s => allowedNames.has(s.name));
+          return jsonResponse(filteredStudents);
+        } catch (e) {
+          return jsonResponse(students);
+        }
       }
 
       if (path.startsWith('/api/homework/') && method === 'GET') {
@@ -381,9 +458,7 @@ export default {
         return jsonResponse(res);
       }
 
-      // ---------------------------------------------------------------------
-      // CLASSROOM ROOM SESSION ENDPOINTS (LIVE SYNCHRONIZATION)
-      // ---------------------------------------------------------------------
+      // CLASSROOM ROOM SESSION ENDPOINTS
       if (path === '/api/rooms/create' && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const { lessonId } = await request.json();
@@ -392,7 +467,6 @@ export default {
         return jsonResponse(res);
       }
 
-      // GET ROOM STATE (INCLUDES MERGED SHARED LIVE ANSWERS FOR TEACHER & STUDENT)
       if (path.match(/\/api\/rooms\/[^/]+\/state$/) && method === 'GET') {
         const roomId = path.split('/')[3];
         const state = await getRoomState(env, roomId);
@@ -418,7 +492,6 @@ export default {
         return jsonResponse(state);
       }
 
-      // TEACHER BROADCAST
       if (path.match(/\/api\/rooms\/[^/]+\/broadcast$/) && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const roomId = path.split('/')[3];
@@ -427,7 +500,6 @@ export default {
         return jsonResponse(res);
       }
 
-      // RESET ROOM STATE
       if (path.match(/\/api\/rooms\/[^/]+\/reset$/) && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const roomId = path.split('/')[3];
@@ -445,12 +517,10 @@ export default {
         return jsonResponse(res);
       }
 
-      // UNIFIED ANSWER SYNC (WORKS FOR BOTH TEACHER AND STUDENT IN REAL TIME)
       if (path.match(/\/api\/rooms\/[^/]+\/answer$/) && method === 'POST') {
         const roomId = path.split('/')[3];
         const { studentId, blockId, answer } = await request.json();
 
-        // 1. Save live collaborative answer to room_shared_answers in D1
         if (env.DB && blockId) {
           try {
             await env.DB.prepare(`
@@ -465,7 +535,6 @@ export default {
           }
         }
 
-        // 2. Also keep record in rooms participants map
         const res = await saveStudentAnswer(env, roomId, studentId || 'teacher', blockId, answer);
         return jsonResponse(res || { success: true });
       }
