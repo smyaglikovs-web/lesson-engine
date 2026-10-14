@@ -23,13 +23,13 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
           <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight">Lesson Engine</span>
         </div>
 
-        {/* DESKTOP NAVIGATION (HIDDEN ON MOBILE) */}
+        {/* DESKTOP NAVIGATION */}
         <nav className="hidden md:flex items-center gap-1 text-xs sm:text-sm font-bold">
           <button 
             type="button"
             onClick={() => handleNavigate('library')} 
             className={`px-3.5 py-2 rounded-xl transition cursor-pointer ${
-              view === 'library' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+              view === 'library' ? 'bg-indigo-50 text-indigo-700 font-extrabold' : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             Библиотека
@@ -39,7 +39,7 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
             type="button"
             onClick={() => handleNavigate('students')} 
             className={`px-3.5 py-2 rounded-xl transition cursor-pointer ${
-              view === 'students' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+              view === 'students' ? 'bg-indigo-50 text-indigo-700 font-extrabold' : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             Ученики
@@ -47,9 +47,19 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
 
           <button 
             type="button"
+            onClick={() => handleNavigate('dictionary')} 
+            className={`px-3.5 py-2 rounded-xl transition cursor-pointer ${
+              view === 'dictionary' ? 'bg-indigo-50 text-indigo-700 font-extrabold' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            ⭐ Словарь
+          </button>
+
+          <button 
+            type="button"
             onClick={() => handleNavigate('vocab')} 
             className={`px-3.5 py-2 rounded-xl transition cursor-pointer ${
-              view === 'vocab' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-indigo-600 hover:bg-indigo-50'
+              view === 'vocab' ? 'bg-indigo-600 text-white shadow-2xs font-extrabold' : 'text-indigo-600 hover:bg-indigo-50'
             }`}
           >
             🎴 Vocab Trainer
@@ -59,7 +69,7 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
             type="button"
             onClick={() => handleNavigate('create')} 
             className={`px-3.5 py-2 rounded-xl transition cursor-pointer ${
-              view === 'create' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+              view === 'create' ? 'bg-indigo-50 text-indigo-700 font-extrabold' : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             + Создать урок
@@ -69,7 +79,7 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
             type="button"
             onClick={() => handleNavigate('prompts')} 
             className={`px-3.5 py-2 rounded-xl transition cursor-pointer ${
-              view === 'prompts' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+              view === 'prompts' ? 'bg-indigo-50 text-indigo-700 font-extrabold' : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             💡 AI Промпты
@@ -84,7 +94,7 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
           </button>
         </nav>
 
-        {/* MOBILE HAMBURGER TOGGLE BUTTON (SHOWN ONLY ON PHONES) */}
+        {/* MOBILE HAMBURGER BUTTON */}
         <button
           type="button"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -118,6 +128,17 @@ export const TeacherHeader = ({ view, setView, onLogout }) => {
           >
             <span>🧑‍🎓 Ученики и Прогресс</span>
             {view === 'students' && <span>✓</span>}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavigate('dictionary')}
+            className={`w-full text-left px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-between cursor-pointer ${
+              view === 'dictionary' ? 'bg-indigo-50 text-indigo-700 font-extrabold' : 'text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <span>⭐ Личный словарь</span>
+            {view === 'dictionary' && <span>✓</span>}
           </button>
 
           <button
