@@ -1,10 +1,10 @@
 export const CEFR_MATRIX = {
-  'A1': 'Target Grammar: Present Simple, to be, there is/are, basic plurals. Short sentences (5-10 words). Everyday basic vocabulary.',
-  'A2': 'Target Grammar: Past Simple, Present Continuous, Comparatives. Daily routines, travel, hobbies.',
-  'B1': 'Target Grammar: Past Continuous, Conditionals 1 & 2, Present Perfect, Passive Voice. Work, feelings, modern lifestyle.',
-  'B2': 'Target Grammar: Conditionals 3, Future Perfect, Past Modals, Wish clauses, Complex Passives. Idioms, abstract concepts.',
-  'C1': 'Target Grammar: Inversion, Cleft sentences, Advanced Modals, Participle clauses. Nuanced, academic, idiomatic language.',
-  'C2': 'Target Grammar: Mastery of nuance, inversion, complex subjunctive, idiomatic mastery, stylistic flexibility. Academic and native-like precision.'
+  'A1': 'Target Grammar: Present Simple, to be, there is/are, basic plurals, can/can\'t. Sentences: 6-10 words. Vocabulary: Common daily words (home, food, family). No idioms.',
+  'A2': 'Target Grammar: Past Simple, Present Continuous, Comparatives, basic conjunctions (because, but). Sentences: 8-12 words. Vocabulary: Routines, travel, shopping.',
+  'B1': 'Target Grammar: Past Continuous, Present Perfect vs Past Simple, Conditionals 1 & 2, Simple Passives, Relative clauses (who, which, that). Sentences: 12-18 words. Vocabulary: Work, feelings, modern lifestyle.',
+  'B2': 'Target Grammar: Conditionals 3, Future Perfect, Past Modals (should have, could have), Passive reporting verbs, complex clauses (whereas, despite). Sentences: 15-25 words. Vocabulary: Topical idioms, phrasal verbs, dependent prepositions, strong collocations.',
+  'C1': 'Target Grammar: Inversion (Not only did..., Seldom have...), Cleft sentences (What strikes me is...), Advanced modals, Participle clauses. Sentences: Varied, multi-clause. Vocabulary: Academic discourse markers, nuanced metaphors, sophisticated register.',
+  'C2': 'Target Grammar: Mastery of nuance, fronting, ellipsis, subjunctive, rhetorical variety. Native precision, subtle stylistic connotations, complete idiomatic flexibility.'
 };
 
 const BROWSER_HEADERS = {
@@ -56,14 +56,31 @@ function bufferToBase64(buffer) {
   return btoa(binary);
 }
 
+function concatMp3Base64(base64A, base64B) {
+  try {
+    const cleanA = (base64A || '').replace(/^data:[^;]+;base64,/, '');
+    const cleanB = (base64B || '').replace(/^data:[^;]+;base64,/, '');
+    if (!cleanA) return base64B;
+    if (!cleanB) return base64A;
+
+    const rawA = Uint8Array.from(atob(cleanA), c => c.charCodeAt(0));
+    const rawB = Uint8Array.from(atob(cleanB), c => c.charCodeAt(0));
+    const merged = new Uint8Array(rawA.length + rawB.length);
+    merged.set(rawA, 0);
+    merged.set(rawB, rawA.length);
+    return `data:audio/mp3;base64,${bufferToBase64(merged)}`;
+  } catch (e) {
+    return base64A || base64B || '';
+  }
+}
+
 // --------------------------------------------------------------------------
-// LIGHTNING-FAST WEB SEARCH RESOLVER (Zero-Neuron Wikipedia OpenSearch API)
+// LIGHTNING-FAST WEB SEARCH RESOLVER
 // --------------------------------------------------------------------------
 export async function fetchLiveWebSearch(query = '') {
   if (!query || !query.trim()) return null;
   const cleanQuery = query.trim();
 
-  // Wikipedia OpenSearch API: Responds in ~120ms without datacenter blocking
   try {
     const wikiRes = await fetchWithTimeout(
       `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(cleanQuery)}&limit=1&namespace=0&format=json`,
@@ -133,14 +150,6 @@ export function cleanAndParseJson(rawText) {
       }
       return JSON.parse(fixed);
     } catch (e2) {
-      const titleMatch = rawText.match(/"title":\s*"([^"]+)"/i);
-      const storyMatch = rawText.match(/"(?:storyText|text|story|passage|content)":\s*"([\s\S]*?)"\s*\}/i);
-      if (storyMatch && storyMatch[1].length > 40) {
-        return {
-          title: titleMatch ? titleMatch[1] : 'Reading Story',
-          storyText: storyMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim()
-        };
-      }
       return null;
     }
   }
@@ -398,13 +407,13 @@ export function sanitizeBlockStructure(b) {
 }
 
 // --------------------------------------------------------------------------
-// HIGH-SPEED, ULTRA-LOW-NEURON MULTIMODAL AI INFERENCE PIPELINE
+// HIGH-SPEED MULTI-TIER AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
-export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2048) {
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
   let errors = [];
   const isMultimodal = Array.isArray(userContent);
 
-  // 1. GROQ API (If key available: Sub-second latency, 0 CF Neurons)
+  // 1. GROQ (Instant sub-second inference)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5 && !isMultimodal) {
     const groqKey = env.GROQ_API_KEY.trim();
     try {
@@ -420,7 +429,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
             { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
           ],
-          temperature: 0.2,
+          temperature: 0.4,
           response_format: { type: 'json_object' }
         })
       }, 4000);
@@ -435,7 +444,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. PRIMARY CLOUDFLARE WORKERS AI (Fast 8B FP8 - 15s generation, minimal neuron burn)
+  // 2. CLOUDFLARE WORKERS AI (Fast FP8 / Standard 8B)
   if (env.AI && !isMultimodal) {
     const cfModels = [
       '@cf/meta/llama-3.1-8b-instruct-fp8',
@@ -446,11 +455,11 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
       try {
         const resCf = await env.AI.run(cfModel, {
           messages: [
-            { role: 'system', content: `${systemPrompt}\nReturn a valid JSON object.` },
+            { role: 'system', content: `${systemPrompt}\nReturn a valid JSON object only.` },
             { role: 'user', content: `${userContent}\nReturn valid JSON.` }
           ],
-          temperature: 0.2,
-          max_tokens: Math.min(maxTokens, 2048)
+          temperature: 0.4,
+          max_tokens: Math.min(maxTokens, 2400)
         });
 
         if (resCf) {
@@ -464,12 +473,12 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           }
         }
       } catch (eCf) {
-        errors.push(`Workers AI (${cfModel}): ${eCf?.message || eCf}`);
+        errors.push(`Workers AI (${cfModel})`);
       }
     }
   }
 
-  // 3. GEMINI DIRECT FALLBACK (Lightning Fast Google API)
+  // 3. GEMINI DIRECT FALLBACK
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
     try {
@@ -501,7 +510,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: `${systemPrompt}\nOutput valid JSON only.` }] },
           contents: gContents,
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.4 }
         })
       }, 6000);
 
@@ -515,7 +524,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 4. OPENROUTER VISION FALLBACK (Used strictly if multimodal OCR images are present)
+  // 4. OPENROUTER MULTIMODAL FALLBACK
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
     try {
@@ -533,7 +542,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
             { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
             { role: 'user', content: userContent }
           ],
-          temperature: 0.2,
+          temperature: 0.4,
           response_format: { type: 'json_object' }
         })
       }, 6000);
@@ -555,7 +564,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 // AUTOMATIC PDF & TEXTBOOK SCANNER
 // --------------------------------------------------------------------------
 export async function scanDocumentAndBuildLesson(env, payload) {
-  const { text = '', images = [], topic = '', level = 'C1', format = 'live' } = payload;
+  const { text = '', images = [], topic = '', level = 'C1' } = payload;
   if ((!text || !text.trim()) && (!images || images.length === 0)) {
     return { error: 'No document text or scanned images provided.' };
   }
@@ -575,16 +584,14 @@ Convert the provided textbook document/test paper (or scanned images) into a com
 
 [CONVERSION & SOLVING RULES - STRICT!]
 1. SOLVE ALL EXERCISES: You MUST solve every sentence, transformation, and multiple choice question with native C2 accuracy.
-2. INLINE SELECT STORIES: If the document contains a reading text with numbered vocabulary choices (e.g. word (1), word (2)), convert the reading text into an "inline_select" block:
+2. INLINE SELECT STORIES: If the document contains a reading text with numbered vocabulary choices, convert the reading text into an "inline_select" block:
    - Put choices in brackets right inside the text: [correct_answer* | distractor_1 | distractor_2 | distractor_3]
-   - Mark the correct answer with an asterisk (*). Do NOT put numbers like (1) on new lines.
-3. WORD BANKS (Phrasal Verbs / Adjectives): Convert word bank exercises into "gap_fill_bank" blocks:
+   - Mark the correct answer with an asterisk (*).
+3. WORD BANKS: Convert word bank exercises into "gap_fill_bank" blocks:
    - Put correct answers in brackets in text: [correct_word].
-   - List distractors in "distractors" array. FORBIDDEN to use numbers ("1", "2") as distractors!
+   - List distractors in "distractors" array. NEVER use numbers like ("1", "2") as distractors!
 4. SENTENCE TRANSFORMATIONS: Convert sentence rewrite tasks into "gap_fill" blocks with target bracketed answers: [correct_phrase].
-5. MULTIPLE CHOICE: Convert 4-option quizzes into "multiple_choice" blocks.
-   - "correct": 0-based index number of the correct option.
-   - FORBIDDEN: Do NOT put an asterisk (*) in the "options" text strings! Use the numerical "correct" index only.
+5. MULTIPLE CHOICE: Convert quizzes into "multiple_choice" blocks with numerical "correct" 0-based index.
 
 [OUTPUT FORMAT]
 {
@@ -628,32 +635,54 @@ Convert the provided textbook document/test paper (or scanned images) into a com
 }
 
 // --------------------------------------------------------------------------
-// ULTRA-FAST NATIVE TEXT-TO-SPEECH (MeloTTS First - Sub-2s Synthesis)
+// ULTRA-FAST TEXT-TO-SPEECH WITH PARALLEL CHUNK STITCHING (TRUE ~2 MIN AUDIO)
 // --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   if (!text || !text.trim()) return { error: 'Text is required.' };
   const cleanText = text.trim();
 
-  // 1. PRIMARY: CLOUDFLARE WORKERS AI MELOTTS (Generates in ~1.5 seconds, low neuron cost)
+  // 1. PRIMARY: CLOUDFLARE WORKERS AI MELOTTS (With chunk stitching for full 2-min audio)
   if (env.AI) {
     try {
-      const meloRes = await env.AI.run('@cf/myshell-ai/melotts', {
-        prompt: cleanText.slice(0, 1500),
-        lang: lang || 'en'
-      });
+      // If text is longer than 850 chars (~130 words), split into 2 halves and generate in parallel
+      if (cleanText.length > 850) {
+        const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+        const midIdx = Math.ceil(sentences.length / 2);
+        const part1 = sentences.slice(0, midIdx).join(' ').trim();
+        const part2 = sentences.slice(midIdx).join(' ').trim();
 
-      if (meloRes && typeof meloRes.audio === 'string' && meloRes.audio.length > 100) {
-        const audioUrl = meloRes.audio.startsWith('data:')
-          ? meloRes.audio
-          : `data:audio/mp3;base64,${meloRes.audio}`;
-        return { success: true, audioUrl };
+        const [melo1, melo2] = await Promise.all([
+          env.AI.run('@cf/myshell-ai/melotts', { prompt: part1, lang: lang || 'en' }),
+          env.AI.run('@cf/myshell-ai/melotts', { prompt: part2, lang: lang || 'en' })
+        ]);
+
+        const audio1 = melo1?.audio || '';
+        const audio2 = melo2?.audio || '';
+
+        if (audio1 && audio2) {
+          const combinedAudio = concatMp3Base64(audio1, audio2);
+          return { success: true, audioUrl: combinedAudio };
+        } else if (audio1 || audio2) {
+          const single = audio1 || audio2;
+          return { success: true, audioUrl: single.startsWith('data:') ? single : `data:audio/mp3;base64,${single}` };
+        }
+      } else {
+        const meloRes = await env.AI.run('@cf/myshell-ai/melotts', {
+          prompt: cleanText,
+          lang: lang || 'en'
+        });
+
+        if (meloRes && typeof meloRes.audio === 'string' && meloRes.audio.length > 100) {
+          const audioUrl = meloRes.audio.startsWith('data:') ? meloRes.audio : `data:audio/mp3;base64,${meloRes.audio}`;
+          return { success: true, audioUrl };
+        }
       }
     } catch (eMelo) {
       console.error('MeloTTS error:', eMelo);
     }
   }
 
-  // 2. SECONDARY: GOOGLE TRANSLATE MULTI-CHUNK FAST TTS FALLBACK
+  // 2. SECONDARY: MULTI-CHUNK FAST TTS FALLBACK
   try {
     const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
     const chunks = [];
@@ -670,7 +699,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
     if (curChunk) chunks.push(curChunk);
 
     const audioBuffers = [];
-    for (const chunk of chunks.slice(0, 8)) {
+    for (const chunk of chunks.slice(0, 12)) {
       const gUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang || 'en')}&client=tw-ob&q=${encodeURIComponent(chunk)}`;
       const gRes = await fetchWithTimeout(gUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
@@ -699,7 +728,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 }
 
 // --------------------------------------------------------------------------
-// TRUE 2-MINUTE PODCAST STUDIO (STRICT 280-320 WORDS TARGET)
+// TRUE 2-MINUTE PODCAST STUDIO (3 MANDATORY SEGMENTS = 280-320 WORDS)
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', lessonTitle = '', level = 'B1' } = payload;
@@ -711,54 +740,54 @@ export async function generatePodcastAudioWithAI(env, payload) {
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
   const systemPrompt = `[ROLE]
-You are a World-Class ELT Educational Podcast Host.
+You are a World-Class Educational Podcast Host.
 Target CEFR Level: ${level} (${cefrRules})
-Core Topic: "${resolvedTopic}"
+Topic: "${resolvedTopic}"
 
 [TASK]
-Write an engaging, deep-dive 2-minute spoken podcast episode for language learners.
+You MUST generate a complete 2-minute podcast episode.
+To ensure the recording lasts approximately 2 minutes (1:50-2:10), you MUST write ALL THREE of the following segments. Every segment is mandatory.
 
-[CRITICAL LENGTH & TIMING RULE - STRICT!]
-- Natural conversational speaking rate is 140 words per minute.
-- To produce an authentic 2-MINUTE episode, your "script" MUST BE STRICTLY BETWEEN 280 AND 320 WORDS TOTAL.
-- FORBIDDEN: Never write a short 1-minute summary or under 260 words! You MUST expand the ideas to reach 280-320 words.
-
-[3-PART NARRATIVE STRUCTURE]
-1. Part 1 (The Hook & Introduction): ~80 words introducing the core theme with an engaging question.
-2. Part 2 (Deep Exploration & Lore/Real-life Analysis): ~140 words breaking down the story, context, and key concepts.
-3. Part 3 (Takeaway & Reflection): ~80 words reflecting on the personal significance and asking a concluding question to the listener.
-
-[CONTENT GUIDELINES]
-- Output ONLY the spoken English text. 
-- FORBIDDEN: Do NOT include stage directions like '[Music fades]', '[Host]', or sound cues.
-- Do NOT lecture about grammar mechanics or linguistic rules. Focus on the story, meaning, and cultural themes.
-
-[OUTPUT FORMAT]
+[OUTPUT FORMAT - RETURN STRICTLY VALID JSON]
 {
-  "title": "${resolvedTopic} (2-Min Episode)",
-  "script": "Part 1 (The Hook)... Part 2 (Deep Lore & Analysis)... Part 3 (Takeaway & Discussion Question)..."
-}`;
+  "title": "${resolvedTopic} (Audio Episode)",
+  "part_1_intro": "The Hook & Setting the Scene. Welcome the listeners and introduce the core dilemma or premise. (MUST be 75-85 words).",
+  "part_2_body": "Deep Dive & Core Story. Dive into the details, key narrative, specific examples, conflict, or musical lore. (MUST be 130-150 words).",
+  "part_3_conclusion": "Takeaway & Reflection. Reflect on the deeper meaning, cultural resonance, and leave the listener with a closing question. (MUST be 75-85 words)."
+}
+
+[CRITICAL RULES]
+- TOTAL WORD COUNT across all 3 parts MUST BE AT LEAST 280 WORDS.
+- Output ONLY spoken English words. Never include stage directions like '[Music fades]', '[Host]', or cues.
+- Do NOT lecture about grammar rules. Focus on the story, meaning, and human experience.`;
 
   const userPrompt = sourceText.trim()
-    ? `Source Material:\n${sourceText.slice(0, 2400)}\n\nCreate a full 2-minute (280-320 words) podcast episode discussing the ideas of: "${resolvedTopic}".`
-    : `Create a comprehensive 2-minute (280-320 words) podcast episode specifically on the Topic: "${resolvedTopic}".`;
+    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nGenerate the complete 3-part, 280-320 word podcast episode on: "${resolvedTopic}".`
+    : `Generate the complete 3-part, 280-320 word podcast episode on: "${resolvedTopic}".`;
 
-  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1200);
+  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1500);
   if (!scriptResult.data) {
     return { error: `Failed to write podcast script: ${scriptResult.error}` };
   }
 
-  const scriptData = scriptResult.data;
-  const scriptText = scriptData.script || scriptData.storyText || scriptData.text;
-  if (!scriptText || scriptText.length < 50) {
-    return { error: 'Failed to parse generated podcast script.' };
+  const d = scriptResult.data;
+  let scriptText = '';
+
+  if (d.part_1_intro && d.part_2_body && d.part_3_conclusion) {
+    scriptText = `${d.part_1_intro.trim()}\n\n${d.part_2_body.trim()}\n\n${d.part_3_conclusion.trim()}`;
+  } else {
+    scriptText = d.script || d.storyText || d.text || '';
   }
 
-  const episodeTitle = scriptData.title || `${resolvedTopic} (2-Min Episode)`;
+  if (!scriptText || scriptText.length < 100) {
+    return { error: 'Generated podcast script was too short. Please try again.' };
+  }
+
+  const episodeTitle = d.title || `${resolvedTopic} (Audio Episode)`;
 
   let audioDataUrl = '';
   try {
-    const ttsRes = await generateAudioWithAI(env, { text: scriptText, lang: 'en' });
+    const ttsRes = await generateAudioWithAI(env, { text: scriptText.replace(/\n+/g, ' '), lang: 'en' });
     if (ttsRes.success && ttsRes.audioUrl) {
       audioDataUrl = ttsRes.audioUrl;
     }
@@ -872,7 +901,7 @@ Return ONLY valid JSON.
 }
 
 // --------------------------------------------------------------------------
-// 1-PROMPT ANCHOR + ROADMAP ENGINE (Balanced 220-250w Story)
+// FULL LESSON ENGINE (SLOT DECOMPOSITION = 230-260 WORDS GUARANTEED)
 // --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
@@ -888,57 +917,65 @@ export async function generateFullLessonWithAI(env, payload) {
   const audienceContext = context ? `Target Context: "${context}"` : 'General Adult ESL Learners';
 
   const systemPrompt = `[ROLE]
-You are an award-winning CELTA/DELTA ELT Graded Reader Writer and Methodologist.
+You are an expert CELTA/DELTA ELT Materials Writer and Graded Reader Author.
 Target CEFR Level: ${level}
 Topic: "${resolvedTopic}"
 ${audienceContext}
 
-[CEFR LEVEL GUIDELINE FOR READING PASSAGE]
+[CEFR LEVEL DIRECTIVE - STRICT]
 ${cefrRules}
+- For A1-A2: Keep sentences simple, direct, using high-frequency everyday vocabulary.
+- For B1-B2: Use complex clauses, phrasal verbs, idioms, and natural collocations.
+- For C1-C2: Use advanced grammatical inversions, cleft sentences, nuanced vocabulary, and sophisticated idioms.
 
-[STRICT 3-PARAGRAPH STORY BLUEPRINT - BALANCED 220 TO 250 WORDS TOTAL]
-- "storyText" MUST be an engaging reading passage of EXACTLY 220 to 250 words total.
-- It MUST be structured into exactly THREE distinct paragraphs separated by double line breaks ("\\n\\n"):
-  * Paragraph 1 (Introduction & Origins/Context): ~70-80 words.
-  * Paragraph 2 (Deep Exploration & Specific Examples): ~80-90 words.
-  * Paragraph 3 (Modern Impact & Reflection): ~70-80 words.
-- FORBIDDEN: NEVER write more than 3 paragraphs. Do NOT write 4, 5, or 6 paragraphs.
-- Inside "storyText", NEVER use raw double quotes. Use single quotes ('Trench', 'Clancy') for titles or speech.
+[STRICT READING PASSAGE BLUEPRINT - 3 MANDATORY SLOTS]
+To guarantee depth, you MUST write three distinct, comprehensive paragraphs in separate keys:
+1. "paragraph_1": Introduction, origins, historical/thematic background. (STRICTLY 75-85 words).
+2. "paragraph_2": Detailed exploration, specific events, tracks, conflicts, or concrete examples. (STRICTLY 80-95 words).
+3. "paragraph_3": Philosophical meaning, modern cultural impact, and psychological takeaway. (STRICTLY 75-85 words).
+TOTAL WORD COUNT ACROSS ALL 3 PARAGRAPHS MUST BE 230-260 WORDS.
 
-[CRITICAL VOCABULARY INSTRUCTIONS - STRICT!]
-- "targetWords" MUST contain exactly 6 high-yield TOPICAL English words, collocations, or idioms that appear directly in your "storyText".
-- NEVER include grammar rules, linguistic terms, or meta-concepts in "targetWords" (FORBIDDEN: "inversion", "cleft sentence", "participle clause", "modal verb", "passive voice", "relative clause", "tense", "aspect", "verb", "noun").
-- "back" MUST be an accurate Russian translation of the word.
-- "example" MUST be an authentic 10-14 word context sentence.
+[VOCABULARY & FLASHCARDS - STRICTLY CALIBRATED TO CEFR ${level}]
+- "targetWords" MUST contain exactly 6 high-yield TOPICAL collocations, idioms, or phrasal verbs extracted directly from the paragraphs above.
+- NEVER include grammar rules or grammatical meta-terms (FORBIDDEN: "inversion", "modal verb", "cleft sentence", "passive voice").
+- "front": The English term.
+- "back": Accurate, natural Russian translation.
+- "example": Authentic 10-14 word context sentence.
 
-[OUTPUT FORMAT]
+[OUTPUT FORMAT - RETURN STRICTLY VALID JSON]
 {
   "title": "${resolvedTopic}",
-  "storyText": "Paragraph 1 (Introduction & Origins)...\\n\\nParagraph 2 (Deep Exploration)...\\n\\nParagraph 3 (Modern Impact & Reflection)...",
-  "warmupQuestions": ["Warm-up question 1?", "Warm-up question 2?", "Warm-up question 3?"],
+  "paragraph_1": "Origins and introduction (~80 words)...",
+  "paragraph_2": "Deep exploration and concrete examples (~90 words)...",
+  "paragraph_3": "Impact and reflection (~80 words)...",
+  "warmupQuestions": [
+    "Thought-provoking warm-up question 1?",
+    "Thought-provoking warm-up question 2?",
+    "Thought-provoking warm-up question 3?"
+  ],
   "targetWords": [
-    { "front": "topical word 1", "back": "Russian translation", "example": "Context sentence 1." },
-    { "front": "topical word 2", "back": "Russian translation", "example": "Context sentence 2." },
-    { "front": "topical word 3", "back": "Russian translation", "example": "Context sentence 3." },
-    { "front": "topical word 4", "back": "Russian translation", "example": "Context sentence 4." },
-    { "front": "topical word 5", "back": "Russian translation", "example": "Context sentence 5." },
-    { "front": "topical word 6", "back": "Russian translation", "example": "Context sentence 6." }
+    { "front": "term 1", "back": "Russian translation", "example": "Context sentence 1." },
+    { "front": "term 2", "back": "Russian translation", "example": "Context sentence 2." },
+    { "front": "term 3", "back": "Russian translation", "example": "Context sentence 3." },
+    { "front": "term 4", "back": "Russian translation", "example": "Context sentence 4." },
+    { "front": "term 5", "back": "Russian translation", "example": "Context sentence 5." },
+    { "front": "term 6", "back": "Russian translation", "example": "Context sentence 6." }
   ],
   "grammarFocus": {
     "title": "Target Grammar Structure",
-    "formula": "Subject + Verb Structure",
-    "explanation": "Clear explanation of when and why to use this structure.",
+    "formula": "Subject + Verb Pattern",
+    "explanation": "Clear explanation of how and when to use this rule.",
     "ccqs": ["Concept checking question 1?", "Concept checking question 2?"]
   },
   "practiceAims": "Recommended practice: Use Matching for vocabulary consolidation, followed by Gap Fill or Inline Select to drill the target grammar."
 }`;
 
   const userPrompt = text.trim() 
-    ? `Source Material:\n${text.slice(0, 2200)}\n\nCreate a complete 220-250 word 3-paragraph lesson on Topic: "${resolvedTopic}".`
-    : `Create a comprehensive 220-250 word 3-paragraph lesson anchor on Topic: "${resolvedTopic}". Format: ${format}.`;
+    ? `Source Material:\n${text.slice(0, 2200)}\n\nCreate a complete, rich 3-paragraph (230-260 words) lesson at CEFR Level ${level} on Topic: "${resolvedTopic}".`
+    : `Create a rich 3-paragraph (230-260 words) lesson foundation at CEFR Level ${level} on Topic: "${resolvedTopic}". Format: ${format}.`;
 
   const [result, liveRef] = await Promise.all([
-    runAiPipeline(env, systemPrompt, userPrompt, 1800),
+    runAiPipeline(env, systemPrompt, userPrompt, 2400),
     fetchLiveWebSearch(resolvedTopic)
   ]);
 
@@ -947,9 +984,17 @@ ${cefrRules}
   }
 
   const data = result.data;
-  const storyText = data.storyText || data.text || data.story || data.passage;
-  if (!storyText || storyText.length < 50) {
-    return { error: `AI generation failed: No valid reading story text could be parsed from the response.` };
+
+  // Stitch the 3 mandatory paragraphs into a rich, full-length reading passage
+  let storyText = '';
+  if (data.paragraph_1 && data.paragraph_2 && data.paragraph_3) {
+    storyText = `${data.paragraph_1.trim()}\n\n${data.paragraph_2.trim()}\n\n${data.paragraph_3.trim()}`;
+  } else {
+    storyText = data.storyText || data.text || data.story || data.passage || '';
+  }
+
+  if (!storyText || storyText.length < 80) {
+    return { error: `AI generation failed: Story text was too short. Please try again.` };
   }
 
   const targetWords = Array.isArray(data.targetWords) && data.targetWords.length > 0
@@ -970,7 +1015,7 @@ ${cefrRules}
 
   const grammar = data.grammarFocus || {
     title: 'Target Grammar Structure',
-    formula: 'Subject + Verb Structure',
+    formula: 'Subject + Verb Pattern',
     explanation: 'Grammar rule explanation.',
     ccqs: ['Does this describe a real or hypothetical event?']
   };
@@ -1109,7 +1154,7 @@ export async function transformBlockWithAI(env, payload) {
 
   if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
     tasksInstructions += `
-- GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key concepts.
+- GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key concepts at CEFR ${level}.
   CRITICAL: Do NOT put an asterisk (*) in the "options" text strings! Use the numerical "correct" 0-based index only.
   Schema: { "type": "multiple_choice", "question": "Question testing a specific point?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
   }
@@ -1126,7 +1171,7 @@ export async function transformBlockWithAI(env, payload) {
       : 'The "back" key MUST be a clear, concise English definition.';
 
     tasksInstructions += `
-- GENERATE 1 "flashcards" block with 6 high-yield TOPICAL vocabulary words or idioms from the material.
+- GENERATE 1 "flashcards" block with 6 high-yield TOPICAL vocabulary words, collocations, or idioms from the material matching CEFR ${level}.
   CRITICAL: Do NOT output grammar labels or meta-terms (e.g. "inversion", "modal verb", "cleft sentence"). Real-world topic vocabulary only!
   ${backLang}
   CRITICAL: Each card MUST have an authentic 10-14 word example sentence illustrating its meaning in context.
@@ -1161,7 +1206,7 @@ export async function transformBlockWithAI(env, payload) {
     }
 
     tasksInstructions += `
-- GENERATE 1 "matching" block with 6 distinct topical pairs based on context.
+- GENERATE 1 "matching" block with 6 distinct topical pairs based on context at CEFR ${level}.
   ${styleRules}
   CRITICAL: Every right-side value MUST be 100% unique.
   Schema: { "type": "matching", "instruction": "Match the terms with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
@@ -1190,7 +1235,7 @@ export async function transformBlockWithAI(env, payload) {
 
   if (actions.includes('discussion')) {
     tasksInstructions += `
-- GENERATE 1 "open_input" block with 2-3 communicative prompts based on context.
+- GENERATE 1 "open_input" block with 2-3 communicative prompts based on context at CEFR ${level}.
   Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. What were the key factors highlighted in the story?\\n2. How would you react in a similar situation?" }`;
   }
 
