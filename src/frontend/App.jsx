@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TeacherHeader } from './components/TeacherHeader.jsx';
+import { StudentHeader } from './components/StudentHeader.jsx';
 import { TeacherAuthModal } from './components/TeacherAuthModal.jsx';
 import { LibraryView } from './components/LibraryView.jsx';
 import { StudentsView } from './components/StudentsView.jsx';
@@ -13,7 +14,7 @@ import { StudentDashboard } from './components/StudentDashboard.jsx';
 import { generateVocabLesson } from './utils/vocabParser.js';
 
 export default function App() {
-  const [view, setView] = useState('library');
+  const [view, setView] = useState('student_dashboard');
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeLesson, setActiveLesson] = useState(null);
@@ -34,7 +35,7 @@ export default function App() {
     return headers;
   };
 
-  const handleTeacherLogout = () => {
+  const handleLogout = () => {
     localStorage.removeItem('teacher_jwt');
     localStorage.removeItem('auth_jwt');
     setIsAuthenticated(false);
@@ -47,7 +48,7 @@ export default function App() {
     try {
       const res = await fetch('/api/lessons', { headers: getAuthHeaders() });
       if (res.status === 401 || res.status === 403) {
-        handleTeacherLogout();
+        handleLogout();
         return;
       }
       if (res.ok) {
@@ -73,20 +74,28 @@ export default function App() {
             setIsAuthenticated(true);
             const teacherRole = user.role === 'teacher';
             setIsTeacher(teacherRole);
-            if (teacherRole) fetchLessons();
+            if (teacherRole) {
+              fetchLessons();
+              setView('library');
+            } else {
+              setView('student_dashboard');
+            }
           } else {
-            // Legacy teacher password token fallback
+            // Legacy teacher token fallback
             setIsAuthenticated(true);
             setIsTeacher(true);
             fetchLessons();
+            setView('library');
           }
         } catch (e) {
           setIsAuthenticated(true);
           setIsTeacher(true);
           fetchLessons();
+          setView('library');
         }
       } else {
         setLoading(false);
+        setView('student_dashboard');
       }
     };
 
@@ -99,15 +108,8 @@ export default function App() {
       const roleParam = params.get('role');
       const hwParam = params.get('homework');
       const trainerParam = params.get('trainer');
-      const studentParam = params.get('student');
 
       const activeRoomId = sessionParam || roomParam;
-
-      if (studentParam) {
-        setIsTeacher(false);
-        setView('student_dashboard');
-        return true;
-      }
 
       if (trainerParam) {
         setIsTeacher(false);
@@ -131,17 +133,7 @@ export default function App() {
       return false;
     };
 
-    const isInSpecialView = processUrlParams();
-    if (!isInSpecialView) {
-      const hasTeacherToken = !!localStorage.getItem('teacher_jwt');
-      if (hasTeacherToken) {
-        setIsTeacher(true);
-        setView('library');
-      } else {
-        setIsTeacher(false);
-        setView('student_dashboard');
-      }
-    }
+    processUrlParams();
 
     const handlePopState = () => {
       const isHandled = processUrlParams();
@@ -156,7 +148,6 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // UNIFIED AUTH HANDLER (STUDENT & TEACHER ACCOUNT ROUTING)
   const handleAuthSuccess = (user) => {
     setCurrentUser(user);
     setIsAuthenticated(true);
@@ -320,21 +311,30 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* TEACHER TOP BAR */}
+      {/* 1. TEACHER HEADER */}
       {isTeacher && isAuthenticated && view !== 'room' && (
-        <TeacherHeader view={view} setView={setView} onLogout={handleTeacherLogout} />
+        <TeacherHeader view={view} setView={setView} onLogout={handleLogout} />
       )}
 
-      {/* QUICK ROLE SWITCH BAR FOR VISITORS */}
+      {/* 2. STUDENT HEADER */}
+      {!isTeacher && isAuthenticated && view !== 'room' && (
+        <StudentHeader
+          user={currentUser}
+          onLogout={handleLogout}
+          onOpenDictionary={() => setView('dictionary')}
+        />
+      )}
+
+      {/* 3. VISITOR TOP BAR (WHEN NOT LOGGED IN) */}
       {!isAuthenticated && view !== 'room' && (
-        <div className="w-full bg-slate-100 border-b border-slate-200 py-1.5 px-4 text-right flex justify-between items-center text-xs font-bold text-slate-600">
-          <span>{currentUser ? `Вы вошли как: ${currentUser.name}` : 'Гостевой режим'}</span>
+        <div className="w-full bg-slate-100 border-b border-slate-200 py-2 px-4 flex justify-between items-center text-xs font-bold text-slate-600">
+          <span>Гостевой режим</span>
           {view === 'auth_modal' ? (
-            <button onClick={() => setView('student_dashboard')} className="hover:text-indigo-600">
+            <button onClick={() => setView('student_dashboard')} className="hover:text-indigo-600 cursor-pointer">
               🧑‍🎓 Перейти в кабинет ученика ➔
             </button>
           ) : (
-            <button onClick={() => setView('auth_modal')} className="hover:text-indigo-600">
+            <button onClick={() => setView('auth_modal')} className="hover:text-indigo-600 cursor-pointer">
               🔑 Вход / Регистрация
             </button>
           )}
@@ -342,7 +342,7 @@ export default function App() {
       )}
 
       <main className={view === 'room' ? 'w-full' : 'max-w-6xl mx-auto px-4 py-8'}>
-        {/* UNIFIED AUTH MODAL (LOGIN & REGISTRATION) */}
+        {/* AUTH MODAL */}
         {view === 'auth_modal' && !isAuthenticated && (
           <TeacherAuthModal 
             onLogin={handleTeacherLogin}
@@ -355,20 +355,21 @@ export default function App() {
         {view === 'student_dashboard' && (
           <StudentDashboard
             onOpenLesson={(id) => openLesson(id, true, false)}
+            onJoinRoom={(targetRoomId) => openRoomSession(targetRoomId, false)}
             onLaunchVocabTrainer={handleLaunchTrainerFromDictionary}
             onLogout={() => setView('auth_modal')}
           />
         )}
 
-        {/* DICTIONARY VIEW FOR TEACHERS */}
-        {view === 'dictionary' && isTeacher && isAuthenticated && (
+        {/* DICTIONARY VIEW */}
+        {view === 'dictionary' && (
           <DictionaryView 
             onLaunchTrainer={handleLaunchTrainerFromDictionary} 
-            onBack={() => setView('library')} 
+            onBack={() => setView(isTeacher ? 'library' : 'student_dashboard')} 
           />
         )}
 
-        {/* TEACHER WORKSPACE */}
+        {/* TEACHER VIEWS */}
         {view === 'library' && isTeacher && isAuthenticated && (
           <LibraryView
             lessons={lessons}
