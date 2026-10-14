@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 export const BlockFlashcards = ({ block = {} }) => {
   const [flippedMap, setFlippedMap] = useState({});
+  const [savedWords, setSavedWords] = useState({});
   const cards = Array.isArray(block.cards) ? block.cards : [];
 
   const handleCardToggle = (idx) => {
@@ -9,6 +10,20 @@ export const BlockFlashcards = ({ block = {} }) => {
       ...prev,
       [idx]: !prev[idx]
     }));
+  };
+
+  const handleSaveWord = (e, frontText) => {
+    e.stopPropagation(); // Prevent card from flipping
+    
+    // Toggle the save state locally
+    const isSaved = savedWords[frontText];
+    setSavedWords(prev => ({
+      ...prev,
+      [frontText]: !isSaved
+    }));
+
+    // TODO Phase 3: Fire API call here to save to D1 Dictionary table
+    // fetch('/api/dictionary/add', { method: 'POST', body: JSON.stringify({ word: frontText }) })
   };
 
   const speakText = (text, lang = 'en-US') => {
@@ -41,7 +56,7 @@ export const BlockFlashcards = ({ block = {} }) => {
           </span>
         </div>
         <p className="text-slate-500 text-xs mt-1 pl-3.5 leading-relaxed">
-          Tap any card to flip between word and translation. Tap 🔊 for native audio.
+          Tap any card to flip between word and translation. Tap ⭐ to save to your personal dictionary.
         </p>
       </div>
 
@@ -57,6 +72,8 @@ export const BlockFlashcards = ({ block = {} }) => {
           const words = targetText.split(/\s+/);
           const hasLongWord = words.some(w => w.length > 13);
           const textLength = targetText.length;
+          
+          const isSaved = savedWords[frontText];
 
           // Adaptive font sizing to prevent overflow on mobile
           const fontSizeClass = (textLength > 24 || hasLongWord)
@@ -78,21 +95,31 @@ export const BlockFlashcards = ({ block = {} }) => {
                   handleCardToggle(idx);
                 }
               }}
-              className="min-h-[170px] sm:min-h-[190px] rounded-2xl sm:rounded-3xl p-4 sm:p-5 flex flex-col justify-between transition-all duration-300 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shadow-xs hover:shadow-md hover:-translate-y-0.5 border"
+              className="min-h-[170px] sm:min-h-[190px] rounded-2xl sm:rounded-3xl p-4 sm:p-5 flex flex-col justify-between transition-all duration-300 cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shadow-xs hover:shadow-md hover:-translate-y-0.5 border relative"
               style={{
                 backgroundColor: isFlipped ? '#4f46e5' : '#f8fafc',
-                borderColor: isFlipped ? '#4338ca' : '#e2e8f0',
+                borderColor: isFlipped ? '#4338ca' : isSaved ? '#fcd34d' : '#e2e8f0',
                 color: isFlipped ? '#ffffff' : '#0f172a'
               }}
             >
-              {/* TOP CARD BAR */}
+              {/* TOP CARD BAR: SAVE BUTTON (LEFT) & AUDIO BUTTON (RIGHT) */}
               <div className="w-full flex justify-between items-center text-xs">
-                <span className={`font-extrabold uppercase tracking-wider text-[10px] px-2 py-0.5 rounded-md ${
-                  isFlipped ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-200/70 text-slate-600'
-                }`}>
-                  {isFlipped ? 'Перевод' : 'Слово'}
-                </span>
+                
+                {/* SAVE TO DICTIONARY BUTTON */}
+                <button
+                  type="button"
+                  title="Сохранить в мой словарь"
+                  onClick={(e) => handleSaveWord(e, frontText)}
+                  className={`w-7 h-7 rounded-full flex items-center justify-center transition cursor-pointer text-sm shadow-2xs border ${
+                    isFlipped 
+                      ? isSaved ? 'bg-amber-400 border-amber-400 text-white' : 'bg-indigo-700/80 border-transparent hover:bg-indigo-600 text-indigo-200' 
+                      : isSaved ? 'bg-amber-400 border-amber-400 text-white' : 'bg-white border-slate-200 hover:bg-amber-50 text-slate-300 hover:text-amber-400'
+                  }`}
+                >
+                  {isSaved ? '⭐' : '☆'}
+                </button>
 
+                {/* AUDIO PRONUNCIATION BUTTON */}
                 <button
                   type="button"
                   title="Прослушать произношение"
