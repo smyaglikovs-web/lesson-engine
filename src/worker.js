@@ -318,7 +318,9 @@ export default {
         return jsonResponse(list);
       }
 
+// SECURE LESSONS LIST: ONLY TEACHERS CAN BROWSE THE FULL 48 LESSONS
       if (path === '/api/lessons' && method === 'GET') {
+        if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const level = url.searchParams.get('level') || '';
         const folder = url.searchParams.get('folder') || '';
         const search = url.searchParams.get('search') || '';
