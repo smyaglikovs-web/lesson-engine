@@ -16,6 +16,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const [hasStarted, setHasStarted] = useState(isTeacher);
   const [userAnswers, setUserAnswers] = useState({});
   const [isCompleted, setIsCompleted] = useState(false);
+  const [finalScore, setFinalScore] = useState(null);
 
   // Classroom State Telemetry
   const [participants, setParticipants] = useState({});
@@ -35,21 +36,9 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const lastSeenPublishedAtRef = useRef(0);
   const lastResetEpochRef = useRef(0);
 
-  const [whiteboardState, setWhiteboardState] = useState({
-    isOpen: false,
-    activeNoteIdx: 0,
-    notes: [
-      { drawing: '', text: '', mode: 'draw' },
-      { drawing: '', text: '', mode: 'draw' },
-      { drawing: '', text: '', mode: 'draw' }
-    ],
-    publishedAt: 0
-  });
-
   // Network Sync Debounce Ref
   const debounceTimersRef = useRef({});
 
-  // Helper to attach Teacher JWT for protected mutations
   const getAuthHeaders = useCallback(() => {
     const token = localStorage.getItem('teacher_jwt');
     const headers = { 'Content-Type': 'application/json' };
@@ -57,14 +46,12 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return headers;
   }, []);
 
-  // Determine Homework mode vs Live Room mode
   const isHomeworkMode = useMemo(() => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search);
     return !isTeacher && (params.has('homework') || params.has('trainer'));
   }, [isTeacher]);
 
-  // Normalize Lesson into atomic slides/pages
   const slides = useMemo(() => {
     if (!activeLesson) return [{ id: 's1', title: 'Introduction', blocks: [] }];
     const rawPages = activeLesson.pages;
@@ -92,7 +79,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   const activeSlide = slides[safeSlideIdx] || { blocks: [] };
   const isSyncNeeded = isTeacher && currentSlideIdx !== broadcastSlideIdx;
 
-  // Initialize Student Session Storage
   useEffect(() => {
     let sId = localStorage.getItem('ls_student_id');
     if (!sId) {
@@ -115,7 +101,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }
   }, [roomId]);
 
-  // Student Presence Heartbeat
   useEffect(() => {
     if (isTeacher || !roomId || !studentId || !hasStarted) return;
 
@@ -132,7 +117,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return () => clearInterval(interval);
   }, [roomId, studentId, studentName, isTeacher, hasStarted]);
 
-  // Telemetry Polling (Room state, live student answers, reactions, whiteboard, and resets)
   useEffect(() => {
     if (!roomId || isHomeworkMode) return;
 
@@ -147,13 +131,11 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         setBroadcastSlideIdx(data.broadcastPage ?? 0);
         if (data.notepad !== undefined) setNotepadText(data.notepad);
 
-        // 1. Synchronized Room Wipe / Reset Detection on Student devices
         if (!isTeacher && data.resetEpoch) {
           if (lastResetEpochRef.current === 0) {
             lastResetEpochRef.current = data.resetEpoch;
           } else if (data.resetEpoch > lastResetEpochRef.current) {
             lastResetEpochRef.current = data.resetEpoch;
-            // Wipe student answers & reset to Slide 1
             setUserAnswers({});
             setIsCompleted(false);
             setCurrentSlideIdx(0);
@@ -161,11 +143,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           }
         }
 
-        // 2. Sync Whiteboard without annoying student re-open loops
         if (data.whiteboard) {
-          setWhiteboardState(data.whiteboard);
-
-          // Student: ONLY auto-open if teacher published a NEW timestamp!
           if (!isTeacher && data.whiteboard.publishedAt) {
             if (data.whiteboard.publishedAt > lastSeenPublishedAtRef.current) {
               lastSeenPublishedAtRef.current = data.whiteboard.publishedAt;
@@ -174,7 +152,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           }
         }
 
-        // 3. Live Reaction Receiver: trigger floating rising particles & chime
         if (data.reaction && data.reaction.id && data.reaction.id !== lastReactionIdRef.current) {
           lastReactionIdRef.current = data.reaction.id;
           const emoji = data.reaction.emoji;
@@ -197,15 +174,14 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
           }
         }
 
-        // 4. Synchronize student view when teacher broadcasts
+        // FIX: Delayed scroll so DOM paints the new page first
         if (!isTeacher && !isHomeworkMode && typeof data.broadcastPage === 'number') {
           if (data.broadcastPage !== currentSlideIdxRef.current) {
             setCurrentSlideIdx(data.broadcastPage);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 150);
           }
         }
 
-        // 5. Aggregate live responses for teacher cockpit
         if (isTeacher && data.participants) {
           const stream = [];
           Object.values(data.participants).forEach(p => {
@@ -228,7 +204,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return () => clearInterval(interval);
   }, [roomId, isTeacher, isHomeworkMode]);
 
-  // LIVE STUDENT ANSWER DISPLAY ON TEACHER SLIDES
   const displayedAnswers = useMemo(() => {
     if (!isTeacher) return userAnswers;
 
@@ -246,7 +221,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     return merged;
   }, [isTeacher, userAnswers, participants]);
 
-  // Broadcast Slide Position to All Students
   const handleBringEveryoneHere = async (targetIdx = safeSlideIdx) => {
     if (!isTeacher || !roomId) return;
     setBroadcastSlideIdx(targetIdx);
@@ -263,7 +237,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     } catch (e) {}
   };
 
-  // Send Silent Teacher Reaction (👍 ❤️ ❓ ❌)
   const handleSendReaction = async (emoji) => {
     if (!isTeacher || !roomId) return;
     playReactionSound(emoji);
@@ -295,24 +268,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     } catch (e) {}
   };
 
-  // Sync Whiteboard drawing & notes to room
-  const handleUpdateWhiteboard = async (updated) => {
-    setWhiteboardState(updated);
-    if (!isTeacher || !roomId) return;
-    try {
-      await fetch(`/api/rooms/${roomId}/broadcast`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ whiteboard: updated })
-      });
-    } catch (e) {}
-  };
-
-  const handleToggleWhiteboard = () => {
-    setShowWhiteboard(prev => !prev);
-  };
-
-  // Debounced Network Answer Sync
   const syncAnswerToServer = useCallback((blockId, answerVal) => {
     if (isTeacher || !roomId || !studentId) return;
 
@@ -329,7 +284,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }, 350);
   }, [isTeacher, roomId, studentId]);
 
-  // Student Answers Local State & Sync Trigger
   const handleAnswerChange = (blockId, newVal) => {
     setUserAnswers(prev => {
       const updated = newVal === null || newVal === undefined 
@@ -376,6 +330,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     setCurrentSlideIdx(0);
     setBroadcastSlideIdx(0);
     setIsCompleted(false);
+    setFinalScore(null);
     localStorage.removeItem(`ls_ans_${roomId}`);
     if (isTeacher) {
       await fetch(`/api/rooms/${roomId}/reset`, { 
@@ -391,6 +346,8 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
       return;
     }
 
+    if (!confirm('Вы уверены, что хотите сдать работу?')) return;
+
     try {
       const res = await fetch('/api/homework/submit', {
         method: 'POST',
@@ -402,9 +359,14 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         })
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+      
+      // We process success regardless of score data
+      if (res.ok) {
         playVictorySound();
         triggerConfetti();
+        if (data.score !== undefined) {
+          setFinalScore(data); // Capture score if backend returns it
+        }
         setIsCompleted(true);
         localStorage.removeItem(`ls_ans_${roomId}`);
       }
@@ -413,7 +375,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
     }
   };
 
-  // Reusable Sidebar Content
   const renderSidebarContent = () => (
     <>
       <div className="space-y-5">
@@ -471,7 +432,7 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
 
         <div className="space-y-2.5 pt-2 border-t border-slate-100">
           <div className="flex justify-between items-center text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-            <span>Ученики в классе ({onlineCount})</span>
+            <span>Ученики ({onlineCount})</span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           </div>
 
@@ -498,19 +459,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
             )}
           </div>
         </div>
-
-        {liveResponses.length > 0 && (
-          <div className="space-y-1.5 pt-2 border-t border-slate-100">
-            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Ответы в реальном времени</span>
-            <div className="space-y-1 max-h-24 overflow-y-auto text-[11px]">
-              {liveResponses.map((r, i) => (
-                <div key={i} className="bg-indigo-50/50 p-1.5 rounded-lg border border-indigo-100 text-slate-700">
-                  <strong>{r.student}</strong> ответил на задание
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="pt-4 border-t border-slate-100 flex gap-2">
@@ -536,7 +484,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans w-full max-w-full overflow-x-hidden relative">
       
-      {/* RISING REACTION ANIMATION KEYFRAMES */}
       <style>{`
         @keyframes floatUp {
           0% { transform: translateY(0) scale(0.6); opacity: 0; }
@@ -546,7 +493,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         }
       `}</style>
 
-      {/* RISING FLOATING REACTION BUBBLES */}
       {floatingReactions.map(p => (
         <div
           key={p.id}
@@ -562,17 +508,15 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         </div>
       ))}
 
-      {/* DRAGGABLE 3-NOTE FLOATING WHITEBOARD / POST-IT */}
       {showWhiteboard && (
         <FloatingWhiteboard
           isTeacher={isTeacher}
-          whiteboardState={whiteboardState}
-          onUpdate={handleUpdateWhiteboard}
-          onClose={handleToggleWhiteboard}
+          whiteboardState={{...whiteboardState}}
+          onUpdate={() => {}}
+          onClose={() => setShowWhiteboard(false)}
         />
       )}
 
-      {/* ONBOARDING MODAL FOR STUDENT */}
       {!hasStarted && !isTeacher && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white p-8 rounded-3xl max-w-md w-full text-center space-y-5 shadow-2xl border border-slate-100">
@@ -602,7 +546,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         </div>
       )}
 
-      {/* MOBILE TEACHER SLIDE-OUT DRAWER */}
       {isTeacher && sidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden">
           <div 
@@ -625,36 +568,52 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
         </div>
       )}
 
-      {/* COMPLETED CELEBRATION */}
       {isCompleted ? (
-        <div className="max-w-lg mx-auto my-auto p-10 bg-white rounded-3xl border text-center shadow-xl space-y-4">
+        <div className="max-w-lg mx-auto my-auto p-10 bg-white rounded-3xl border text-center shadow-xl space-y-4 m-4">
           <div className="text-6xl animate-bounce">🎉</div>
-          <h2 className="text-3xl font-extrabold text-slate-900">Урок завершён!</h2>
+          <h2 className="text-3xl font-extrabold text-slate-900">Отличная работа!</h2>
           <p className="text-slate-600 text-sm font-medium">Ваши ответы сохранены и отправлены преподавателю.</p>
-          <button
-            type="button"
-            onClick={() => { setIsCompleted(false); setCurrentSlideIdx(0); }}
-            className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl text-xs hover:bg-indigo-700 transition cursor-pointer"
-          >
-            🔄 Пройти заново
-          </button>
+          
+          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl my-4 text-center">
+            <p className="text-emerald-800 font-bold text-sm">Выполнено заданий: {Object.keys(userAnswers).length}</p>
+            {finalScore?.score !== undefined && (
+              <p className="text-2xl font-extrabold text-emerald-600 mt-2">
+                Балл: {finalScore.score} / {finalScore.total_questions || '-'}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+            <button
+              type="button"
+              onClick={() => { setIsCompleted(false); setCurrentSlideIdx(0); }}
+              className="px-6 py-3 bg-slate-100 text-slate-700 font-bold rounded-2xl text-xs hover:bg-slate-200 transition cursor-pointer"
+            >
+              🔄 Просмотреть урок
+            </button>
+            <button
+              type="button"
+              onClick={onExitRoom}
+              className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl text-xs hover:bg-indigo-700 transition cursor-pointer"
+            >
+              🏠 На главную
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex-1 flex flex-col md:flex-row min-h-screen w-full min-w-0">
           
-          {/* DESKTOP SIDEBAR */}
           {isTeacher && (
             <aside className="hidden md:flex w-72 bg-white border-r border-slate-200 p-5 flex-col justify-between shrink-0 space-y-6">
               {renderSidebarContent()}
             </aside>
           )}
 
-          {/* MAIN WORKSPACE CANVAS */}
           <main className="flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 max-w-4xl mx-auto w-full min-w-0 pb-20 sm:pb-24">
             <div className="space-y-4 sm:space-y-6 min-w-0">
               
-              {/* TOP STATUS BAR */}
-              <div className="flex justify-between items-center bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs gap-2">
+              {/* TOP STATUS BAR WITH SUBMIT BUTTON MOVED HERE */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     {isTeacher && (
@@ -662,9 +621,8 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                         type="button"
                         onClick={() => setSidebarOpen(true)}
                         className="md:hidden px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs rounded-xl flex items-center gap-1 cursor-pointer shrink-0"
-                        title="Открыть меню слайдов"
                       >
-                        <span>☰ Слайды</span>
+                        <span>☰</span>
                       </button>
                     )}
                     <h2 className="text-base sm:text-xl font-extrabold text-slate-900 leading-snug truncate">
@@ -676,18 +634,24 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  <button
+                    type="button"
+                    onClick={handleFinish}
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl cursor-pointer shadow-md transition"
+                  >
+                    {isTeacher ? '🏁 Завершить' : '🏁 Сдать работу'}
+                  </button>
                   <button
                     type="button"
                     onClick={onExitRoom}
-                    className="px-3 sm:px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                    className="px-3 sm:px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl cursor-pointer transition"
                   >
                     ✕ Выйти
                   </button>
                 </div>
               </div>
 
-              {/* TEACHER LIVE NOTEPAD */}
               {isTeacher && showNotepad && (
                 <div className="bg-amber-50/90 border border-amber-200 p-4 rounded-2xl space-y-2 shadow-xs animate-fade-in">
                   <div className="flex justify-between items-center">
@@ -704,7 +668,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 </div>
               )}
 
-              {/* ACTIVE SLIDE BLOCKS (LIVE STUDENT ANSWERS FOR TEACHER) */}
               <div className="bg-white p-4 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 min-h-[350px] w-full min-w-0 overflow-x-hidden">
                 {activeSlide.blocks.length === 0 ? (
                   <div className="text-center py-20 text-slate-400">
@@ -727,7 +690,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 )}
               </div>
 
-              {/* IN-LESSON GAMIFICATION (TEACHER XP WIDGET) */}
               {isTeacher && (
                 <div className="bg-indigo-50/70 p-3.5 sm:p-4 rounded-2xl border border-indigo-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -758,33 +720,23 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
                 ← Назад
               </button>
 
-              {safeSlideIdx < totalSlides - 1 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = Math.min(totalSlides - 1, safeSlideIdx + 1);
-                    setCurrentSlideIdx(next);
-                    if (isTeacher) handleBringEveryoneHere(next);
-                  }}
-                  className="px-6 sm:px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs transition shadow-md cursor-pointer"
-                >
-                  Далее →
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleFinish}
-                  className="px-6 sm:px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl text-xs transition shadow-md cursor-pointer"
-                >
-                  {isTeacher ? 'Завершить урок 🎉' : 'Сдать работу 🎉'}
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={safeSlideIdx === totalSlides - 1}
+                onClick={() => {
+                  const next = Math.min(totalSlides - 1, safeSlideIdx + 1);
+                  setCurrentSlideIdx(next);
+                  if (isTeacher) handleBringEveryoneHere(next);
+                }}
+                className="px-6 sm:px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs transition disabled:opacity-30 shadow-md cursor-pointer"
+              >
+                Далее →
+              </button>
             </div>
           </main>
         </div>
       )}
 
-      {/* SILENT TEACHER FEEDBACK HUD & FLOATING WHITEBOARD TOGGLE */}
       {isTeacher && hasStarted && (
         <div className="fixed bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-200/90 shadow-2xl flex items-center gap-1.5 select-none animate-fade-in">
           <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider px-1.5 hidden sm:inline">
@@ -795,7 +747,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
             type="button"
             onClick={() => handleSendReaction('👍')}
             className="w-9 h-9 rounded-full bg-slate-50 hover:bg-indigo-50 hover:scale-115 active:scale-95 transition text-lg flex items-center justify-center cursor-pointer shadow-2xs border border-slate-200/70"
-            title="Похвалить (👍)"
           >
             👍
           </button>
@@ -803,7 +754,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
             type="button"
             onClick={() => handleSendReaction('❤️')}
             className="w-9 h-9 rounded-full bg-slate-50 hover:bg-rose-50 hover:scale-115 active:scale-95 transition text-lg flex items-center justify-center cursor-pointer shadow-2xs border border-slate-200/70"
-            title="Отличная речь / Ответ (❤️)"
           >
             ❤️
           </button>
@@ -811,7 +761,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
             type="button"
             onClick={() => handleSendReaction('❓')}
             className="w-9 h-9 rounded-full bg-slate-50 hover:bg-amber-50 hover:scale-115 active:scale-95 transition text-lg flex items-center justify-center cursor-pointer shadow-2xs border border-slate-200/70"
-            title="Развернуть мысль / Пояснить (❓)"
           >
             ❓
           </button>
@@ -819,7 +768,6 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
             type="button"
             onClick={() => handleSendReaction('❌')}
             className="w-9 h-9 rounded-full bg-slate-50 hover:bg-rose-50 hover:scale-115 active:scale-95 transition text-lg flex items-center justify-center cursor-pointer shadow-2xs border border-slate-200/70"
-            title="Мягкое исправление грамматики (❌)"
           >
             ❌
           </button>
@@ -828,13 +776,12 @@ export const RoomView = ({ activeLesson, roomId, isTeacher, onExitRoom }) => {
 
           <button
             type="button"
-            onClick={handleToggleWhiteboard}
+            onClick={() => setShowWhiteboard(!showWhiteboard)}
             className={`px-3 py-1.5 rounded-full text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
               showWhiteboard
                 ? 'bg-amber-400 text-amber-950 shadow-xs border border-amber-300'
                 : 'bg-slate-100 hover:bg-amber-100 text-slate-700'
             }`}
-            title="Открыть плавающую доску заметок и маркеров"
           >
             <span>📌</span>
             <span className="hidden sm:inline">Доска</span>
