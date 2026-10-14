@@ -22,7 +22,6 @@ export const BlockText = ({ block }) => (
 export const BlockImage = ({ block, onEditMedia }) => {
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
-  // Normalize image data from any format (arrays, strings, objects, or fallback block.url)
   const rawImages = Array.isArray(block.images) && block.images.length > 0
     ? block.images
     : (block.url ? [{ url: block.url, caption: block.caption || '' }] : []);
@@ -41,6 +40,9 @@ export const BlockImage = ({ block, onEditMedia }) => {
                    cleanImages.length === 2 ? 'grid-cols-1 sm:grid-cols-2' :
                    cleanImages.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4';
 
+  // Fallback SVG for broken images
+  const fallbackSvg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlMmU4ZjAiIC8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiBmaWxsPSIjOTRhM2I4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2Ugbm90IGF2YWlsYWJsZTwvdGV4dD48L3N2Zz4=';
+
   return (
     <div className="my-6 space-y-3 relative group w-full min-w-0">
       {block.caption && <h4 className="font-bold text-slate-800 text-base leading-snug">{block.caption}</h4>}
@@ -58,10 +60,9 @@ export const BlockImage = ({ block, onEditMedia }) => {
               referrerPolicy="no-referrer"
               loading="lazy"
               onError={(e) => {
-                // If direct image hit a temporary hiccup, retry once cleanly
-                if (!e.target.dataset.retried) {
-                  e.target.dataset.retried = 'true';
-                  e.target.src = img.url;
+                if (!e.target.dataset.failed) {
+                  e.target.dataset.failed = 'true';
+                  e.target.src = fallbackSvg;
                 }
               }}
               className="w-full h-48 sm:h-64 object-cover group-hover:scale-105 transition duration-300 block"
@@ -95,6 +96,7 @@ export const BlockImage = ({ block, onEditMedia }) => {
               src={lightboxUrl}
               alt="Zoomed Visual"
               referrerPolicy="no-referrer"
+              onError={(e) => { e.target.src = fallbackSvg; }}
               className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain"
             />
             <button
@@ -143,7 +145,6 @@ export const BlockVideo = ({ block, onEditMedia }) => {
   );
 };
 
-// CLEAN LIGHT-THEMED AUDIO / PODCAST PLAYER
 export const BlockAudio = ({ block = {}, onEditMedia }) => {
   const [showTranscript, setShowTranscript] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1.0);
@@ -158,7 +159,6 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
 
   return (
     <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/90 shadow-xs mb-6 space-y-4 w-full min-w-0">
-      {/* HEADER */}
       <div className="flex justify-between items-start gap-3">
         <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 text-xl font-bold shadow-2xs shrink-0">
@@ -185,7 +185,6 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
         )}
       </div>
 
-      {/* AUDIO PLAYER & SPEED CONTROLS */}
       {block.url ? (
         <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
           <audio 
@@ -199,7 +198,6 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
             Your browser does not support audio playback.
           </audio>
 
-          {/* PLAYBACK SPEED BUTTONS */}
           <div className="flex justify-between items-center text-xs font-bold pt-1">
             <span className="text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Speed:</span>
             <div className="flex gap-1.5">
@@ -226,7 +224,6 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
         </div>
       )}
 
-      {/* TRANSCRIPT COLLAPSIBLE DRAWER */}
       {block.transcript && (
         <div className="pt-1">
           <button
