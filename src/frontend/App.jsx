@@ -45,9 +45,10 @@ export default function App() {
     setView('role_select');
   };
 
-  const fetchLessons = async () => {
+  const fetchLessons = async (scope = '') => {
     try {
-      const res = await fetch('/api/lessons', { headers: getAuthHeaders() });
+      const scopeParam = scope ? `?scope=${scope}` : '';
+      const res = await fetch(`/api/lessons${scopeParam}`, { headers: getAuthHeaders() });
       if (res.status === 401 || res.status === 403) {
         handleLogout();
         return;
@@ -63,7 +64,6 @@ export default function App() {
     }
   };
 
-  // ROUTE RESOLUTION FUNCTION BASED ON URL PATH (/teacher, /student, /)
   const resolveRoute = (user = currentUser) => {
     const pathname = window.location.pathname.toLowerCase();
     const params = new URLSearchParams(window.location.search);
@@ -95,9 +95,8 @@ export default function App() {
       return;
     }
 
-    // 1. DEDICATED /teacher ROUTE
     if (pathname.startsWith('/teacher')) {
-      const hasTeacherToken = !!localStorage.getItem('teacher_jwt') || user?.role === 'teacher';
+      const hasTeacherToken = !!localStorage.getItem('teacher_jwt') || user?.role === 'teacher' || user?.isMaster;
       if (hasTeacherToken) {
         setIsTeacher(true);
         setIsAuthenticated(true);
@@ -111,7 +110,6 @@ export default function App() {
       return;
     }
 
-    // 2. DEDICATED /student ROUTE
     if (pathname.startsWith('/student')) {
       const hasStudentToken = !!localStorage.getItem('auth_jwt') || user?.role === 'student';
       if (hasStudentToken && user) {
@@ -126,8 +124,7 @@ export default function App() {
       return;
     }
 
-    // 3. ROOT / ROUTE
-    if (user?.role === 'teacher' || localStorage.getItem('teacher_jwt')) {
+    if (user?.role === 'teacher' || user?.isMaster || localStorage.getItem('teacher_jwt')) {
       window.history.replaceState({}, '', '/teacher');
       setIsTeacher(true);
       setIsAuthenticated(true);
@@ -156,17 +153,14 @@ export default function App() {
             identifiedUser = data.user;
             setCurrentUser(identifiedUser);
             setIsAuthenticated(true);
-          } else {
-            // Legacy teacher session
-            if (localStorage.getItem('teacher_jwt')) {
-              identifiedUser = { role: 'teacher', name: 'Преподаватель' };
-              setCurrentUser(identifiedUser);
-              setIsAuthenticated(true);
-            }
+          } else if (localStorage.getItem('teacher_jwt')) {
+            identifiedUser = { role: 'admin', isMaster: true, name: 'Владелец (Master)' };
+            setCurrentUser(identifiedUser);
+            setIsAuthenticated(true);
           }
         } catch (e) {
           if (localStorage.getItem('teacher_jwt')) {
-            identifiedUser = { role: 'teacher', name: 'Преподаватель' };
+            identifiedUser = { role: 'admin', isMaster: true, name: 'Владелец (Master)' };
             setCurrentUser(identifiedUser);
             setIsAuthenticated(true);
           }
@@ -191,7 +185,7 @@ export default function App() {
     setIsAuthenticated(true);
     setLoginError(false);
 
-    if (user.role === 'teacher') {
+    if (user.role === 'teacher' || user.isMaster) {
       window.history.pushState({}, '', '/teacher');
       setIsTeacher(true);
       fetchLessons();
@@ -217,8 +211,9 @@ export default function App() {
 
       if (res.ok && data.token) {
         localStorage.setItem('teacher_jwt', data.token);
-        const teacherUser = { role: 'teacher', name: 'Преподаватель' };
-        setCurrentUser(teacherUser);
+        localStorage.setItem('auth_jwt', data.token);
+        const masterUser = data.user || { role: 'admin', isMaster: true, name: 'Владелец (Master)' };
+        setCurrentUser(masterUser);
         setIsAuthenticated(true);
         setIsTeacher(true);
         setLoginError(false);
@@ -352,11 +347,18 @@ export default function App() {
     setIsTeacher(false);
   };
 
+  const isMasterUser = Boolean(currentUser?.isMaster || currentUser?.role === 'admin');
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* 1. TEACHER HEADER */}
+      {/* 1. TEACHER HEADER WITH MASTER BADGE */}
       {isTeacher && isAuthenticated && view !== 'room' && (
-        <TeacherHeader view={view} setView={setView} onLogout={handleLogout} />
+        <TeacherHeader 
+          view={view} 
+          setView={setView} 
+          user={currentUser} 
+          onLogout={handleLogout} 
+        />
       )}
 
       {/* 2. STUDENT HEADER */}
@@ -370,7 +372,7 @@ export default function App() {
 
       <main className={view === 'room' ? 'w-full' : 'max-w-6xl mx-auto px-4 py-8'}>
         
-        {/* 0. INITIAL ROLE SELECTOR (WHEN VISITING ROOT '/' WITHOUT LOGIN) */}
+        {/* ROLE SELECTION */}
         {view === 'role_select' && (
           <div className="max-w-md mx-auto my-16 bg-white p-8 sm:p-10 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6">
             <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto text-3xl font-extrabold shadow-2xs">
@@ -423,7 +425,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 1. STUDENT AUTH PAGE (FOR /student ROUTE) */}
+        {/* STUDENT AUTH */}
         {view === 'auth_student' && (
           <TeacherAuthModal
             initialRole="student"
@@ -435,7 +437,7 @@ export default function App() {
           />
         )}
 
-        {/* 2. TEACHER AUTH PAGE (FOR /teacher ROUTE) */}
+        {/* TEACHER AUTH */}
         {view === 'auth_teacher' && (
           <TeacherAuthModal
             initialRole="teacher"
@@ -449,7 +451,7 @@ export default function App() {
           />
         )}
 
-        {/* 3. AUTHENTICATED STUDENT DASHBOARD */}
+        {/* STUDENT DASHBOARD */}
         {view === 'student_dashboard' && isAuthenticated && (
           <StudentDashboard
             onOpenLesson={(id) => openLesson(id, true, false)}
@@ -459,7 +461,7 @@ export default function App() {
           />
         )}
 
-        {/* 4. DICTIONARY VIEW */}
+        {/* DICTIONARY VIEW */}
         {view === 'dictionary' && (
           <DictionaryView 
             onLaunchTrainer={handleLaunchTrainerFromDictionary} 
@@ -467,11 +469,13 @@ export default function App() {
           />
         )}
 
-        {/* 5. TEACHER WORKSPACE */}
+        {/* TEACHER LIBRARY WITH MASTER FILTER */}
         {view === 'library' && isTeacher && isAuthenticated && (
           <LibraryView
             lessons={lessons}
             loading={loading}
+            isMaster={isMasterUser}
+            onScopeChange={(scope) => fetchLessons(scope)}
             onOpenLesson={handleLaunchClassroom}
             onCreateNew={handleCreateNew}
             onEditLesson={handleEditLesson}
@@ -501,7 +505,7 @@ export default function App() {
 
         {view === 'prompts' && isTeacher && isAuthenticated && <AIPromptsView />}
 
-        {/* 6. LIVE ROOM VIEW */}
+        {/* LIVE ROOM */}
         {view === 'room' && activeLesson && (
           <RoomView
             activeLesson={activeLesson}
