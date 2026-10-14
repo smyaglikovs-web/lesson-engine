@@ -1,22 +1,40 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { playCorrectSound, playWrongSound } from '../utils/sounds.js';
 
 export const BlockMultipleChoice = ({ block = {}, value = {}, onChange }) => {
-  const selected = value?.selected !== undefined && value?.selected !== null ? Number(value.selected) : null;
+  const selectedOriginalIndex = value?.selected !== undefined && value?.selected !== null ? Number(value.selected) : null;
   const submitted = value?.submitted ?? false;
-  const isCorrect = selected !== null && Number(selected) === Number(block.correct);
+  const isCorrect = selectedOriginalIndex !== null && Number(selectedOriginalIndex) === Number(block.correct);
 
-  const handleSelect = (idx) => {
+  // Safely map and shuffle options on mount, tracking their original index
+  const shuffledOptions = useMemo(() => {
+    if (!block.options || !Array.isArray(block.options)) return [];
+    
+    const mapped = block.options.map((opt, idx) => ({
+      originalIndex: idx,
+      text: typeof opt === 'object' && opt !== null ? (opt.text || opt.statement || opt.option || JSON.stringify(opt)) : String(opt)
+    }));
+
+    // Fisher-Yates shuffle
+    for (let i = mapped.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [mapped[i], mapped[j]] = [mapped[j], mapped[i]];
+    }
+    
+    return mapped;
+  }, [block.id, JSON.stringify(block.options)]);
+
+  const handleSelect = (origIdx) => {
     if (submitted) return;
-    onChange({ selected: Number(idx), submitted: false });
+    onChange({ selected: Number(origIdx), submitted: false });
   };
 
   const handleSubmit = () => {
-    if (selected === null) return;
-    const correct = Number(selected) === Number(block.correct);
+    if (selectedOriginalIndex === null) return;
+    const correct = Number(selectedOriginalIndex) === Number(block.correct);
     if (correct) playCorrectSound();
     else playWrongSound();
-    onChange({ selected: Number(selected), submitted: true });
+    onChange({ selected: Number(selectedOriginalIndex), submitted: true });
   };
 
   const handleReset = () => {
@@ -38,15 +56,12 @@ export const BlockMultipleChoice = ({ block = {}, value = {}, onChange }) => {
       </div>
 
       <div className="space-y-2.5 mb-4">
-        {block.options?.map((option, idx) => {
-          const isSelected = selected !== null && Number(selected) === Number(idx);
-          const isTargetCorrect = Number(idx) === Number(block.correct);
-
-          let optionText = typeof option === 'object' && option !== null
-            ? (option.text || option.statement || option.option || JSON.stringify(option))
-            : String(option);
+        {shuffledOptions.map((optionObj) => {
+          const isSelected = selectedOriginalIndex !== null && selectedOriginalIndex === optionObj.originalIndex;
+          const isTargetCorrect = optionObj.originalIndex === Number(block.correct);
 
           let btnStyle = "w-full text-left p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border font-bold transition text-xs sm:text-sm flex items-center justify-between cursor-pointer break-words leading-snug ";
+          
           if (submitted) {
             if (isTargetCorrect) btnStyle += "bg-emerald-50 border-emerald-500 text-emerald-900 font-extrabold";
             else if (isSelected) btnStyle += "bg-rose-50 border-rose-500 text-rose-900 font-extrabold";
@@ -59,13 +74,13 @@ export const BlockMultipleChoice = ({ block = {}, value = {}, onChange }) => {
 
           return (
             <button
-              key={`${block.id || 'mc'}-opt-${idx}`}
+              key={`${block.id || 'mc'}-opt-${optionObj.originalIndex}`}
               type="button"
               disabled={submitted}
-              onClick={() => handleSelect(idx)}
+              onClick={() => handleSelect(optionObj.originalIndex)}
               className={btnStyle}
             >
-              <span className="flex-1 pr-2">{optionText}</span>
+              <span className="flex-1 pr-2">{optionObj.text}</span>
               {isSelected && !submitted && <span className="text-indigo-600 font-bold shrink-0">✓</span>}
             </button>
           );
@@ -75,7 +90,7 @@ export const BlockMultipleChoice = ({ block = {}, value = {}, onChange }) => {
       {!submitted ? (
         <button
           type="button"
-          disabled={selected === null}
+          disabled={selectedOriginalIndex === null}
           onClick={handleSubmit}
           className="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 text-white font-extrabold rounded-2xl disabled:opacity-40 hover:bg-indigo-700 transition text-xs shadow-md cursor-pointer"
         >
