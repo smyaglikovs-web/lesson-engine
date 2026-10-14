@@ -27,10 +27,21 @@ export const BlockReorder = ({ block = {}, value = {}, onChange }) => {
   const currentSelected = currentAnswerState.selectedWordObjects || [];
   const currentIsSubmitted = Boolean(currentAnswerState.submitted);
 
+  // Chunk long sentences into pairs of words to prevent mobile screen clutter
+  const chunkSentence = (sentence) => {
+    const words = sentence.split(/\s+/).filter(Boolean);
+    if (words.length <= 10) return words;
+    const chunks = [];
+    for (let i = 0; i < words.length; i += 2) {
+      chunks.push(words.slice(i, i + 2).join(' '));
+    }
+    return chunks;
+  };
+
   // Shuffle word pool for active sentence
   const poolWords = useMemo(() => {
-    const rawWords = currentSentence.split(/\s+/).filter(Boolean);
-    const list = rawWords.map((w, i) => ({ id: `w-${activeIdx}-${i}-${w}`, text: w }));
+    const rawChunks = chunkSentence(currentSentence);
+    const list = rawChunks.map((w, i) => ({ id: `w-${activeIdx}-${i}-${w}`, text: w }));
     
     // Fisher-Yates shuffle
     for (let i = list.length - 1; i > 0; i--) {
@@ -249,7 +260,7 @@ export const BlockReorder = ({ block = {}, value = {}, onChange }) => {
         </div>
       ) : (
         <div className="space-y-3 pt-2">
-          <div className={`p-4 rounded-2xl text-xs font-bold flex justify-between items-center ${
+          <div className={`p-4 rounded-2xl text-xs font-bold flex flex-col sm:flex-row justify-between sm:items-center gap-3 ${
             currentAnswerState.isCorrect ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'
           }`}>
             <span>
@@ -260,7 +271,7 @@ export const BlockReorder = ({ block = {}, value = {}, onChange }) => {
             <button
               type="button"
               onClick={handleResetCurrent}
-              className="px-3 py-1 bg-white/80 hover:bg-white text-slate-800 rounded-xl text-xs font-bold cursor-pointer"
+              className="px-3 py-1.5 bg-white/80 hover:bg-white text-slate-800 rounded-xl text-xs font-bold cursor-pointer shrink-0 self-start sm:self-center"
             >
               Retry 🔄
             </button>
