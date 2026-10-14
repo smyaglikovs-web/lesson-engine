@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 
-export const TeacherAuthModal = ({ onLogin, onAuthSuccess, loginError }) => {
+export const TeacherAuthModal = ({ initialRole = 'teacher', onLogin, onAuthSuccess, loginError, onCancel }) => {
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register' | 'legacy_password'
-  const [role, setRole] = useState('student'); // 'student' | 'teacher'
+  const [role, setRole] = useState(initialRole || 'teacher');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -10,7 +10,6 @@ export const TeacherAuthModal = ({ onLogin, onAuthSuccess, loginError }) => {
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // 1. Unified Email/Password Login & Registration
   const handleAccountSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
@@ -43,11 +42,13 @@ export const TeacherAuthModal = ({ onLogin, onAuthSuccess, loginError }) => {
       const data = await res.json();
       if (res.ok && data.success && data.token) {
         localStorage.setItem('auth_jwt', data.token);
-        if (data.user.role === 'teacher') {
+        
+        if (data.user.role === 'teacher' || data.user.isMaster) {
           localStorage.setItem('teacher_jwt', data.token);
         } else {
           localStorage.setItem('ls_student_name', data.user.name);
           localStorage.setItem('ls_student_id', data.user.id);
+          localStorage.removeItem('teacher_jwt');
         }
 
         if (onAuthSuccess) {
@@ -65,7 +66,6 @@ export const TeacherAuthModal = ({ onLogin, onAuthSuccess, loginError }) => {
     }
   };
 
-  // 2. Legacy Master Password Login (Keeps Existing Setup Accessible)
   const handleLegacySubmit = async (e) => {
     e.preventDefault();
     if (!password.trim()) return;
@@ -90,7 +90,7 @@ export const TeacherAuthModal = ({ onLogin, onAuthSuccess, loginError }) => {
         <p className="text-slate-500 text-xs">
           {authMode === 'legacy_password'
             ? 'Введите мастер-пароль преподавателя для быстрого доступа.'
-            : 'Войдите, чтобы сохранять слова в личный словарь и смотреть свои оценки.'}
+            : 'Войдите со своим email и паролем для доступа к платформе.'}
         </p>
       </div>
 
@@ -118,7 +118,7 @@ export const TeacherAuthModal = ({ onLogin, onAuthSuccess, loginError }) => {
             </button>
           </div>
 
-          {/* ROLE SELECTOR */}
+          {/* ROLE SELECTOR: CHOOSE TEACHER OR STUDENT */}
           <div className="grid grid-cols-2 gap-2 text-xs font-extrabold">
             <button
               type="button"
@@ -205,7 +205,6 @@ export const TeacherAuthModal = ({ onLogin, onAuthSuccess, loginError }) => {
           </button>
         </form>
       ) : (
-        /* LEGACY MASTER PASSWORD FORM */
         <form onSubmit={handleLegacySubmit} className="space-y-4">
           <div className="space-y-1">
             <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
@@ -233,23 +232,33 @@ export const TeacherAuthModal = ({ onLogin, onAuthSuccess, loginError }) => {
         </form>
       )}
 
-      {/* QUICK SWITCH TO LEGACY PASSWORD */}
-      <div className="pt-2 border-t border-slate-100 text-center">
+      {/* QUICK SWITCH & CANCEL */}
+      <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
+          >
+            ← На главную
+          </button>
+        )}
+
         {authMode === 'legacy_password' ? (
           <button
             type="button"
             onClick={() => { setAuthMode('login'); setErrorMsg(''); }}
-            className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+            className="font-bold text-indigo-600 hover:underline cursor-pointer ml-auto"
           >
-            ← Войти по Email и паролю аккаунта
+            Войти по Email и паролю
           </button>
         ) : (
           <button
             type="button"
             onClick={() => { setAuthMode('legacy_password'); setErrorMsg(''); }}
-            className="text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
+            className="font-bold text-slate-400 hover:text-slate-600 cursor-pointer ml-auto"
           >
-            🔑 Войти по мастер-паролю школы
+            🔑 Пароль школы
           </button>
         )}
       </div>
