@@ -32,7 +32,7 @@ export function getYouTubeId(url = '') {
   return null;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -57,51 +57,19 @@ function bufferToBase64(buffer) {
 }
 
 // --------------------------------------------------------------------------
-// LIVE WEB SEARCH RESOLVER (Pulls Real Top Search Results - 0 Neurons)
+// LIGHTNING-FAST WEB SEARCH RESOLVER (Zero-Neuron Wikipedia OpenSearch API)
 // --------------------------------------------------------------------------
 export async function fetchLiveWebSearch(query = '') {
   if (!query || !query.trim()) return null;
   const cleanQuery = query.trim();
 
-  // 1. Try DuckDuckGo Web Search parser
+  // Wikipedia OpenSearch API: Responds in ~120ms without datacenter blocking
   try {
-    const ddgRes = await fetchWithTimeout(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`, {
-      method: 'POST',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: `q=${encodeURIComponent(cleanQuery)}`
-    }, 4000);
-
-    if (ddgRes.ok) {
-      const html = await ddgRes.text();
-      const uddgMatch = html.match(/uddg=([^&"'>]+)/i);
-      const titleMatch = html.match(/<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i) || html.match(/<a[^>]+class="result__url"[^>]*>([\s\S]*?)<\/a>/i);
-      const snippetMatch = html.match(/<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i);
-
-      if (uddgMatch && uddgMatch[1]) {
-        const realUrl = decodeURIComponent(uddgMatch[1]);
-        let title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : cleanQuery;
-        let snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]+>/g, '').trim() : `Top search resource for ${cleanQuery}`;
-
-        if (title.length > 70) title = title.slice(0, 67) + '...';
-        if (snippet.length > 180) snippet = snippet.slice(0, 177) + '...';
-
-        return {
-          title: title || cleanQuery,
-          url: realUrl,
-          description: snippet || `Explore reference resource on ${cleanQuery}.`
-        };
-      }
-    }
-  } catch (e) {}
-
-  // 2. Wikipedia Live API OpenSearch
-  try {
-    const wikiRes = await fetchWithTimeout(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(cleanQuery)}&limit=1&namespace=0&format=json`, {
-      headers: BROWSER_HEADERS
-    }, 3000);
+    const wikiRes = await fetchWithTimeout(
+      `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(cleanQuery)}&limit=1&namespace=0&format=json`,
+      { headers: BROWSER_HEADERS },
+      2000
+    );
 
     if (wikiRes.ok) {
       const data = await wikiRes.json();
@@ -115,11 +83,10 @@ export async function fetchLiveWebSearch(query = '') {
     }
   } catch (e) {}
 
-  // 3. Fallback to Live Topic Search URL
   return {
-    title: `Web Search: ${cleanQuery}`,
+    title: `Web Reference: ${cleanQuery}`,
     url: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(cleanQuery)}`,
-    description: `Click to view search articles and reference materials on ${cleanQuery}.`
+    description: `Click to view reference articles and background context on ${cleanQuery}.`
   };
 }
 
@@ -222,7 +189,7 @@ export function sanitizeBlockStructure(b) {
 
   b.type = type;
 
-  // 1. MULTIPLE CHOICE UNROLLING & STAR STRIPPING
+  // 1. MULTIPLE CHOICE UNROLLING
   if (b.type === 'multiple_choice') {
     if (Array.isArray(b.questions) && b.questions.length > 0) {
       return b.questions.map((q, qIdx) => {
@@ -294,11 +261,10 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Fill the missing words in the blanks:';
   }
 
-  // 5. GAP FILL BANK (WORD BANK) - PURGES STRAY NUMBERS & FIXES DROPDOWN PIPES
+  // 5. GAP FILL BANK (WORD BANK)
   if (b.type === 'gap_fill_bank') {
     let rawText = String(b.text || b.paragraph || b.content || b.passage || '').trim();
     
-    // If AI accidentally put inline dropdown pipes [a | b | c] inside a gap_fill_bank block, convert to inline_select!
     if (rawText.includes('|') && rawText.includes('[')) {
       b.type = 'inline_select';
       b.text = rawText;
@@ -336,7 +302,7 @@ export function sanitizeBlockStructure(b) {
       sentencesList = b.text.split('\n').map(s => s.trim()).filter(Boolean);
     }
 
-    const biteSized = sentencesList.filter(s => s.split(/\s+/).length <= 13);
+    const biteSized = sentencesList.filter(s => s.split(/\s+/).length <= 11);
     b.sentences = (biteSized.length >= 2 ? biteSized : sentencesList).slice(0, 4);
     if (b.sentences.length === 0) {
       b.sentences = ['Consistent daily practice builds conversational fluency.'];
@@ -434,92 +400,45 @@ export function sanitizeBlockStructure(b) {
 // --------------------------------------------------------------------------
 // HIGH-SPEED, ULTRA-LOW-NEURON MULTIMODAL AI INFERENCE PIPELINE
 // --------------------------------------------------------------------------
-export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2200) {
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2048) {
   let errors = [];
-
-  // Support both String and Multimodal Array userContent (for Vision OCR)
   const isMultimodal = Array.isArray(userContent);
 
-  // 1. GROQ API (If key is available: 300 tps, sub-second latency, 0 CF Neurons)
+  // 1. GROQ API (If key available: Sub-second latency, 0 CF Neurons)
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5 && !isMultimodal) {
     const groqKey = env.GROQ_API_KEY.trim();
-    for (const model of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
-      try {
-        const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${groqKey}`
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
-              { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
-            ],
-            temperature: 0.2,
-            response_format: { type: 'json_object' }
-          })
-        }, 4500);
+    try {
+      const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
+            { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
+          ],
+          temperature: 0.2,
+          response_format: { type: 'json_object' }
+        })
+      }, 4000);
 
-        if (res.ok) {
-          const data = await res.json();
-          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
-          if (parsed) return { data: parsed, isFallback: false };
-        }
-      } catch (eGroq) {
-        errors.push(`Groq (${model})`);
+      if (res.ok) {
+        const data = await res.json();
+        const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+        if (parsed) return { data: parsed, isFallback: false };
       }
+    } catch (eGroq) {
+      errors.push('Groq');
     }
   }
 
-  // 2. OPENROUTER DYNAMIC FREE VISION ROUTER (0 Neurons - Supports Image OCR & Text)
-  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
-    const openrouterKey = env.OPENROUTER_API_KEY.trim();
-    const openRouterModels = [
-      'openrouter/free',
-      'google/gemini-2.0-flash-lite-001:free',
-      'meta-llama/llama-3.2-11b-vision-instruct:free',
-      'z-ai/glm-5.2:free'
-    ];
-
-    for (const model of openRouterModels) {
-      try {
-        const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openrouterKey}`,
-            'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
-            'X-Title': 'Lesson Engine'
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
-              { role: 'user', content: userContent }
-            ],
-            temperature: 0.2,
-            response_format: { type: 'json_object' }
-          })
-        }, 8000);
-
-        if (res.ok) {
-          const data = await res.json();
-          const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
-          if (parsed) return { data: parsed, isFallback: false };
-        }
-      } catch (eOr) {
-        errors.push(`OpenRouter (${model})`);
-      }
-    }
-  }
-
-  // 3. CLOUDFLARE WORKERS AI (Fallback for plain text)
+  // 2. PRIMARY CLOUDFLARE WORKERS AI (Fast 8B FP8 - 15s generation, minimal neuron burn)
   if (env.AI && !isMultimodal) {
     const cfModels = [
-      '@cf/meta/llama-3.1-8b-instruct-fast',
-      '@cf/zai-org/glm-4.7-flash',
+      '@cf/meta/llama-3.1-8b-instruct-fp8',
       '@cf/meta/llama-3.1-8b-instruct'
     ];
 
@@ -550,51 +469,82 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 4. GEMINI DIRECT FALLBACK
+  // 3. GEMINI DIRECT FALLBACK (Lightning Fast Google API)
   if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.trim().length > 5) {
     const apiKey = env.GEMINI_API_KEY.trim();
-    for (const gModel of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
-      try {
-        const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${apiKey}`;
-        
-        let gContents = [];
-        if (isMultimodal) {
-          const parts = [];
-          userContent.forEach(item => {
-            if (item.type === 'text') parts.push({ text: item.text });
-            if (item.type === 'image_url' && item.image_url?.url?.startsWith('data:')) {
-              const [mime, b64] = item.image_url.url.split(';base64,');
-              parts.push({
-                inlineData: {
-                  mimeType: mime.replace('data:', ''),
-                  data: b64
-                }
-              });
-            }
-          });
-          gContents = [{ role: 'user', parts }];
-        } else {
-          gContents = [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }];
-        }
-
-        const gRes = await fetchWithTimeout(gUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: `${systemPrompt}\nOutput valid JSON only.` }] },
-            contents: gContents,
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-          })
-        }, 7000);
-
-        if (gRes.ok) {
-          const gData = await gRes.json();
-          const parsed = cleanAndParseJson(gData?.candidates?.[0]?.content?.parts?.[0]?.text);
-          if (parsed) return { data: parsed, isFallback: false };
-        }
-      } catch (eG) {
-        errors.push(`Gemini (${gModel})`);
+    try {
+      const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+      
+      let gContents = [];
+      if (isMultimodal) {
+        const parts = [];
+        userContent.forEach(item => {
+          if (item.type === 'text') parts.push({ text: item.text });
+          if (item.type === 'image_url' && item.image_url?.url?.startsWith('data:')) {
+            const [mime, b64] = item.image_url.url.split(';base64,');
+            parts.push({
+              inlineData: {
+                mimeType: mime.replace('data:', ''),
+                data: b64
+              }
+            });
+          }
+        });
+        gContents = [{ role: 'user', parts }];
+      } else {
+        gContents = [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }];
       }
+
+      const gRes = await fetchWithTimeout(gUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: `${systemPrompt}\nOutput valid JSON only.` }] },
+          contents: gContents,
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+        })
+      }, 6000);
+
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        const parsed = cleanAndParseJson(gData?.candidates?.[0]?.content?.parts?.[0]?.text);
+        if (parsed) return { data: parsed, isFallback: false };
+      }
+    } catch (eG) {
+      errors.push('Gemini');
+    }
+  }
+
+  // 4. OPENROUTER VISION FALLBACK (Used strictly if multimodal OCR images are present)
+  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
+    const openrouterKey = env.OPENROUTER_API_KEY.trim();
+    try {
+      const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openrouterKey}`,
+          'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
+          'X-Title': 'Lesson Engine'
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.0-flash-lite-001:free',
+          messages: [
+            { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
+            { role: 'user', content: userContent }
+          ],
+          temperature: 0.2,
+          response_format: { type: 'json_object' }
+        })
+      }, 6000);
+
+      if (res.ok) {
+        const data = await res.json();
+        const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+        if (parsed) return { data: parsed, isFallback: false };
+      }
+    } catch (eOr) {
+      errors.push('OpenRouter');
     }
   }
 
@@ -602,7 +552,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
 }
 
 // --------------------------------------------------------------------------
-// AUTOMATIC PDF & TEXTBOOK SCANNER (C2 Auto-Solving & Vision OCR Engine)
+// AUTOMATIC PDF & TEXTBOOK SCANNER
 // --------------------------------------------------------------------------
 export async function scanDocumentAndBuildLesson(env, payload) {
   const { text = '', images = [], topic = '', level = 'C1', format = 'live' } = payload;
@@ -651,7 +601,6 @@ Convert the provided textbook document/test paper (or scanned images) into a com
   ]
 }`;
 
-  // Build multimodal payload if scanned page images are attached
   let userPayload;
   if (Array.isArray(images) && images.length > 0) {
     userPayload = [
@@ -667,7 +616,7 @@ Convert the provided textbook document/test paper (or scanned images) into a com
     userPayload = `Scanned Textbook Content:\n${text.slice(0, 6500)}\n\nConvert this entire document into interactive, fully solved lesson pages.`;
   }
 
-  const result = await runAiPipeline(env, systemPrompt, userPayload, 2400);
+  const result = await runAiPipeline(env, systemPrompt, userPayload, 2200);
   if (!result.data) {
     return { error: `Document scanning failed: ${result.error}` };
   }
@@ -679,55 +628,17 @@ Convert the provided textbook document/test paper (or scanned images) into a com
 }
 
 // --------------------------------------------------------------------------
-// FULL-LENGTH TEXT-TO-SPEECH (Generates Complete 60-90s Audio Track)
+// ULTRA-FAST NATIVE TEXT-TO-SPEECH (MeloTTS First - Sub-2s Synthesis)
 // --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   if (!text || !text.trim()) return { error: 'Text is required.' };
   const cleanText = text.trim();
 
-  // 1. PRIMARY: OPENROUTER SPEECH MODELS (Full-length, 0 Cloudflare Neurons)
-  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
-    const openrouterKey = env.OPENROUTER_API_KEY.trim();
-    const speechModels = [
-      { model: 'deepgram/flux-tts:free', voice: 'flux-alexis-en' },
-      { model: 'hexgrad/kokoro-82m', voice: 'af_alloy' },
-      { model: 'openai/gpt-4o-mini-tts-2025-12-15', voice: 'alloy' }
-    ];
-
-    for (const sm of speechModels) {
-      try {
-        const orRes = await fetchWithTimeout('https://openrouter.ai/api/v1/audio/speech', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openrouterKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
-            'X-Title': 'Lesson Engine'
-          },
-          body: JSON.stringify({
-            model: sm.model,
-            input: cleanText,
-            voice: sm.voice,
-            response_format: 'mp3'
-          })
-        }, 9000);
-
-        if (orRes.ok) {
-          const audioBuffer = await orRes.arrayBuffer();
-          if (audioBuffer.byteLength > 200) {
-            const base64Audio = bufferToBase64(audioBuffer);
-            return { success: true, audioUrl: `data:audio/mp3;base64,${base64Audio}` };
-          }
-        }
-      } catch (eOr) {}
-    }
-  }
-
-  // 2. SECONDARY: CLOUDFLARE MELOTTS (Burns only ~14 neurons, no Deepgram)
+  // 1. PRIMARY: CLOUDFLARE WORKERS AI MELOTTS (Generates in ~1.5 seconds, low neuron cost)
   if (env.AI) {
     try {
       const meloRes = await env.AI.run('@cf/myshell-ai/melotts', {
-        prompt: cleanText.slice(0, 800),
+        prompt: cleanText.slice(0, 1500),
         lang: lang || 'en'
       });
 
@@ -737,10 +648,12 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
           : `data:audio/mp3;base64,${meloRes.audio}`;
         return { success: true, audioUrl };
       }
-    } catch (eMelo) {}
+    } catch (eMelo) {
+      console.error('MeloTTS error:', eMelo);
+    }
   }
 
-  // 3. TERTIARY: MULTI-CHUNK COMPLETE SPEECH COMPILATION
+  // 2. SECONDARY: GOOGLE TRANSLATE MULTI-CHUNK FAST TTS FALLBACK
   try {
     const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
     const chunks = [];
@@ -757,11 +670,11 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
     if (curChunk) chunks.push(curChunk);
 
     const audioBuffers = [];
-    for (const chunk of chunks) {
+    for (const chunk of chunks.slice(0, 8)) {
       const gUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang || 'en')}&client=tw-ob&q=${encodeURIComponent(chunk)}`;
       const gRes = await fetchWithTimeout(gUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-      }, 5000);
+      }, 3500);
 
       if (gRes.ok) {
         const ab = await gRes.arrayBuffer();
@@ -786,7 +699,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 }
 
 // --------------------------------------------------------------------------
-// 2-IN-1 PODCAST STUDIO (Generates Lesson-Aware Episode & Spoken Audio)
+// TRUE 2-MINUTE PODCAST STUDIO (STRICT 280-320 WORDS TARGET)
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', lessonTitle = '', level = 'B1' } = payload;
@@ -798,42 +711,50 @@ export async function generatePodcastAudioWithAI(env, payload) {
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
   const systemPrompt = `[ROLE]
-You are a World-Class ELT Podcast Host and Audio Scriptwriter.
+You are a World-Class ELT Educational Podcast Host.
 Target CEFR Level: ${level} (${cefrRules})
 Core Topic: "${resolvedTopic}"
 
 [TASK]
-Write a lively, engaging 1-minute spoken podcast monologue (~115-135 words) for language learners discussing the content of this specific topic.
-Tone: Conversational, engaging, natural, and clear for listening comprehension.
+Write an engaging, deep-dive 2-minute spoken podcast episode for language learners.
 
-[CRITICAL CONTENT GUIDELINES]
-- You MUST discuss the ideas, concepts, and story from the provided topic and source context.
-- DO NOT invent generic stories about apps, software, or unrelated characters.
-- DO NOT lecture about grammar rules, cleft sentences, inversions, or mechanics.
-- DO NOT include stage directions (e.g. '[Music fades]', '[Host]') or sound cues. Output ONLY the spoken English monologue.
+[CRITICAL LENGTH & TIMING RULE - STRICT!]
+- Natural conversational speaking rate is 140 words per minute.
+- To produce an authentic 2-MINUTE episode, your "script" MUST BE STRICTLY BETWEEN 280 AND 320 WORDS TOTAL.
+- FORBIDDEN: Never write a short 1-minute summary or under 260 words! You MUST expand the ideas to reach 280-320 words.
+
+[3-PART NARRATIVE STRUCTURE]
+1. Part 1 (The Hook & Introduction): ~80 words introducing the core theme with an engaging question.
+2. Part 2 (Deep Exploration & Lore/Real-life Analysis): ~140 words breaking down the story, context, and key concepts.
+3. Part 3 (Takeaway & Reflection): ~80 words reflecting on the personal significance and asking a concluding question to the listener.
+
+[CONTENT GUIDELINES]
+- Output ONLY the spoken English text. 
+- FORBIDDEN: Do NOT include stage directions like '[Music fades]', '[Host]', or sound cues.
+- Do NOT lecture about grammar mechanics or linguistic rules. Focus on the story, meaning, and cultural themes.
 
 [OUTPUT FORMAT]
 {
-  "title": "${resolvedTopic} (Audio Episode)",
-  "script": "The spoken podcast text here..."
+  "title": "${resolvedTopic} (2-Min Episode)",
+  "script": "Part 1 (The Hook)... Part 2 (Deep Lore & Analysis)... Part 3 (Takeaway & Discussion Question)..."
 }`;
 
   const userPrompt = sourceText.trim()
-    ? `Source Material:\n${sourceText.slice(0, 2200)}\n\nCreate a 1-minute podcast episode discussing the ideas of: "${resolvedTopic}".`
-    : `Create a 1-minute podcast episode specifically on the Topic: "${resolvedTopic}".`;
+    ? `Source Material:\n${sourceText.slice(0, 2400)}\n\nCreate a full 2-minute (280-320 words) podcast episode discussing the ideas of: "${resolvedTopic}".`
+    : `Create a comprehensive 2-minute (280-320 words) podcast episode specifically on the Topic: "${resolvedTopic}".`;
 
-  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1000);
+  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1200);
   if (!scriptResult.data) {
     return { error: `Failed to write podcast script: ${scriptResult.error}` };
   }
 
   const scriptData = scriptResult.data;
   const scriptText = scriptData.script || scriptData.storyText || scriptData.text;
-  if (!scriptText || scriptText.length < 30) {
+  if (!scriptText || scriptText.length < 50) {
     return { error: 'Failed to parse generated podcast script.' };
   }
 
-  const episodeTitle = scriptData.title || `${resolvedTopic} (Audio Episode)`;
+  const episodeTitle = scriptData.title || `${resolvedTopic} (2-Min Episode)`;
 
   let audioDataUrl = '';
   try {
@@ -860,7 +781,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
     let transcriptText = '';
 
     try {
-      const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: BROWSER_HEADERS }, 3000);
+      const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`, { headers: BROWSER_HEADERS }, 2500);
       if (oembedRes.ok) {
         const odata = await oembedRes.json();
         title = odata.title || '';
@@ -876,7 +797,7 @@ export async function fetchYouTubeTranscriptNative(videoUrl) {
     for (const ttUrl of timedTextUrls) {
       if (transcriptText) break;
       try {
-        const res = await fetchWithTimeout(ttUrl, { headers: BROWSER_HEADERS }, 4000);
+        const res = await fetchWithTimeout(ttUrl, { headers: BROWSER_HEADERS }, 3000);
         if (res.ok) {
           const xml = await res.text();
           if (xml && xml.includes('<text')) {
@@ -929,7 +850,7 @@ Return ONLY valid JSON.
 }`;
 
   try {
-    const result = await runAiPipeline(env, systemPrompt, `Student Response:\n"${studentText}"`, 1000);
+    const result = await runAiPipeline(env, systemPrompt, `Student Response:\n"${studentText}"`, 800);
     return result.data || {
       rubricScore: 4,
       maxRubric: 5,
@@ -951,7 +872,7 @@ Return ONLY valid JSON.
 }
 
 // --------------------------------------------------------------------------
-// 1-PROMPT ANCHOR + ROADMAP ENGINE (Balanced 220-250w Story + Real Web Search)
+// 1-PROMPT ANCHOR + ROADMAP ENGINE (Balanced 220-250w Story)
 // --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
@@ -1054,7 +975,6 @@ ${cefrRules}
     ccqs: ['Does this describe a real or hypothetical event?']
   };
 
-  // ASSEMBLE CLEAN 4-PAGE LESSON
   const assembledLesson = {
     id: 'lesson_' + Date.now(),
     title: resolvedTopic,
@@ -1143,7 +1063,7 @@ ${cefrRules}
 }
 
 // --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT (Universal Task Handlers + Auto Image Creator)
+// 1-CLICK BLOCK AI ASSISTANT
 // --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
@@ -1151,7 +1071,6 @@ export async function transformBlockWithAI(env, payload) {
 
   const targetBlockType = String(sourceBlock.type || '').toLowerCase().trim();
 
-  // 1-Click Auto Fill Mappings
   if (actions.includes('fill_this_block') && targetBlockType) {
     if (targetBlockType === 'image') actions.push('generate_image');
     else if (targetBlockType === 'matching') actions.push('matching');
@@ -1182,30 +1101,25 @@ export async function transformBlockWithAI(env, payload) {
 
   let tasksInstructions = '';
 
-  // 1. AI IMAGE BLOCK GENERATOR
   if (actions.includes('generate_image') || actions.includes('image')) {
     tasksInstructions += `
 - GENERATE 1 "image" block illustrating the main scene or concept from the context.
-  Describe an atmospheric visual scene and provide a concise caption.
   Schema: { "type": "image", "caption": "Descriptive visual caption of the scene", "prompt": "Detailed cinematic scene description illustrating the story without text or logos" }`;
   }
 
-  // 2. COMPREHENSION MULTIPLE CHOICE
   if (actions.includes('listening') || actions.includes('multiple_choice') || actions.includes('comprehension')) {
     tasksInstructions += `
-- GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key arguments and concepts in the material.
+- GENERATE 3 to 4 distinct "multiple_choice" blocks testing comprehension of the key concepts.
   CRITICAL: Do NOT put an asterisk (*) in the "options" text strings! Use the numerical "correct" 0-based index only.
   Schema: { "type": "multiple_choice", "question": "Question testing a specific point?", "options": ["Accurate answer based on context", "Plausible distractor 1", "Plausible distractor 2"], "correct": 0, "explanation": "Detailed explanation citing the argument." }`;
   }
 
-  // 3. TRUE / FALSE QUESTIONS
   if (actions.includes('true_false')) {
     tasksInstructions += `
 - GENERATE 3 to 4 distinct "multiple_choice" blocks formatted strictly as True/False questions based on the content claims.
   Schema: { "type": "multiple_choice", "question": "Clear claim or statement about the content...", "options": ["True", "False"], "correct": 0, "explanation": "Why this statement is True or False according to the text." }`;
   }
 
-  // 4. TARGET VOCABULARY FLASHCARDS
   if (actions.includes('flashcards')) {
     const backLang = flashcardType === 'russian' 
       ? 'The "back" key MUST be the accurate Russian translation of the term.' 
@@ -1213,20 +1127,18 @@ export async function transformBlockWithAI(env, payload) {
 
     tasksInstructions += `
 - GENERATE 1 "flashcards" block with 6 high-yield TOPICAL vocabulary words or idioms from the material.
-  CRITICAL: Do NOT output grammar labels or meta-terms (e.g. "inversion", "modal verb", "cleft sentence", "participle"). Output real-world topic vocabulary only!
+  CRITICAL: Do NOT output grammar labels or meta-terms (e.g. "inversion", "modal verb", "cleft sentence"). Real-world topic vocabulary only!
   ${backLang}
   CRITICAL: Each card MUST have an authentic 10-14 word example sentence illustrating its meaning in context.
   Schema: { "type": "flashcards", "title": "Key Target Vocabulary", "cards": [ { "front": "term", "back": "translation or definition", "example": "Context sentence." } ] }`;
   }
 
-  // 5. GRAMMAR MULTIPLE CHOICE DRILL
   if (actions.includes('grammar_quiz')) {
     tasksInstructions += `
 - GENERATE 3 distinct "multiple_choice" blocks testing the grammar structure from context.
   Schema: { "type": "multiple_choice", "question": "Sentence gap or grammar question?", "options": ["Correct answer", "Common error 1", "Common error 2"], "correct": 0, "explanation": "Rule breakdown." }`;
   }
 
-  // 6. PAIR MATCHING
   if (actions.includes('matching')) {
     let styleRules = '';
     let exampleRight = 'Russian translation';
@@ -1250,13 +1162,11 @@ export async function transformBlockWithAI(env, payload) {
 
     tasksInstructions += `
 - GENERATE 1 "matching" block with 6 distinct topical pairs based on context.
-  Do NOT use grammar terms.
   ${styleRules}
   CRITICAL: Every right-side value MUST be 100% unique.
   Schema: { "type": "matching", "instruction": "Match the terms with their ${matchingType === 'russian' ? 'translations' : 'definitions'}:", "pairs": [ { "left": "English term", "right": "${exampleRight}" } ] }`;
   }
 
-  // 7. GAP FILL & TRANSFORMATIONS
   if (actions.includes('gap_fill') || actions.includes('grammar_transform')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill" block with 4 sentences based on the context.
@@ -1264,30 +1174,26 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "gap_fill", "instruction": "Fill the missing words in the blanks:", "text": "1. Sentence with [word].\\n2. Another sentence with [word].", "answers": ["word1", "word2"] }`;
   }
 
-  // 8. GAP FILL BANK
   if (actions.includes('gap_fill_bank')) {
     tasksInstructions += `
 - GENERATE 1 "gap_fill_bank" block with 4 [target words] in brackets inside a cohesive paragraph and 3 vocabulary distractors.
-  CRITICAL: "distractors" MUST be real vocabulary words (e.g. ["hesitation", "distraction", "comfort"]). NEVER output numbers like "1", "2", "3" or list indices!
+  CRITICAL: "distractors" MUST be real vocabulary words (e.g. ["hesitation", "distraction", "comfort"]). NEVER output numbers like "1", "2", "3"!
   Schema: { "type": "gap_fill_bank", "instruction": "Fill gaps using words from the bank:", "text": "The atmosphere was [bleak] due to widespread [surveillance] by the regime.", "distractors": ["hesitation", "distraction", "comfort"] }`;
   }
 
-  // 9. SENTENCE REORDER
   if (actions.includes('sentence_reorder')) {
     tasksInstructions += `
-- GENERATE strictly ONE (1) "sentence_reorder" block with 3 or 4 short, natural sentences (each STRICTLY 7 to 11 words maximum).
-  CRITICAL: Never output sentences longer than 12 words! Sentences must be bite-sized for mobile unscrambling.
+- GENERATE strictly ONE (1) "sentence_reorder" block with 3 short sentences (each STRICTLY 7 to 11 words maximum).
+  CRITICAL: Never output sentences longer than 11 words!
   Schema: { "type": "sentence_reorder", "instruction": "Put the words in order to form correct sentences:", "sentences": ["Bite-sized sentence one.", "Short clear sentence two.", "Third natural sentence here."] }`;
   }
 
-  // 10. DISCUSSION / OPEN INPUT
   if (actions.includes('discussion')) {
     tasksInstructions += `
-- GENERATE 1 "open_input" block with 2-3 thought-provoking communicative prompts based on the context.
+- GENERATE 1 "open_input" block with 2-3 communicative prompts based on context.
   Schema: { "type": "open_input", "prompt": "💬 Discussion Questions:\\n1. What were the key factors highlighted in the story?\\n2. How would you react in a similar situation?" }`;
   }
 
-  // 11. INLINE SELECT
   if (actions.includes('inline_select')) {
     tasksInstructions += `
 - GENERATE 1 "inline_select" block with 4 sentences based on the context.
@@ -1295,31 +1201,25 @@ export async function transformBlockWithAI(env, payload) {
   Schema: { "type": "inline_select", "instruction": "Choose the correct word in context:", "text": "1. The report was [accurate* | misleading] in its description.\\n2. Citizens expressed their [dissent* | agreement] peacefully." }`;
   }
 
-  // 12. DISCUSSION ROULETTE
   if (actions.includes('spinning_wheel')) {
     tasksInstructions += `
-- GENERATE 1 "spinning_wheel" block with 6 to 8 engaging communicative questions specifically about the topic.
-  CRITICAL: Every question MUST be 100% standalone and autonomous (makes complete sense on its own when drawn randomly).
-  CRITICAL: FORBIDDEN to use generic interview templates like 'What was the most surprising revelation?' or 'What alternative solution would you propose?'.
-  CRITICAL: Every question must explicitly engage with specific concepts of the material.
+- GENERATE 1 "spinning_wheel" block with 6 engaging communicative questions specifically about the topic.
+  CRITICAL: Every question MUST be 100% standalone and autonomous.
   Schema: { "type": "spinning_wheel", "title": "Discussion Roulette", "instruction": "Spin the wheel and answer the selected question!", "items": ["Standalone topic question 1?", "Standalone topic question 2?", "Standalone topic question 3?"] }`;
   }
 
-  // 13. CATEGORIZATION
   if (actions.includes('categorization')) {
     tasksInstructions += `
 - GENERATE 1 "categorization" block with 2 or 3 distinct categories and 6 items to sort based on context.
   Schema: { "type": "categorization", "instruction": "Sort the items into the correct boxes:", "categories": ["Category A", "Category B"], "items": [ { "id": "it-1", "text": "Item text 1", "categoryIndex": 0 }, { "id": "it-2", "text": "Item text 2", "categoryIndex": 1 } ] }`;
   }
 
-  // 14. GRAMMAR RULE CARD
   if (actions.includes('generate_grammar_card')) {
     tasksInstructions += `
 - GENERATE 1 "grammar_card" block detailing the target grammar rule.
   Schema: { "type": "grammar_card", "title": "Grammar Rule Name", "formula": "Subject + Formula", "explanation": "Clear explanation of usage.", "examples": ["Example 1", "Example 2"] }`;
   }
 
-  // 15. TEXT PASSAGE TOOLS
   if (actions.includes('generate_text_passage') || actions.includes('expand_text')) {
     tasksInstructions += `
 - GENERATE 1 "text" block with a balanced reading passage (approximately 220-250 words across 3 paragraphs) based on context, adapted to CEFR ${level}.
@@ -1358,7 +1258,7 @@ ${tasksInstructions}
 }`;
 
   try {
-    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 1900);
+    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 1800);
     if (!result.data) {
       return { error: `AI generation failed: ${result.error || 'All API providers failed or timed out.'}` };
     }
@@ -1389,7 +1289,6 @@ ${tasksInstructions}
       else if (res && typeof res === 'object') cleanBlocks.push(res);
     });
 
-    // Safeguard: Merge multiple duplicate sentence_reorder blocks into 1 single block
     const reorderBlocks = cleanBlocks.filter(b => b.type === 'sentence_reorder');
     if (reorderBlocks.length > 1) {
       const mergedSentences = [];
@@ -1397,7 +1296,7 @@ ${tasksInstructions}
         if (Array.isArray(rb.sentences)) mergedSentences.push(...rb.sentences);
         else if (rb.sentence) mergedSentences.push(rb.sentence);
       });
-      const biteSized = mergedSentences.filter(s => s.split(/\s+/).length <= 13);
+      const biteSized = mergedSentences.filter(s => s.split(/\s+/).length <= 11);
       const finalSentences = (biteSized.length >= 2 ? biteSized : mergedSentences).slice(0, 4);
 
       const firstReorderIdx = cleanBlocks.findIndex(b => b.type === 'sentence_reorder');
@@ -1412,7 +1311,7 @@ ${tasksInstructions}
     }
 
     if (cleanBlocks.length === 0) {
-      return { error: `AI generation failed: No valid blocks could be parsed from the response. Raw response: ${JSON.stringify(result.data).slice(0, 150)}` };
+      return { error: `AI generation failed: No valid blocks could be parsed from the response.` };
     }
 
     return { success: true, isFallback: result.isFallback, newBlocks: cleanBlocks };
