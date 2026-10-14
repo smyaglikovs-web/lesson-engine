@@ -143,15 +143,11 @@ export default {
     const method = request.method;
     const clientIp = request.headers.get('cf-connecting-ip') || '127.0.0.1';
 
-    // -----------------------------------------------------------------------
-    // 1. SPA STATIC ASSET FALLBACK ROUTING
-    // Serves index.html for page navigations (/student, /teacher, etc.)
-    // -----------------------------------------------------------------------
+    // 1. SPA FALLBACK FOR DIRECT PAGE VISITS
     if (!path.startsWith('/api/')) {
       if (env.ASSETS) {
         const assetResponse = await env.ASSETS.fetch(request);
         if (assetResponse.status === 404) {
-          // Fall back to index.html so React handles the client-side route
           const indexRequest = new Request(new URL('/', request.url), request);
           return env.ASSETS.fetch(indexRequest);
         }
@@ -163,7 +159,9 @@ export default {
       await ensureTables(env);
       await ensureMultiplayerTables(env);
 
-      // AUTH LOGIN & REGISTRATION
+      // ---------------------------------------------------------------------
+      // AUTH: REGISTRATION & LOGIN
+      // ---------------------------------------------------------------------
       if (path === '/api/auth/register' && method === 'POST') {
         const { email, password, name, role = 'student' } = await request.json();
         if (!email || !password || !name) {
@@ -191,7 +189,7 @@ export default {
       }
 
       if (path === '/api/auth/login' && method === 'POST') {
-        const { email, password } = await request.json();
+        const { email, password, role } = await request.json();
         if (!email || !password) {
           return jsonResponse({ error: 'Введите email и пароль' }, 400);
         }
@@ -207,8 +205,17 @@ export default {
           return jsonResponse({ error: 'Неверный email или пароль' }, 401);
         }
 
-        const isMaster = user.role === 'admin';
-        const userPayload = { id: user.id, email: user.email, name: user.name, role: user.role, isMaster };
+        // Allow user to log in as teacher and upgrade role if selected
+        let userRole = user.role;
+        if (role && (role === 'teacher' || role === 'student')) {
+          userRole = role;
+          if (role !== user.role && user.role !== 'admin') {
+            await env.DB.prepare('UPDATE users SET role = ? WHERE id = ?').bind(userRole, user.id).run().catch(() => {});
+          }
+        }
+
+        const isMaster = userRole === 'admin' || user.role === 'admin';
+        const userPayload = { id: user.id, email: user.email, name: user.name, role: userRole, isMaster };
         const token = await createToken(userPayload);
 
         return jsonResponse({ success: true, token, user: userPayload });
@@ -239,12 +246,16 @@ export default {
         return jsonResponse({ error: 'Invalid password' }, 401);
       }
 
-      // RESOLVE USER CONTEXT & MASTER STATUS
+      // ---------------------------------------------------------------------
+      // CRITICAL FIX: RECOGNIZE REGULAR REGISTERED TEACHERS AS AUTHORIZED!
+      // ---------------------------------------------------------------------
       const authHeader = request.headers.get('Authorization') || '';
       const token = authHeader.replace(/^Bearer\s+/i, '');
       const userContext = await verifyToken(token);
+      
       const isMasterUser = Boolean(userContext?.isMaster || userContext?.role === 'admin');
-      const isTeacherAuthorized = isMasterUser || (await isRequestAuthorized(request, env));
+      const isTeacherRole = Boolean(userContext?.role === 'teacher' || isMasterUser);
+      const isTeacherAuthorized = isTeacherRole || (await isRequestAuthorized(request, env));
 
       // PERSONAL DICTIONARY
       if (path === '/api/dictionary' && method === 'GET') {
@@ -353,7 +364,9 @@ export default {
         return jsonResponse(list);
       }
 
-      // LESSONS
+      // ---------------------------------------------------------------------
+      // LESSONS SCOPE: MASTER SEES ALL; REGULAR TEACHERS SEE ONLY THEIR OWN
+      // ---------------------------------------------------------------------
       if (path === '/api/lessons' && method === 'GET') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const level = url.searchParams.get('level') || '';
@@ -467,7 +480,7 @@ export default {
         return jsonResponse(res);
       }
 
-      // CLASSROOM ROOM SESSION ENDPOINTS
+      // ROOM SESSION ENDPOINTS
       if (path === '/api/rooms/create' && method === 'POST') {
         if (!isTeacherAuthorized) return jsonResponse({ error: 'Доступ запрещен: требуется вход преподавателя' }, 403);
         const { lessonId } = await request.json();
@@ -548,7 +561,6 @@ export default {
         return jsonResponse(res || { success: true });
       }
 
-      // If non-API request wasn't caught, defer to assets
       if (!path.startsWith('/api/') && env.ASSETS) {
         return env.ASSETS.fetch(request);
       }
