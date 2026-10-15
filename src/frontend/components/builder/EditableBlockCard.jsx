@@ -720,7 +720,7 @@ const AudioBlockEditor = ({
         })
       });
       const data = await res.json();
-if (res.ok && data.success) {
+      if (res.ok && data.success) {
         onChange({
           ...block,
           title: data.title || topicToUse,
@@ -815,7 +815,23 @@ if (res.ok && data.success) {
         </div>
       </div>
 
-      {block.url && (
+      {block.tracks && block.tracks.length > 0 ? (
+        <div className="p-3.5 bg-white rounded-2xl border border-slate-200 space-y-2 shadow-2xs">
+          <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">
+            Live Audio Preview ({block.tracks.length} Parts = ~2 Min Total):
+          </span>
+          <div className="space-y-2">
+            {block.tracks.map((t, idx) => (
+              <div key={idx} className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-600 mb-1">{t.title}</p>
+                <audio controls className="w-full h-8">
+                  <source src={t.audioUrl} type="audio/mpeg" />
+                </audio>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : block.url ? (
         <div className="p-3.5 bg-white rounded-2xl border border-slate-200 space-y-1.5 shadow-2xs">
           <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">Live Audio Preview:</span>
           <audio controls className="w-full h-10" key={block.url}>
@@ -823,7 +839,7 @@ if (res.ok && data.success) {
             <source src={block.url} type="audio/wav" />
           </audio>
         </div>
-      )}
+      ) : null}
 
       <div className="space-y-1.5">
         <label className="text-[10px] font-bold text-slate-500 uppercase block">
