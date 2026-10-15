@@ -728,7 +728,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 }
 
 // --------------------------------------------------------------------------
-// TRUE 2-MINUTE PODCAST STUDIO (3 MANDATORY SEGMENTS = 280-320 WORDS)
+// 3-PART MULTI-AUDIO PODCAST (Parallel synthesis per paragraph)
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', lessonTitle = '', level = 'B1' } = payload;
@@ -745,25 +745,24 @@ Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
 
 [TASK]
-You MUST generate a complete 2-minute podcast episode.
-To ensure the recording lasts approximately 2 minutes (1:50-2:10), you MUST write ALL THREE of the following segments. Every segment is mandatory.
+Write a comprehensive 3-paragraph educational podcast episode.
+You MUST write all 3 distinct parts in separate JSON keys.
 
-[OUTPUT FORMAT - RETURN STRICTLY VALID JSON]
+[OUTPUT FORMAT - VALID JSON ONLY]
 {
   "title": "${resolvedTopic} (Audio Episode)",
-  "part_1_intro": "The Hook & Setting the Scene. Welcome the listeners and introduce the core dilemma or premise. (MUST be 75-85 words).",
-  "part_2_body": "Deep Dive & Core Story. Dive into the details, key narrative, specific examples, conflict, or musical lore. (MUST be 130-150 words).",
-  "part_3_conclusion": "Takeaway & Reflection. Reflect on the deeper meaning, cultural resonance, and leave the listener with a closing question. (MUST be 75-85 words)."
+  "part_1_intro": "The Hook & Setting the Scene (approx 70-85 words)...",
+  "part_2_body": "Deep Lore, Story, and Narrative Conflict (approx 130-150 words)...",
+  "part_3_conclusion": "Takeaway & Closing Discussion Question (approx 70-85 words)..."
 }
 
-[CRITICAL RULES]
-- TOTAL WORD COUNT across all 3 parts MUST BE AT LEAST 280 WORDS.
+[RULES]
 - Output ONLY spoken English words. Never include stage directions like '[Music fades]', '[Host]', or cues.
-- Do NOT lecture about grammar rules. Focus on the story, meaning, and human experience.`;
+- Do NOT lecture about grammar rules. Focus on the story and meaning.`;
 
   const userPrompt = sourceText.trim()
-    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nGenerate the complete 3-part, 280-320 word podcast episode on: "${resolvedTopic}".`
-    : `Generate the complete 3-part, 280-320 word podcast episode on: "${resolvedTopic}".`;
+    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nCreate the 3-part podcast episode discussing: "${resolvedTopic}".`
+    : `Create a 3-part podcast episode on the Topic: "${resolvedTopic}".`;
 
   const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1500);
   if (!scriptResult.data) {
@@ -771,33 +770,32 @@ To ensure the recording lasts approximately 2 minutes (1:50-2:10), you MUST writ
   }
 
   const d = scriptResult.data;
-  let scriptText = '';
+  const p1 = (d.part_1_intro || '').trim();
+  const p2 = (d.part_2_body || '').trim();
+  const p3 = (d.part_3_conclusion || '').trim();
 
-  if (d.part_1_intro && d.part_2_body && d.part_3_conclusion) {
-    scriptText = `${d.part_1_intro.trim()}\n\n${d.part_2_body.trim()}\n\n${d.part_3_conclusion.trim()}`;
-  } else {
-    scriptText = d.script || d.storyText || d.text || '';
-  }
-
-  if (!scriptText || scriptText.length < 100) {
-    return { error: 'Generated podcast script was too short. Please try again.' };
-  }
-
+  const fullScript = [p1, p2, p3].filter(Boolean).join('\n\n');
   const episodeTitle = d.title || `${resolvedTopic} (Audio Episode)`;
 
-  let audioDataUrl = '';
-  try {
-    const ttsRes = await generateAudioWithAI(env, { text: scriptText.replace(/\n+/g, ' '), lang: 'en' });
-    if (ttsRes.success && ttsRes.audioUrl) {
-      audioDataUrl = ttsRes.audioUrl;
-    }
-  } catch (e) {}
+  // Generate all 3 audio tracks in parallel (takes ~1.5s on Cloudflare AI)
+  const [audio1, audio2, audio3] = await Promise.all([
+    p1 ? generateAudioWithAI(env, { text: p1, lang: 'en' }) : { audioUrl: '' },
+    p2 ? generateAudioWithAI(env, { text: p2, lang: 'en' }) : { audioUrl: '' },
+    p3 ? generateAudioWithAI(env, { text: p3, lang: 'en' }) : { audioUrl: '' }
+  ]);
+
+  const tracks = [
+    { id: 1, title: 'Часть 1: Введение и контекст', text: p1, audioUrl: audio1.audioUrl || '' },
+    { id: 2, title: 'Часть 2: Основная история и разбор', text: p2, audioUrl: audio2.audioUrl || '' },
+    { id: 3, title: 'Часть 3: Выводы и вопрос для обсуждения', text: p3, audioUrl: audio3.audioUrl || '' }
+  ].filter(t => Boolean(t.text));
 
   return {
     success: true,
     title: episodeTitle,
-    script: scriptText,
-    audioUrl: audioDataUrl
+    script: fullScript,
+    audioUrl: tracks[0]?.audioUrl || '',
+    tracks: tracks
   };
 }
 
