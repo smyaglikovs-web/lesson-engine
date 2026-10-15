@@ -74,9 +74,6 @@ function concatMp3Base64(base64A, base64B) {
   }
 }
 
-// --------------------------------------------------------------------------
-// LIGHTNING-FAST WEB SEARCH RESOLVER
-// --------------------------------------------------------------------------
 export async function fetchLiveWebSearch(query = '') {
   if (!query || !query.trim()) return null;
   const cleanQuery = query.trim();
@@ -107,9 +104,6 @@ export async function fetchLiveWebSearch(query = '') {
   };
 }
 
-// --------------------------------------------------------------------------
-// OBJECT-SAFE & QUOTE-RESILIENT JSON PARSER
-// --------------------------------------------------------------------------
 export function cleanAndParseJson(rawText) {
   if (!rawText) return null;
   if (typeof rawText === 'object' && rawText !== null) return rawText;
@@ -155,9 +149,6 @@ export function cleanAndParseJson(rawText) {
   }
 }
 
-// --------------------------------------------------------------------------
-// BLOCK NORMALIZER & SANITIZER
-// --------------------------------------------------------------------------
 export function sanitizeBlockStructure(b) {
   if (!b || typeof b !== 'object') return [];
 
@@ -198,7 +189,6 @@ export function sanitizeBlockStructure(b) {
 
   b.type = type;
 
-  // 1. MULTIPLE CHOICE UNROLLING
   if (b.type === 'multiple_choice') {
     if (Array.isArray(b.questions) && b.questions.length > 0) {
       return b.questions.map((q, qIdx) => {
@@ -241,13 +231,11 @@ export function sanitizeBlockStructure(b) {
     b.question = b.question || b.statement || b.prompt || 'Choose the correct answer:';
   }
 
-  // 2. TEXT NORMALIZATION
   if (b.type === 'text') {
     b.text = String(b.text || b.paragraph || b.content || b.story || b.passage || '').trim();
     if (!b.text) return [];
   }
 
-  // 3. IMAGE BLOCK NORMALIZATION
   if (b.type === 'image') {
     let rawUrl = b.url || (Array.isArray(b.images) && b.images[0]?.url) || '';
     if (b.prompt && !rawUrl) {
@@ -258,7 +246,6 @@ export function sanitizeBlockStructure(b) {
     b.images = Array.isArray(b.images) && b.images.length > 0 ? b.images : (b.url ? [{ url: b.url, caption: b.caption }] : []);
   }
 
-  // 4. GAP FILL NORMALIZATION
   if (b.type === 'gap_fill') {
     let rawText = String(b.text || b.paragraph || b.content || '').trim();
     if (Array.isArray(b.sentences)) rawText = b.sentences.join('\n');
@@ -270,7 +257,6 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Fill the missing words in the blanks:';
   }
 
-  // 5. GAP FILL BANK (WORD BANK)
   if (b.type === 'gap_fill_bank') {
     let rawText = String(b.text || b.paragraph || b.content || b.passage || '').trim();
     
@@ -292,7 +278,6 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Fill the gaps using the correct words from the bank:';
   }
 
-  // 6. INLINE SELECT NORMALIZATION
   if (b.type === 'inline_select') {
     let rawText = String(b.text || b.paragraph || b.content || '').trim();
     if (Array.isArray(b.sentences)) rawText = b.sentences.join('\n');
@@ -300,7 +285,6 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Choose the correct word in context:';
   }
 
-  // 7. MULTI-SENTENCE REORDER
   if (b.type === 'sentence_reorder') {
     let sentencesList = [];
     if (Array.isArray(b.sentences) && b.sentences.length > 0) {
@@ -320,12 +304,10 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Put the words in order to form correct sentences:';
   }
 
-  // 8. OPEN INPUT NORMALIZATION
   if (b.type === 'open_input') {
     b.prompt = String(b.prompt || b.question || b.discussion || b.text || 'Discussion question / prompt...').trim();
   }
 
-  // 9. FLASHCARDS NORMALIZATION
   if (b.type === 'flashcards') {
     let rawCards = Array.isArray(b.cards) ? b.cards : [];
     b.cards = rawCards.map(c => ({
@@ -336,7 +318,6 @@ export function sanitizeBlockStructure(b) {
     b.title = b.title || 'Key Target Vocabulary';
   }
 
-  // 10. MATCHING NORMALIZATION
   if (b.type === 'matching') {
     let rawPairs = b.pairs || b.items || b.matches || [];
     let normalizedPairs = [];
@@ -363,7 +344,6 @@ export function sanitizeBlockStructure(b) {
     b.pairs = normalizedPairs.length > 0 ? normalizedPairs : [{ left: 'Concept', right: 'Definition' }];
   }
 
-  // 11. CATEGORIZATION NORMALIZATION
   if (b.type === 'categorization') {
     b.categories = Array.isArray(b.categories) && b.categories.length > 0 ? b.categories : ['Category 1', 'Category 2'];
     const rawItems = Array.isArray(b.items) ? b.items : [];
@@ -375,7 +355,6 @@ export function sanitizeBlockStructure(b) {
     b.instruction = b.instruction || 'Sort the items into the correct categories:';
   }
 
-  // 12. DISCUSSION ROULETTE
   if (b.type === 'spinning_wheel') {
     let items = Array.isArray(b.items) ? b.items : [];
     items = items.map(it => String(it).trim()).filter(Boolean);
@@ -387,7 +366,6 @@ export function sanitizeBlockStructure(b) {
     b.eliminateMode = b.eliminateMode !== undefined ? b.eliminateMode : true;
   }
 
-  // 13. GRAMMAR CARD NORMALIZATION
   if (b.type === 'grammar_card') {
     b.title = b.title || 'Target Grammar Rule';
     b.formula = b.formula || 'Subject + Verb';
@@ -395,7 +373,6 @@ export function sanitizeBlockStructure(b) {
     b.examples = Array.isArray(b.examples) && b.examples.length > 0 ? b.examples : ['Example sentence.'];
   }
 
-  // 14. LINK BLOCK NORMALIZATION
   if (b.type === 'link') {
     b.url = b.url || 'https://en.wikipedia.org';
     b.title = b.title || 'Resource Link';
@@ -406,15 +383,11 @@ export function sanitizeBlockStructure(b) {
   return [b];
 }
 
-// --------------------------------------------------------------------------
-// HIGH-SPEED MULTI-TIER AI INFERENCE PIPELINE
-// Supports both strict JSON parsing (for lessons) & pure text (for podcast scripts)
-// --------------------------------------------------------------------------
 export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400, expectJson = true) {
   let errors = [];
   const isMultimodal = Array.isArray(userContent);
 
-  // 1. GROQ (Instant sub-second inference)
+  // 1. GROQ
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5 && !isMultimodal) {
     const groqKey = env.GROQ_API_KEY.trim();
     try {
@@ -453,7 +426,7 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. CLOUDFLARE WORKERS AI (Fast 8B / 3B fallback)
+  // 2. CLOUDFLARE WORKERS AI
   if (env.AI && !isMultimodal) {
     const cfModels = [
       '@cf/meta/llama-3.1-8b-instruct',
@@ -548,51 +521,9 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 4. OPENROUTER MULTIMODAL FALLBACK
-  if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
-    const openrouterKey = env.OPENROUTER_API_KEY.trim();
-    try {
-      const orBody = {
-        model: 'google/gemini-2.0-flash-lite-001:free',
-        messages: [
-          { role: 'system', content: expectJson ? `${systemPrompt}\nYou must return a valid JSON object only.` : systemPrompt },
-          { role: 'user', content: userContent }
-        ],
-        temperature: 0.4
-      };
-      if (expectJson) orBody.response_format = { type: 'json_object' };
-
-      const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openrouterKey}`,
-          'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
-          'X-Title': 'Lesson Engine'
-        },
-        body: JSON.stringify(orBody)
-      }, 6000);
-
-      if (res.ok) {
-        const data = await res.json();
-        const textContent = data?.choices?.[0]?.message?.content;
-        if (!expectJson && textContent && textContent.trim()) {
-          return { data: textContent.trim(), isFallback: false };
-        }
-        const parsed = cleanAndParseJson(textContent);
-        if (parsed) return { data: parsed, isFallback: false };
-      }
-    } catch (eOr) {
-      errors.push('OpenRouter');
-    }
-  }
-
   return { data: null, error: errors.join('; ') || 'All AI providers failed or timed out.', isFallback: true };
 }
 
-// --------------------------------------------------------------------------
-// AUTOMATIC PDF & TEXTBOOK SCANNER
-// --------------------------------------------------------------------------
 export async function scanDocumentAndBuildLesson(env, payload) {
   const { text = '', images = [], topic = '', level = 'C1' } = payload;
   if ((!text || !text.trim()) && (!images || images.length === 0)) {
@@ -664,9 +595,6 @@ Convert the provided textbook document/test paper (or scanned images) into a com
   };
 }
 
-// --------------------------------------------------------------------------
-// ULTRA-FAST TEXT-TO-SPEECH WITH PARALLEL CHUNK STITCHING
-// --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   if (!text || !text.trim()) return { error: 'Text is required.' };
   const cleanText = text.trim();
@@ -757,7 +685,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 }
 
 // --------------------------------------------------------------------------
-// 3-PART MULTI-AUDIO PODCAST: DIRECT TEXT SPLITTING (IMMUNE TO JSON ESCAPING)
+// BULLETPROOF 3-PART MULTI-AUDIO PODCAST: STRICT MARKER PARSING
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', lessonTitle = '', level = 'B1' } = payload;
@@ -774,54 +702,62 @@ Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
 
 [TASK]
-Write an authentic, highly engaging 3-paragraph spoken podcast script (~260-310 words total).
-Separate each paragraph strictly with an empty line (two newlines).
+Write an authentic, highly engaging 3-part podcast script (~300 words total).
+You MUST structure your response EXACTLY with these 3 headers:
 
-Paragraph 1 (~75 words): Hook the listener and introduce the core concept or character.
-Paragraph 2 (~130 words): Deep dive into the story, tracks, lore, conflicts, and pivotal details.
-Paragraph 3 (~75 words): Psychological or cultural takeaway, followed by a thought-provoking closing question for the listener.
+[PART 1]
+(Write 80-100 words introducing the topic and hooking the listener)
+
+[PART 2]
+(Write 130-150 words deep diving into the story, lore, or details)
+
+[PART 3]
+(Write 80-100 words concluding with a thought-provoking question)
 
 [RULES]
-- Output ONLY spoken English text.
-- Do NOT output JSON! Do NOT output markdown headers, bullets, or labels like "Paragraph 1" or "[Host]".
-- Just write 3 natural, compelling paragraphs of spoken English.`;
+- Do NOT use JSON.
+- Write ONLY spoken English text under the headers.`;
 
   const userPrompt = sourceText.trim()
-    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nWrite a 3-paragraph educational podcast episode about: "${resolvedTopic}".`
-    : `Write a 3-paragraph educational podcast episode about: "${resolvedTopic}".`;
+    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nWrite the 3-part podcast episode using the [PART 1], [PART 2], [PART 3] headers.`
+    : `Write the 3-part podcast episode about "${resolvedTopic}" using the [PART 1], [PART 2], [PART 3] headers.`;
 
-  // We set expectJson = false to receive clean, unescaped natural text directly
-  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1600, false);
+  // We set expectJson = false to receive clean text
+  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1800, false);
   
-  if (!scriptResult.data || typeof scriptResult.data !== 'string') {
-    return { error: `Failed to write podcast script: ${scriptResult.error || 'Model error'}` };
+  let rawScript = '';
+  if (scriptResult.data && typeof scriptResult.data === 'string') {
+    rawScript = scriptResult.data.trim();
+  } else if (scriptResult.data && typeof scriptResult.data === 'object') {
+    rawScript = JSON.stringify(scriptResult.data);
   }
 
-  const rawScript = scriptResult.data.trim();
-  
-  // Split cleanly into paragraphs
-  let paragraphs = rawScript.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 25);
+  // Split cleanly by the forced headers
+  const parts = rawScript.split(/\[PART \d\]/gi).map(p => p.trim()).filter(p => p.length > 25);
 
-  // Fallback: If returned in one continuous block, split by sentences
-  if (paragraphs.length < 3) {
-    const sentences = rawScript.match(/[^.!?]+[.!?]+/g) || [rawScript];
-    if (sentences.length >= 6) {
-      const p1 = sentences.slice(0, 2).join(' ').trim();
-      const p2 = sentences.slice(2, sentences.length - 2).join(' ').trim();
-      const p3 = sentences.slice(sentences.length - 2).join(' ').trim();
-      paragraphs = [p1, p2, p3];
+  let p1 = '', p2 = '', p3 = '';
+
+  if (parts.length >= 3) {
+    p1 = parts[0];
+    p2 = parts[1];
+    p3 = parts[2];
+  } else {
+    // Fallback: If AI ignores headers, force-chunk the text into 3 even pieces by sentences
+    const sentences = rawScript.replace(/\[.*?\]/g, '').match(/[^.!?]+[.!?]+/g) || [rawScript];
+    if (sentences.length >= 3) {
+      const chunk = Math.ceil(sentences.length / 3);
+      p1 = sentences.slice(0, chunk).join(' ').trim();
+      p2 = sentences.slice(chunk, chunk * 2).join(' ').trim();
+      p3 = sentences.slice(chunk * 2).join(' ').trim();
     } else {
-      paragraphs = [rawScript];
+      p1 = rawScript;
     }
   }
 
-  const p1 = paragraphs[0] || '';
-  const p2 = paragraphs[1] || '';
-  const p3 = paragraphs[2] || '';
-  const fullScript = paragraphs.join('\n\n');
+  const fullScript = [p1, p2, p3].filter(Boolean).join('\n\n');
   const episodeTitle = `${resolvedTopic} (Audio Episode)`;
 
-  // Generate all 3 audio tracks in parallel (fast and reliable)
+  // Generate all 3 audio tracks in parallel
   const [audio1, audio2, audio3] = await Promise.all([
     p1 ? generateAudioWithAI(env, { text: p1, lang: 'en' }) : { audioUrl: '' },
     p2 ? generateAudioWithAI(env, { text: p2, lang: 'en' }) : { audioUrl: '' },
@@ -832,7 +768,7 @@ Paragraph 3 (~75 words): Psychological or cultural takeaway, followed by a thoug
     { id: 1, title: 'Часть 1: Введение и контекст', text: p1, audioUrl: audio1.audioUrl || '' },
     { id: 2, title: 'Часть 2: Основная история и разбор', text: p2, audioUrl: audio2.audioUrl || '' },
     { id: 3, title: 'Часть 3: Выводы и вопрос для обсуждения', text: p3, audioUrl: audio3.audioUrl || '' }
-  ].filter(t => Boolean(t.text));
+  ].filter(t => Boolean(t.text && t.audioUrl));
 
   return {
     success: true,
@@ -942,9 +878,6 @@ Return ONLY valid JSON.
   }
 }
 
-// --------------------------------------------------------------------------
-// FULL LESSON ENGINE (SLOT DECOMPOSITION = 230-260 WORDS GUARANTEED)
-// --------------------------------------------------------------------------
 export async function generateFullLessonWithAI(env, payload) {
   const { 
     text = '', 
@@ -1148,9 +1081,6 @@ TOTAL WORD COUNT ACROSS ALL 3 PARAGRAPHS MUST BE 230-260 WORDS.
   };
 }
 
-// --------------------------------------------------------------------------
-// 1-CLICK BLOCK AI ASSISTANT
-// --------------------------------------------------------------------------
 export async function transformBlockWithAI(env, payload) {
   let { actions = [], sourceBlock = {}, sourceText = '', matchingType = 'synonym', flashcardType = 'russian', level = 'B1' } = payload;
   if (!actions || actions.length === 0) return { error: 'Select at least one task.' };
