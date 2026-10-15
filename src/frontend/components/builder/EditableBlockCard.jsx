@@ -720,14 +720,15 @@ const AudioBlockEditor = ({
         })
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+if (res.ok && data.success) {
         onChange({
           ...block,
           title: data.title || topicToUse,
           transcript: data.script || block.transcript,
-          url: data.audioUrl || block.url
+          url: data.audioUrl || block.url,
+          tracks: data.tracks || [] // Save the 3 paragraph tracks!
         });
-        setStatusMsg('✅ 2-Minute Podcast & Audio generated!');
+        setStatusMsg('✅ 3-Part Audio & Podcast generated!');
       } else {
         alert('Podcast generation failed: ' + (data.error || 'Unknown error'));
         setStatusMsg('');
