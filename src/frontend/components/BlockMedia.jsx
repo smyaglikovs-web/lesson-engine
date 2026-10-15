@@ -145,20 +145,14 @@ export const BlockVideo = ({ block, onEditMedia }) => {
   );
 };
 
+// CLEAN MULTI-TRACK AUDIO / PODCAST PLAYER
 export const BlockAudio = ({ block = {}, onEditMedia }) => {
   const [showTranscript, setShowTranscript] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1.0);
-  const audioRef = useRef(null);
-
-  const handleSpeedChange = (speed) => {
-    setPlaybackRate(speed);
-    if (audioRef.current) {
-      audioRef.current.playbackRate = speed;
-    }
-  };
+  const tracks = Array.isArray(block.tracks) && block.tracks.length > 0 ? block.tracks : null;
 
   return (
-    <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/90 shadow-xs mb-6 space-y-4 w-full min-w-0">
+    <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/90 shadow-xs mb-6 space-y-5 w-full min-w-0">
+      {/* HEADER */}
       <div className="flex justify-between items-start gap-3">
         <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 text-xl font-bold shadow-2xs shrink-0">
@@ -166,7 +160,7 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
           </div>
           <div>
             <span className="px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[10px] uppercase tracking-wider inline-block mb-1">
-              Listening Audio / Podcast
+              Listening Audio / Podcast ({tracks ? `${tracks.length} части` : 'Аудио'})
             </span>
             <h4 className="font-extrabold text-lg sm:text-xl text-slate-900 leading-snug">
               {block.title || 'Audio Episode'}
@@ -185,46 +179,46 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
         )}
       </div>
 
-      {block.url ? (
-        <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-          <audio 
-            ref={audioRef}
-            controls 
-            className="w-full h-10" 
-            key={block.url}
-          >
-            <source src={block.url} type="audio/mpeg" />
-            <source src={block.url} type="audio/wav" />
-            Your browser does not support audio playback.
-          </audio>
+      {/* MULTI-PARAGRAPH AUDIO TRACKS */}
+      {tracks ? (
+        <div className="space-y-4">
+          {tracks.map((t) => (
+            <div key={t.id} className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-2.5">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-extrabold text-indigo-900">
+                  {t.title}
+                </span>
+              </div>
 
-          <div className="flex justify-between items-center text-xs font-bold pt-1">
-            <span className="text-[11px] text-slate-500 font-extrabold uppercase tracking-wider">Speed:</span>
-            <div className="flex gap-1.5">
-              {[0.8, 1.0, 1.2].map((speed) => (
-                <button
-                  key={speed}
-                  type="button"
-                  onClick={() => handleSpeedChange(speed)}
-                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    playbackRate === speed
-                      ? 'bg-indigo-600 text-white shadow-2xs'
-                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  {speed}x
-                </button>
-              ))}
+              {t.audioUrl && (
+                <audio controls className="w-full h-9" key={t.audioUrl}>
+                  <source src={t.audioUrl} type="audio/mp3" />
+                  <source src={t.audioUrl} type="audio/wav" />
+                </audio>
+              )}
+
+              <p className="text-xs sm:text-sm text-slate-700 font-serif leading-relaxed pt-1">
+                {t.text}
+              </p>
             </div>
-          </div>
+          ))}
+        </div>
+      ) : block.url ? (
+        /* SINGLE TRACK FALLBACK */
+        <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+          <audio controls className="w-full h-10" key={block.url}>
+            <source src={block.url} type="audio/mp3" />
+            <source src={block.url} type="audio/wav" />
+          </audio>
         </div>
       ) : (
         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-500 italic">
-          Audio is being processed or not uploaded yet.
+          Аудио еще не сгенерировано.
         </div>
       )}
 
-      {block.transcript && (
+      {/* SINGLE TRANSCRIPT DRAWER IF NOT MULTI-TRACK */}
+      {!tracks && block.transcript && (
         <div className="pt-1">
           <button
             type="button"
@@ -235,7 +229,7 @@ export const BlockAudio = ({ block = {}, onEditMedia }) => {
           </button>
 
           {showTranscript && (
-            <div className="mt-3 p-4 bg-slate-50 rounded-2xl text-xs sm:text-sm text-slate-800 whitespace-pre-line border border-slate-200 leading-relaxed animate-fade-in font-sans">
+            <div className="mt-3 p-4 bg-slate-50 rounded-2xl text-xs sm:text-sm text-slate-800 whitespace-pre-line border border-slate-200 leading-relaxed font-sans">
               {block.transcript}
             </div>
           )}
