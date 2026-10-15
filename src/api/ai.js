@@ -56,21 +56,27 @@ function bufferToBase64(buffer) {
   return btoa(binary);
 }
 
-function concatMp3Base64(base64A, base64B) {
+// Safer, dynamic stitcher for any number of audio chunks
+function concatMultipleMp3Base64(base64Array) {
   try {
-    const cleanA = (base64A || '').replace(/^data:[^;]+;base64,/, '');
-    const cleanB = (base64B || '').replace(/^data:[^;]+;base64,/, '');
-    if (!cleanA) return base64B;
-    if (!cleanB) return base64A;
+    const buffers = base64Array
+      .map(b64 => (b64 || '').replace(/^data:[^;]+;base64,/, ''))
+      .filter(Boolean)
+      .map(clean => Uint8Array.from(atob(clean), c => c.charCodeAt(0)));
+      
+    if (buffers.length === 0) return '';
+    if (buffers.length === 1) return `data:audio/mp3;base64,${bufferToBase64(buffers[0])}`;
 
-    const rawA = Uint8Array.from(atob(cleanA), c => c.charCodeAt(0));
-    const rawB = Uint8Array.from(atob(cleanB), c => c.charCodeAt(0));
-    const merged = new Uint8Array(rawA.length + rawB.length);
-    merged.set(rawA, 0);
-    merged.set(rawB, rawA.length);
+    const totalLen = buffers.reduce((sum, buf) => sum + buf.length, 0);
+    const merged = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const buf of buffers) {
+      merged.set(buf, offset);
+      offset += buf.length;
+    }
     return `data:audio/mp3;base64,${bufferToBase64(merged)}`;
   } catch (e) {
-    return base64A || base64B || '';
+    return '';
   }
 }
 
@@ -595,6 +601,9 @@ Convert the provided textbook document/test paper (or scanned images) into a com
   };
 }
 
+// --------------------------------------------------------------------------
+// BULLETPROOF TEXT-TO-SPEECH (DYNAMIC CHUNKING TO AVOID CLOUDFLARE LIMITS)
+// --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   if (!text || !text.trim()) return { error: 'Text is required.' };
   const cleanText = text.trim();
@@ -602,37 +611,27 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   // 1. PRIMARY: CLOUDFLARE WORKERS AI MELOTTS
   if (env.AI) {
     try {
-      if (cleanText.length > 850) {
-        const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
-        const midIdx = Math.ceil(sentences.length / 2);
-        const part1 = sentences.slice(0, midIdx).join(' ').trim();
-        const part2 = sentences.slice(midIdx).join(' ').trim();
-
-        const [melo1, melo2] = await Promise.all([
-          env.AI.run('@cf/myshell-ai/melotts', { prompt: part1, lang: lang || 'en' }),
-          env.AI.run('@cf/myshell-ai/melotts', { prompt: part2, lang: lang || 'en' })
-        ]);
-
-        const audio1 = melo1?.audio || '';
-        const audio2 = melo2?.audio || '';
-
-        if (audio1 && audio2) {
-          const combinedAudio = concatMp3Base64(audio1, audio2);
-          return { success: true, audioUrl: combinedAudio };
-        } else if (audio1 || audio2) {
-          const single = audio1 || audio2;
-          return { success: true, audioUrl: single.startsWith('data:') ? single : `data:audio/mp3;base64,${single}` };
+      // Aggressively chunk at ~400 chars so we NEVER hit TTS silent dropping
+      const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+      const chunks = [];
+      let current = '';
+      for (const s of sentences) {
+        if ((current + s).length > 400 && current.length > 0) {
+          chunks.push(current.trim());
+          current = s;
+        } else {
+          current += (current ? ' ' : '') + s;
         }
-      } else {
-        const meloRes = await env.AI.run('@cf/myshell-ai/melotts', {
-          prompt: cleanText,
-          lang: lang || 'en'
-        });
+      }
+      if (current.trim()) chunks.push(current.trim());
 
-        if (meloRes && typeof meloRes.audio === 'string' && meloRes.audio.length > 100) {
-          const audioUrl = meloRes.audio.startsWith('data:') ? meloRes.audio : `data:audio/mp3;base64,${meloRes.audio}`;
-          return { success: true, audioUrl };
-        }
+      const meloPromises = chunks.map(chunk => env.AI.run('@cf/myshell-ai/melotts', { prompt: chunk, lang: lang || 'en' }));
+      const meloResults = await Promise.all(meloPromises);
+
+      const validBase64s = meloResults.map(r => r?.audio).filter(Boolean);
+      if (validBase64s.length > 0) {
+        const combinedAudio = concatMultipleMp3Base64(validBase64s);
+        if (combinedAudio) return { success: true, audioUrl: combinedAudio };
       }
     } catch (eMelo) {
       console.error('MeloTTS error:', eMelo);
@@ -685,7 +684,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 }
 
 // --------------------------------------------------------------------------
-// BULLETPROOF 3-PART MULTI-AUDIO PODCAST: STRICT MARKER PARSING
+// FORCED LONG-FORM PODCAST GENERATOR
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', lessonTitle = '', level = 'B1' } = payload;
@@ -702,28 +701,30 @@ Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
 
 [TASK]
-Write an authentic, highly engaging 3-part podcast script (~300 words total).
+Write an authentic, highly engaging, and LONG podcast script.
+You MUST write at least 350 words in total. Most AI models write too little—you must FORCE yourself to expand on every detail, give rich examples, and speak at length.
 You MUST structure your response EXACTLY with these 3 headers:
 
 [PART 1]
-(Write 80-100 words introducing the topic and hooking the listener)
+(Write a highly detailed introduction. Hook the listener, set the scene, and explain the background history extensively. Write at least 6 long sentences.)
 
 [PART 2]
-(Write 130-150 words deep diving into the story, lore, or details)
+(Write a massive, in-depth exploration. Analyze the story, lore, and conflicts. Give at least two specific, detailed examples or anecdotes. Write at least 8 long sentences.)
 
 [PART 3]
-(Write 80-100 words concluding with a thought-provoking question)
+(Write a thorough conclusion. Discuss the philosophical or cultural impact in detail, summarize the takeaway, and end with a deep question for the audience. Write at least 6 long sentences.)
 
 [RULES]
 - Do NOT use JSON.
-- Write ONLY spoken English text under the headers.`;
+- Write ONLY spoken English text under the headers.
+- EXPAND your ideas. Do not be brief.`;
 
   const userPrompt = sourceText.trim()
-    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nWrite the 3-part podcast episode using the [PART 1], [PART 2], [PART 3] headers.`
-    : `Write the 3-part podcast episode about "${resolvedTopic}" using the [PART 1], [PART 2], [PART 3] headers.`;
+    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nWrite the long 3-part podcast episode using the [PART 1], [PART 2], [PART 3] headers.`
+    : `Write the long 3-part podcast episode about "${resolvedTopic}" using the [PART 1], [PART 2], [PART 3] headers.`;
 
-  // We set expectJson = false to receive clean text
-  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1800, false);
+  // expectJson = false
+  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 2400, false);
   
   let rawScript = '';
   if (scriptResult.data && typeof scriptResult.data === 'string') {
@@ -732,7 +733,6 @@ You MUST structure your response EXACTLY with these 3 headers:
     rawScript = JSON.stringify(scriptResult.data);
   }
 
-  // Split cleanly by the forced headers
   const parts = rawScript.split(/\[PART \d\]/gi).map(p => p.trim()).filter(p => p.length > 25);
 
   let p1 = '', p2 = '', p3 = '';
@@ -742,7 +742,6 @@ You MUST structure your response EXACTLY with these 3 headers:
     p2 = parts[1];
     p3 = parts[2];
   } else {
-    // Fallback: If AI ignores headers, force-chunk the text into 3 even pieces by sentences
     const sentences = rawScript.replace(/\[.*?\]/g, '').match(/[^.!?]+[.!?]+/g) || [rawScript];
     if (sentences.length >= 3) {
       const chunk = Math.ceil(sentences.length / 3);
@@ -757,7 +756,6 @@ You MUST structure your response EXACTLY with these 3 headers:
   const fullScript = [p1, p2, p3].filter(Boolean).join('\n\n');
   const episodeTitle = `${resolvedTopic} (Audio Episode)`;
 
-  // Generate all 3 audio tracks in parallel
   const [audio1, audio2, audio3] = await Promise.all([
     p1 ? generateAudioWithAI(env, { text: p1, lang: 'en' }) : { audioUrl: '' },
     p2 ? generateAudioWithAI(env, { text: p2, lang: 'en' }) : { audioUrl: '' },
