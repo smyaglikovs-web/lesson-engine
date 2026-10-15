@@ -408,8 +408,9 @@ export function sanitizeBlockStructure(b) {
 
 // --------------------------------------------------------------------------
 // HIGH-SPEED MULTI-TIER AI INFERENCE PIPELINE
+// Supports both strict JSON parsing (for lessons) & pure text (for podcast scripts)
 // --------------------------------------------------------------------------
-export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400) {
+export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 2400, expectJson = true) {
   let errors = [];
   const isMultimodal = Array.isArray(userContent);
 
@@ -417,26 +418,34 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
   if (env.GROQ_API_KEY && env.GROQ_API_KEY.trim().length > 5 && !isMultimodal) {
     const groqKey = env.GROQ_API_KEY.trim();
     try {
+      const bodyPayload = {
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: expectJson ? `${systemPrompt}\nYou must return a valid JSON object only.` : systemPrompt },
+          { role: 'user', content: expectJson ? `${userContent}\nPlease respond with valid JSON.` : userContent }
+        ],
+        temperature: 0.4
+      };
+      if (expectJson) {
+        bodyPayload.response_format = { type: 'json_object' };
+      }
+
       const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${groqKey}`
         },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
-            { role: 'user', content: `${userContent}\nPlease respond with valid JSON.` }
-          ],
-          temperature: 0.4,
-          response_format: { type: 'json_object' }
-        })
+        body: JSON.stringify(bodyPayload)
       }, 4000);
 
       if (res.ok) {
         const data = await res.json();
-        const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+        const textContent = data?.choices?.[0]?.message?.content;
+        if (!expectJson && textContent && textContent.trim()) {
+          return { data: textContent.trim(), isFallback: false };
+        }
+        const parsed = cleanAndParseJson(textContent);
         if (parsed) return { data: parsed, isFallback: false };
       }
     } catch (eGroq) {
@@ -444,25 +453,33 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
     }
   }
 
-  // 2. CLOUDFLARE WORKERS AI (Fast FP8 / Standard 8B)
+  // 2. CLOUDFLARE WORKERS AI (Fast 8B / 3B fallback)
   if (env.AI && !isMultimodal) {
     const cfModels = [
+      '@cf/meta/llama-3.1-8b-instruct',
       '@cf/meta/llama-3.1-8b-instruct-fp8',
-      '@cf/meta/llama-3.1-8b-instruct'
+      '@cf/meta/llama-3.2-3b-instruct'
     ];
 
     for (const cfModel of cfModels) {
       try {
         const resCf = await env.AI.run(cfModel, {
           messages: [
-            { role: 'system', content: `${systemPrompt}\nReturn a valid JSON object only.` },
-            { role: 'user', content: `${userContent}\nReturn valid JSON.` }
+            { role: 'system', content: expectJson ? `${systemPrompt}\nReturn a valid JSON object only.` : systemPrompt },
+            { role: 'user', content: expectJson ? `${userContent}\nReturn valid JSON.` : userContent }
           ],
           temperature: 0.4,
           max_tokens: Math.min(maxTokens, 2400)
         });
 
         if (resCf) {
+          if (!expectJson) {
+            const rawText = resCf.response || resCf.result || resCf.choices?.[0]?.message?.content;
+            if (rawText && typeof rawText === 'string' && rawText.trim().length > 40) {
+              return { data: rawText.trim(), isFallback: false };
+            }
+          }
+
           if (typeof resCf.response === 'object' && resCf.response !== null) {
             return { data: resCf.response, isFallback: false };
           }
@@ -501,22 +518,29 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
         });
         gContents = [{ role: 'user', parts }];
       } else {
-        gContents = [{ role: 'user', parts: [{ text: `${userContent}\nOutput valid JSON.` }] }];
+        gContents = [{ role: 'user', parts: [{ text: expectJson ? `${userContent}\nOutput valid JSON.` : userContent }] }];
       }
+
+      const genConfig = { temperature: 0.4 };
+      if (expectJson) genConfig.responseMimeType = 'application/json';
 
       const gRes = await fetchWithTimeout(gUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: `${systemPrompt}\nOutput valid JSON only.` }] },
+          systemInstruction: { parts: [{ text: expectJson ? `${systemPrompt}\nOutput valid JSON only.` : systemPrompt }] },
           contents: gContents,
-          generationConfig: { responseMimeType: 'application/json', temperature: 0.4 }
+          generationConfig: genConfig
         })
       }, 6000);
 
       if (gRes.ok) {
         const gData = await gRes.json();
-        const parsed = cleanAndParseJson(gData?.candidates?.[0]?.content?.parts?.[0]?.text);
+        const rawPart = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!expectJson && rawPart && rawPart.trim()) {
+          return { data: rawPart.trim(), isFallback: false };
+        }
+        const parsed = cleanAndParseJson(rawPart);
         if (parsed) return { data: parsed, isFallback: false };
       }
     } catch (eG) {
@@ -528,6 +552,16 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
   if (env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim().length > 5) {
     const openrouterKey = env.OPENROUTER_API_KEY.trim();
     try {
+      const orBody = {
+        model: 'google/gemini-2.0-flash-lite-001:free',
+        messages: [
+          { role: 'system', content: expectJson ? `${systemPrompt}\nYou must return a valid JSON object only.` : systemPrompt },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 0.4
+      };
+      if (expectJson) orBody.response_format = { type: 'json_object' };
+
       const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -536,20 +570,16 @@ export async function runAiPipeline(env, systemPrompt, userContent, maxTokens = 
           'HTTP-Referer': 'https://lessons.smyaglikovs.workers.dev',
           'X-Title': 'Lesson Engine'
         },
-        body: JSON.stringify({
-          model: 'google/gemini-2.0-flash-lite-001:free',
-          messages: [
-            { role: 'system', content: `${systemPrompt}\nYou must return a valid JSON object only.` },
-            { role: 'user', content: userContent }
-          ],
-          temperature: 0.4,
-          response_format: { type: 'json_object' }
-        })
+        body: JSON.stringify(orBody)
       }, 6000);
 
       if (res.ok) {
         const data = await res.json();
-        const parsed = cleanAndParseJson(data?.choices?.[0]?.message?.content);
+        const textContent = data?.choices?.[0]?.message?.content;
+        if (!expectJson && textContent && textContent.trim()) {
+          return { data: textContent.trim(), isFallback: false };
+        }
+        const parsed = cleanAndParseJson(textContent);
         if (parsed) return { data: parsed, isFallback: false };
       }
     } catch (eOr) {
@@ -623,7 +653,7 @@ Convert the provided textbook document/test paper (or scanned images) into a com
     userPayload = `Scanned Textbook Content:\n${text.slice(0, 6500)}\n\nConvert this entire document into interactive, fully solved lesson pages.`;
   }
 
-  const result = await runAiPipeline(env, systemPrompt, userPayload, 2200);
+  const result = await runAiPipeline(env, systemPrompt, userPayload, 2200, true);
   if (!result.data) {
     return { error: `Document scanning failed: ${result.error}` };
   }
@@ -635,16 +665,15 @@ Convert the provided textbook document/test paper (or scanned images) into a com
 }
 
 // --------------------------------------------------------------------------
-// ULTRA-FAST TEXT-TO-SPEECH WITH PARALLEL CHUNK STITCHING (TRUE ~2 MIN AUDIO)
+// ULTRA-FAST TEXT-TO-SPEECH WITH PARALLEL CHUNK STITCHING
 // --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   if (!text || !text.trim()) return { error: 'Text is required.' };
   const cleanText = text.trim();
 
-  // 1. PRIMARY: CLOUDFLARE WORKERS AI MELOTTS (With chunk stitching for full 2-min audio)
+  // 1. PRIMARY: CLOUDFLARE WORKERS AI MELOTTS
   if (env.AI) {
     try {
-      // If text is longer than 850 chars (~130 words), split into 2 halves and generate in parallel
       if (cleanText.length > 850) {
         const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
         const midIdx = Math.ceil(sentences.length / 2);
@@ -728,7 +757,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 }
 
 // --------------------------------------------------------------------------
-// 3-PART MULTI-AUDIO PODCAST (Parallel synthesis per paragraph)
+// 3-PART MULTI-AUDIO PODCAST: DIRECT TEXT SPLITTING (IMMUNE TO JSON ESCAPING)
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', lessonTitle = '', level = 'B1' } = payload;
@@ -740,44 +769,59 @@ export async function generatePodcastAudioWithAI(env, payload) {
   const cefrRules = CEFR_MATRIX[level] || CEFR_MATRIX['B1'];
 
   const systemPrompt = `[ROLE]
-You are a World-Class Educational Podcast Host.
+You are a World-Class Educational Podcast Host and ELT Storyteller.
 Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
 
 [TASK]
-Write a comprehensive 3-paragraph educational podcast episode.
-You MUST write all 3 distinct parts in separate JSON keys.
+Write an authentic, highly engaging 3-paragraph spoken podcast script (~260-310 words total).
+Separate each paragraph strictly with an empty line (two newlines).
 
-[OUTPUT FORMAT - VALID JSON ONLY]
-{
-  "title": "${resolvedTopic} (Audio Episode)",
-  "part_1_intro": "The Hook & Setting the Scene (approx 70-85 words)...",
-  "part_2_body": "Deep Lore, Story, and Narrative Conflict (approx 130-150 words)...",
-  "part_3_conclusion": "Takeaway & Closing Discussion Question (approx 70-85 words)..."
-}
+Paragraph 1 (~75 words): Hook the listener and introduce the core concept or character.
+Paragraph 2 (~130 words): Deep dive into the story, tracks, lore, conflicts, and pivotal details.
+Paragraph 3 (~75 words): Psychological or cultural takeaway, followed by a thought-provoking closing question for the listener.
 
 [RULES]
-- Output ONLY spoken English words. Never include stage directions like '[Music fades]', '[Host]', or cues.
-- Do NOT lecture about grammar rules. Focus on the story and meaning.`;
+- Output ONLY spoken English text.
+- Do NOT output JSON! Do NOT output markdown headers, bullets, or labels like "Paragraph 1" or "[Host]".
+- Just write 3 natural, compelling paragraphs of spoken English.`;
 
   const userPrompt = sourceText.trim()
-    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nCreate the 3-part podcast episode discussing: "${resolvedTopic}".`
-    : `Create a 3-part podcast episode on the Topic: "${resolvedTopic}".`;
+    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nWrite a 3-paragraph educational podcast episode about: "${resolvedTopic}".`
+    : `Write a 3-paragraph educational podcast episode about: "${resolvedTopic}".`;
 
-  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1500);
-  if (!scriptResult.data) {
-    return { error: `Failed to write podcast script: ${scriptResult.error}` };
+  // We set expectJson = false to receive clean, unescaped natural text directly
+  const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 1600, false);
+  
+  if (!scriptResult.data || typeof scriptResult.data !== 'string') {
+    return { error: `Failed to write podcast script: ${scriptResult.error || 'Model error'}` };
   }
 
-  const d = scriptResult.data;
-  const p1 = (d.part_1_intro || '').trim();
-  const p2 = (d.part_2_body || '').trim();
-  const p3 = (d.part_3_conclusion || '').trim();
+  const rawScript = scriptResult.data.trim();
+  
+  // Split cleanly into paragraphs
+  let paragraphs = rawScript.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 25);
 
-  const fullScript = [p1, p2, p3].filter(Boolean).join('\n\n');
-  const episodeTitle = d.title || `${resolvedTopic} (Audio Episode)`;
+  // Fallback: If returned in one continuous block, split by sentences
+  if (paragraphs.length < 3) {
+    const sentences = rawScript.match(/[^.!?]+[.!?]+/g) || [rawScript];
+    if (sentences.length >= 6) {
+      const p1 = sentences.slice(0, 2).join(' ').trim();
+      const p2 = sentences.slice(2, sentences.length - 2).join(' ').trim();
+      const p3 = sentences.slice(sentences.length - 2).join(' ').trim();
+      paragraphs = [p1, p2, p3];
+    } else {
+      paragraphs = [rawScript];
+    }
+  }
 
-  // Generate all 3 audio tracks in parallel (takes ~1.5s on Cloudflare AI)
+  const p1 = paragraphs[0] || '';
+  const p2 = paragraphs[1] || '';
+  const p3 = paragraphs[2] || '';
+  const fullScript = paragraphs.join('\n\n');
+  const episodeTitle = `${resolvedTopic} (Audio Episode)`;
+
+  // Generate all 3 audio tracks in parallel (fast and reliable)
   const [audio1, audio2, audio3] = await Promise.all([
     p1 ? generateAudioWithAI(env, { text: p1, lang: 'en' }) : { audioUrl: '' },
     p2 ? generateAudioWithAI(env, { text: p2, lang: 'en' }) : { audioUrl: '' },
@@ -877,7 +921,7 @@ Return ONLY valid JSON.
 }`;
 
   try {
-    const result = await runAiPipeline(env, systemPrompt, `Student Response:\n"${studentText}"`, 800);
+    const result = await runAiPipeline(env, systemPrompt, `Student Response:\n"${studentText}"`, 800, true);
     return result.data || {
       rubricScore: 4,
       maxRubric: 5,
@@ -973,7 +1017,7 @@ TOTAL WORD COUNT ACROSS ALL 3 PARAGRAPHS MUST BE 230-260 WORDS.
     : `Create a rich 3-paragraph (230-260 words) lesson foundation at CEFR Level ${level} on Topic: "${resolvedTopic}". Format: ${format}.`;
 
   const [result, liveRef] = await Promise.all([
-    runAiPipeline(env, systemPrompt, userPrompt, 2400),
+    runAiPipeline(env, systemPrompt, userPrompt, 2400, true),
     fetchLiveWebSearch(resolvedTopic)
   ]);
 
@@ -983,7 +1027,6 @@ TOTAL WORD COUNT ACROSS ALL 3 PARAGRAPHS MUST BE 230-260 WORDS.
 
   const data = result.data;
 
-  // Stitch the 3 mandatory paragraphs into a rich, full-length reading passage
   let storyText = '';
   if (data.paragraph_1 && data.paragraph_2 && data.paragraph_3) {
     storyText = `${data.paragraph_1.trim()}\n\n${data.paragraph_2.trim()}\n\n${data.paragraph_3.trim()}`;
@@ -1301,7 +1344,7 @@ ${tasksInstructions}
 }`;
 
   try {
-    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 1800);
+    const result = await runAiPipeline(env, prompt, `Source Material:\n${safeContext}`, 1800, true);
     if (!result.data) {
       return { error: `AI generation failed: ${result.error || 'All API providers failed or timed out.'}` };
     }
