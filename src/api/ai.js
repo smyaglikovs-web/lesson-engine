@@ -56,30 +56,6 @@ function bufferToBase64(buffer) {
   return btoa(binary);
 }
 
-// Safer, dynamic stitcher for any number of audio chunks
-function concatMultipleMp3Base64(base64Array) {
-  try {
-    const buffers = base64Array
-      .map(b64 => (b64 || '').replace(/^data:[^;]+;base64,/, ''))
-      .filter(Boolean)
-      .map(clean => Uint8Array.from(atob(clean), c => c.charCodeAt(0)));
-      
-    if (buffers.length === 0) return '';
-    if (buffers.length === 1) return `data:audio/mp3;base64,${bufferToBase64(buffers[0])}`;
-
-    const totalLen = buffers.reduce((sum, buf) => sum + buf.length, 0);
-    const merged = new Uint8Array(totalLen);
-    let offset = 0;
-    for (const buf of buffers) {
-      merged.set(buf, offset);
-      offset += buf.length;
-    }
-    return `data:audio/mp3;base64,${bufferToBase64(merged)}`;
-  } catch (e) {
-    return '';
-  }
-}
-
 export async function fetchLiveWebSearch(query = '') {
   if (!query || !query.trim()) return null;
   const cleanQuery = query.trim();
@@ -602,43 +578,30 @@ Convert the provided textbook document/test paper (or scanned images) into a com
 }
 
 // --------------------------------------------------------------------------
-// BULLETPROOF TEXT-TO-SPEECH (DYNAMIC CHUNKING TO AVOID CLOUDFLARE LIMITS)
+// AUDIO GENERATION (DIRECT SINGLE PASS - NO MP3 STITCHING CORRUPTION)
 // --------------------------------------------------------------------------
 export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
   if (!text || !text.trim()) return { error: 'Text is required.' };
   const cleanText = text.trim();
 
-  // 1. PRIMARY: CLOUDFLARE WORKERS AI MELOTTS
+  // 1. PRIMARY: CLOUDFLARE WORKERS AI MELOTTS (Direct pass, no chunking inside track to prevent corrupted headers)
   if (env.AI) {
     try {
-      // Aggressively chunk at ~400 chars so we NEVER hit TTS silent dropping
-      const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
-      const chunks = [];
-      let current = '';
-      for (const s of sentences) {
-        if ((current + s).length > 400 && current.length > 0) {
-          chunks.push(current.trim());
-          current = s;
-        } else {
-          current += (current ? ' ' : '') + s;
-        }
-      }
-      if (current.trim()) chunks.push(current.trim());
+      const meloRes = await env.AI.run('@cf/myshell-ai/melotts', { 
+        prompt: cleanText.slice(0, 1800), // Max safe limit for a single paragraph
+        lang: lang || 'en' 
+      });
 
-      const meloPromises = chunks.map(chunk => env.AI.run('@cf/myshell-ai/melotts', { prompt: chunk, lang: lang || 'en' }));
-      const meloResults = await Promise.all(meloPromises);
-
-      const validBase64s = meloResults.map(r => r?.audio).filter(Boolean);
-      if (validBase64s.length > 0) {
-        const combinedAudio = concatMultipleMp3Base64(validBase64s);
-        if (combinedAudio) return { success: true, audioUrl: combinedAudio };
+      if (meloRes && typeof meloRes.audio === 'string' && meloRes.audio.length > 100) {
+        const audioUrl = meloRes.audio.startsWith('data:') ? meloRes.audio : `data:audio/mp3;base64,${meloRes.audio}`;
+        return { success: true, audioUrl };
       }
     } catch (eMelo) {
       console.error('MeloTTS error:', eMelo);
     }
   }
 
-  // 2. SECONDARY: MULTI-CHUNK FAST TTS FALLBACK
+  // 2. SECONDARY: GOOGLE TTS FALLBACK
   try {
     const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
     const chunks = [];
@@ -684,7 +647,7 @@ export async function generateAudioWithAI(env, { text = '', lang = 'en' }) {
 }
 
 // --------------------------------------------------------------------------
-// FORCED LONG-FORM PODCAST GENERATOR
+// STRICT XML MULTI-PART PODCAST GENERATOR & SEQUENTIAL AUDIO (PREVENTS 429 RATE LIMITS)
 // --------------------------------------------------------------------------
 export async function generatePodcastAudioWithAI(env, payload) {
   const { topic = '', sourceText = '', lessonTitle = '', level = 'B1' } = payload;
@@ -701,29 +664,32 @@ Target CEFR Level: ${level} (${cefrRules})
 Topic: "${resolvedTopic}"
 
 [TASK]
-Write an authentic, highly engaging, and LONG podcast script.
-You MUST write at least 350 words in total. Most AI models write too little—you must FORCE yourself to expand on every detail, give rich examples, and speak at length.
-You MUST structure your response EXACTLY with these 3 headers:
+Write an authentic, highly engaging podcast script.
+You MUST write EXACTLY 3 paragraphs, and wrap each paragraph in XML tags.
+You MUST write at least 80 words for <part1>, at least 130 words for <part2>, and at least 80 words for <part3>. Expand on every detail!
 
-[PART 1]
-(Write a highly detailed introduction. Hook the listener, set the scene, and explain the background history extensively. Write at least 6 long sentences.)
+Use EXACTLY these XML tags:
 
-[PART 2]
-(Write a massive, in-depth exploration. Analyze the story, lore, and conflicts. Give at least two specific, detailed examples or anecdotes. Write at least 8 long sentences.)
+<part1>
+(Write the hook, introduction, and historical background here. Expand and speak at length. At least 6 long sentences.)
+</part1>
 
-[PART 3]
-(Write a thorough conclusion. Discuss the philosophical or cultural impact in detail, summarize the takeaway, and end with a deep question for the audience. Write at least 6 long sentences.)
+<part2>
+(Write the deep dive, narrative conflict, and specific examples here. At least 8 long sentences.)
+</part2>
+
+<part3>
+(Write the conclusion and the thought-provoking question for the audience here. At least 6 long sentences.)
+</part3>
 
 [RULES]
 - Do NOT use JSON.
-- Write ONLY spoken English text under the headers.
-- EXPAND your ideas. Do not be brief.`;
+- Write ONLY spoken English text inside the XML tags.`;
 
   const userPrompt = sourceText.trim()
-    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nWrite the long 3-part podcast episode using the [PART 1], [PART 2], [PART 3] headers.`
-    : `Write the long 3-part podcast episode about "${resolvedTopic}" using the [PART 1], [PART 2], [PART 3] headers.`;
+    ? `Source Context:\n${sourceText.slice(0, 2400)}\n\nWrite the podcast episode inside the <part1>, <part2>, and <part3> tags.`
+    : `Write the podcast episode about "${resolvedTopic}" inside the <part1>, <part2>, and <part3> tags.`;
 
-  // expectJson = false
   const scriptResult = await runAiPipeline(env, systemPrompt, userPrompt, 2400, false);
   
   let rawScript = '';
@@ -733,16 +699,20 @@ You MUST structure your response EXACTLY with these 3 headers:
     rawScript = JSON.stringify(scriptResult.data);
   }
 
-  const parts = rawScript.split(/\[PART \d\]/gi).map(p => p.trim()).filter(p => p.length > 25);
+  // Flawless XML Extraction
+  const extractPart = (tag) => {
+    const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
+    const match = rawScript.match(regex);
+    return match ? match[1].trim() : '';
+  };
 
-  let p1 = '', p2 = '', p3 = '';
+  let p1 = extractPart('part1');
+  let p2 = extractPart('part2');
+  let p3 = extractPart('part3');
 
-  if (parts.length >= 3) {
-    p1 = parts[0];
-    p2 = parts[1];
-    p3 = parts[2];
-  } else {
-    const sentences = rawScript.replace(/\[.*?\]/g, '').match(/[^.!?]+[.!?]+/g) || [rawScript];
+  // Safety fallback if AI ignored XML tags entirely
+  if (!p1 && !p2 && !p3) {
+    const sentences = rawScript.replace(/<[^>]+>/g, '').match(/[^.!?]+[.!?]+/g) || [rawScript];
     if (sentences.length >= 3) {
       const chunk = Math.ceil(sentences.length / 3);
       p1 = sentences.slice(0, chunk).join(' ').trim();
@@ -756,11 +726,11 @@ You MUST structure your response EXACTLY with these 3 headers:
   const fullScript = [p1, p2, p3].filter(Boolean).join('\n\n');
   const episodeTitle = `${resolvedTopic} (Audio Episode)`;
 
-  const [audio1, audio2, audio3] = await Promise.all([
-    p1 ? generateAudioWithAI(env, { text: p1, lang: 'en' }) : { audioUrl: '' },
-    p2 ? generateAudioWithAI(env, { text: p2, lang: 'en' }) : { audioUrl: '' },
-    p3 ? generateAudioWithAI(env, { text: p3, lang: 'en' }) : { audioUrl: '' }
-  ]);
+  // SEQUENTIAL AUDIO GENERATION (One at a time)
+  // This prevents Cloudflare from dropping requests (Rate Limiting) when we fire too many at once.
+  const audio1 = p1 ? await generateAudioWithAI(env, { text: p1, lang: 'en' }) : { audioUrl: '' };
+  const audio2 = p2 ? await generateAudioWithAI(env, { text: p2, lang: 'en' }) : { audioUrl: '' };
+  const audio3 = p3 ? await generateAudioWithAI(env, { text: p3, lang: 'en' }) : { audioUrl: '' };
 
   const tracks = [
     { id: 1, title: 'Часть 1: Введение и контекст', text: p1, audioUrl: audio1.audioUrl || '' },
