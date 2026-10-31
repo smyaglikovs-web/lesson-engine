@@ -13,11 +13,31 @@ export const BlockHeading = ({ block }) => {
   return <h2 className={styles[2]}>{block.text}</h2>;
 };
 
-export const BlockText = ({ block }) => (
-  <p className="text-slate-700 text-base sm:text-lg leading-relaxed mb-4 font-sans font-medium whitespace-pre-line">
-    {block.text}
-  </p>
-);
+// UPDATED: Lightweight Markdown Parser for Bold & Italics
+export const BlockText = ({ block }) => {
+  const formatText = (text) => {
+    if (!text) return { __html: '' };
+    // Escape HTML to prevent injection, then parse markdown stars
+    let html = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+      
+    // Convert **bold** to <strong>
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-extrabold text-slate-900">$1</strong>');
+    // Convert *italic* to <em>
+    html = html.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>');
+
+    return { __html: html };
+  };
+
+  return (
+    <p 
+      className="text-slate-700 text-base sm:text-lg leading-relaxed mb-4 font-sans font-medium whitespace-pre-line"
+      dangerouslySetInnerHTML={formatText(block.text)}
+    />
+  );
+};
 
 export const BlockImage = ({ block, onEditMedia }) => {
   const [lightboxUrl, setLightboxUrl] = useState(null);
@@ -144,7 +164,6 @@ export const BlockVideo = ({ block, onEditMedia }) => {
   );
 };
 
-// CLEAN MULTI-TRACK AUDIO / PODCAST PLAYER
 export const BlockAudio = ({ block = {}, onEditMedia }) => {
   const [showTranscript, setShowTranscript] = useState(false);
   const tracks = Array.isArray(block.tracks) && block.tracks.length > 0 ? block.tracks : null;
